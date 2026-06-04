@@ -94,6 +94,21 @@ O Prosa abre e salva os formatos padrão do **Microsoft Office** e do
 
 > No macOS, use `Cmd` no lugar de `Ctrl`.
 
+## 📦 Instalação
+
+Baixe o instalador da sua plataforma na página de
+[**Releases**](https://github.com/britors/Prosa/releases):
+
+| Plataforma | Arquivo |
+| --- | --- |
+| Debian/Ubuntu | `prosa_<versão>_amd64.deb` |
+| Fedora/openSUSE | `prosa-<versão>.x86_64.rpm` |
+| Windows | `Prosa Setup <versão>.exe` |
+| Arch Linux | `yay -S prosa-bin` (AUR) |
+
+Os instaladores são gerados automaticamente pelo GitHub Actions a cada tag
+`vX.Y.Z` (veja `.github/workflows/release.yml`).
+
 ## 🚀 Como compilar e executar
 
 ### Pré-requisitos

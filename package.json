@@ -6,6 +6,10 @@
   "license": "GPL-3.0-or-later",
   "description": "Editor de texto moderno — suite W3TI",
   "homepage": "https://w3ti.com.br",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/britors/Prosa.git"
+  },
   "main": "dist/main/index.js",
   "scripts": {
     "build": "node esbuild.config.mjs",
@@ -31,7 +35,6 @@
     ],
     "linux": {
       "target": [
-        "AppImage",
         "deb",
         "rpm"
       ],
@@ -48,11 +51,25 @@
       ],
       "icon": "build/icon.ico"
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "Prosa"
+    },
     "mac": {
       "target": [
         "dmg"
       ],
       "category": "public.app-category.productivity"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "britors",
+      "repo": "Prosa",
+      "releaseType": "release"
     }
   },
   "dependencies": {
