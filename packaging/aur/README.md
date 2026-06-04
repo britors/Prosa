@@ -9,7 +9,7 @@
 
 1. Atualize `pkgver` e o `sha256sums` para a nova versão:
    ```bash
-   VERSION=0.1.0
+   VERSION=0.1.1
    DEB=prosa_${VERSION}_amd64.deb
    curl -sL -o "$DEB" \
      "https://github.com/britors/Prosa/releases/download/v${VERSION}/${DEB}"
@@ -27,4 +27,4 @@
    git push
    ```
 
-> O `sha256sums` atual corresponde ao `.deb` da release **v0.1.0**.
+> O `sha256sums` atual corresponde ao `.deb` da release **v0.1.1**.
