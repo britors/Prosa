@@ -1,7 +1,6 @@
 # Maintainer: W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>
-# Gerado automaticamente pelo workflow de release (placeholders substituídos).
 pkgname=prosa-bin
-pkgver=__PKGVER__
+pkgver=0.1.0
 pkgrel=1
 pkgdesc="Editor de texto moderno, open source e em modo escuro — suíte W3TI"
 arch=('x86_64')
@@ -14,7 +13,7 @@ conflicts=('prosa')
 options=('!strip' '!debug')
 source=("prosa-${pkgver}.deb::https://github.com/britors/Prosa/releases/download/v${pkgver}/prosa_${pkgver}_amd64.deb")
 noextract=("prosa-${pkgver}.deb")
-sha256sums=('__SHA256__')
+sha256sums=('ee6840eb99a8f9ce9bffb4b101d10aff6a2697af6c7267faea09855e303e4e41')
 
 package() {
   cd "${srcdir}"
