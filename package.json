@@ -1,0 +1,91 @@
+{
+  "name": "prosa",
+  "productName": "Prosa",
+  "version": "0.1.0",
+  "author": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
+  "license": "GPL-3.0-or-later",
+  "description": "Editor de texto moderno — suite W3TI",
+  "homepage": "https://w3ti.com.br",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "build:watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron .",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "dist": "npm run build && electron-builder",
+    "lint": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "br.com.w3ti.prosa",
+    "productName": "Prosa",
+    "copyright": "© 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/renderer/index.html",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    }
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.11.5",
+    "@tiptap/extension-character-count": "^2.11.5",
+    "@tiptap/extension-color": "^2.11.5",
+    "@tiptap/extension-font-family": "^2.11.5",
+    "@tiptap/extension-highlight": "^2.11.5",
+    "@tiptap/extension-image": "^2.11.5",
+    "@tiptap/extension-link": "^2.11.5",
+    "@tiptap/extension-placeholder": "^2.11.5",
+    "@tiptap/extension-subscript": "^2.11.5",
+    "@tiptap/extension-superscript": "^2.11.5",
+    "@tiptap/extension-table": "^2.11.5",
+    "@tiptap/extension-table-cell": "^2.11.5",
+    "@tiptap/extension-table-header": "^2.11.5",
+    "@tiptap/extension-table-row": "^2.11.5",
+    "@tiptap/extension-task-item": "^2.11.5",
+    "@tiptap/extension-task-list": "^2.11.5",
+    "@tiptap/extension-text-align": "^2.11.5",
+    "@tiptap/extension-text-style": "^2.11.5",
+    "@tiptap/extension-typography": "^2.11.5",
+    "@tiptap/extension-underline": "^2.11.5",
+    "@tiptap/pm": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "@xmldom/xmldom": "^0.9.10",
+    "docx": "^9.1.1",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
+    "font-list": "^1.6.0",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.9.0",
+    "marked": "^15.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

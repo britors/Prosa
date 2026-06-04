@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<!--
+  Prosa — Editor de Texto
+  Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; script-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prosa</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Tela de boas-vindas -->
+    <div id="welcome-view"></div>
+
+    <!-- Vista de edição -->
+    <div id="document-view" hidden>
+      <div id="toolbar" class="toolbar"></div>
+      <div class="workspace">
+        <aside id="outline-panel" class="side-panel">
+          <div id="outline"></div>
+        </aside>
+        <main class="editor-area">
+          <div id="page-stack" class="page-stack">
+            <div
+              id="doc-header"
+              class="doc-band doc-header"
+              contenteditable="true"
+              data-placeholder="Cabeçalho"
+            ></div>
+            <div id="editor"></div>
+            <div
+              id="doc-footer"
+              class="doc-band doc-footer"
+              contenteditable="true"
+              data-placeholder="Rodapé"
+            ></div>
+          </div>
+        </main>
+        <aside id="styles-panel" class="side-panel">
+          <div id="styles"></div>
+        </aside>
+      </div>
+      <div id="status-bar" class="status-bar"></div>
+    </div>
+
+    <script src="index.js"></script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+
+# Builds
+dist/
+release/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Configurações locais do usuário (electron-store em runtime)
+*.local
+
+# Configurações locais do Claude Code (mantém apenas as compartilhadas)
+.claude/settings.local.json
