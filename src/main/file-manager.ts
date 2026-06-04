@@ -190,12 +190,18 @@ async function writeDocument(
       break
     }
     case 'docx': {
-      const buffer = await exportDocx(payload.json)
+      const buffer = await exportDocx(payload.json, {
+        header: payload.header,
+        footer: payload.footer
+      })
       await writeFile(path, buffer)
       break
     }
     case 'odt': {
-      const buffer = await exportOdt(payload.json)
+      const buffer = await exportOdt(payload.json, {
+        header: payload.header,
+        footer: payload.footer
+      })
       await writeFile(path, buffer)
       break
     }

@@ -6,6 +6,8 @@ import mammoth from 'mammoth'
 import { marked } from 'marked'
 import {
   Document,
+  Footer,
+  Header,
   HeadingLevel,
   Packer,
   Paragraph,
@@ -15,7 +17,14 @@ import {
   TextRun,
   WidthType
 } from 'docx'
+import { parseHeaderHtml } from './html-runs.js'
 import type { TipTapJSON } from '../shared/types.js'
+
+/** Opções de cabeçalho/rodapé (HTML) para as exportações. */
+export interface HeaderFooterOptions {
+  header?: string
+  footer?: string
+}
 
 /* -------------------------------------------------------------------------- */
 /* Importação                                                                 */
@@ -302,12 +311,48 @@ function tableToDocx(node: TipTapJSON): DocxTable {
   })
 }
 
+/** Converte o HTML de uma banda em parágrafos do docx (ou null se vazia). */
+function bandToDocxParagraphs(html?: string): Paragraph[] | null {
+  const lines = parseHeaderHtml(html ?? '')
+  if (lines.length === 0) return null
+  return lines.map(
+    (line) =>
+      new Paragraph({
+        children: line.runs.map(
+          (run) =>
+            new TextRun({
+              text: run.text,
+              bold: run.bold,
+              italics: run.italic,
+              underline: run.underline ? {} : undefined
+            })
+        )
+      })
+  )
+}
+
 /** Converte o documento TipTap completo em um buffer .docx. */
-export async function exportDocx(doc: TipTapJSON): Promise<Buffer> {
+export async function exportDocx(
+  doc: TipTapJSON,
+  options: HeaderFooterOptions = {}
+): Promise<Buffer> {
   const children = (doc.content ?? []).flatMap(blockToDocx)
+  const headerParagraphs = bandToDocxParagraphs(options.header)
+  const footerParagraphs = bandToDocxParagraphs(options.footer)
+
   const document = new Document({
     creator: 'Prosa — W3TI',
-    sections: [{ children: children.length > 0 ? children : [new Paragraph({})] }]
+    sections: [
+      {
+        headers: headerParagraphs
+          ? { default: new Header({ children: headerParagraphs }) }
+          : undefined,
+        footers: footerParagraphs
+          ? { default: new Footer({ children: footerParagraphs }) }
+          : undefined,
+        children: children.length > 0 ? children : [new Paragraph({})]
+      }
+    ]
   })
   return Packer.toBuffer(document)
 }

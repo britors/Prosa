@@ -30,8 +30,9 @@ importação e exportação de `.docx`, Markdown, texto puro e PDF.
 - 📐 **Página A4 simulada** — área de edição com margens e dimensões reais.
 - 🖼️ **Imagens** — inserir por arquivo, arrastar-e-soltar ou colar (embutidas
   no documento como base64).
-- 📰 **Cabeçalho e rodapé** — bandas editáveis da página, salvas no documento e
-  repetidas em todas as páginas na impressão e no PDF.
+- 📰 **Cabeçalho e rodapé** — bandas editáveis da página, salvas no documento,
+  repetidas em todas as páginas na impressão/PDF e exportadas como cabeçalho e
+  rodapé nativos do `.docx` (Word) e do `.odt` (LibreOffice).
 - 📑 **Painel de tópicos** — outline automático dos títulos do documento, com
   navegação por clique.
 - 🎨 **Estilos de parágrafo** — Normal, Títulos, Citação, Bloco de código.

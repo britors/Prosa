@@ -4,6 +4,7 @@
 
 import JSZip from 'jszip'
 import { DOMParser } from '@xmldom/xmldom'
+import { parseHeaderHtml } from './html-runs.js'
 import type { TipTapJSON } from '../shared/types.js'
 
 /** Tipo MIME do OpenDocument Text. */
@@ -216,8 +217,35 @@ const LIST_STYLES =
   '<style:list-level-properties text:space-before="0.6cm" text:min-label-width="0.4cm"/>' +
   '</text:list-level-style-number></text:list-style>'
 
-/** styles.xml mínimo, com estilos nomeados de título e auxiliares. */
-function buildStylesXml(): string {
+/** Marcas de um run simples (sem tachado) de cabeçalho/rodapé. */
+function runMarks(run: { bold: boolean; italic: boolean; underline: boolean }): RunMarks {
+  return { bold: run.bold, italic: run.italic, underline: run.underline, strike: false }
+}
+
+/**
+ * Converte o HTML de uma banda (cabeçalho/rodapé) em parágrafos ODT
+ * (`text:p`), registrando os estilos de texto necessários. Devolve null se
+ * a banda estiver vazia.
+ */
+function bandToOdt(html: string | undefined, styles: TextStyleRegistry): string | null {
+  const lines = parseHeaderHtml(html ?? '')
+  if (lines.length === 0) return null
+  return lines
+    .map((line) => {
+      const inner = line.runs
+        .map((run) => {
+          const text = escapeXml(run.text)
+          const name = styles.nameFor(runMarks(run))
+          return name ? `<text:span text:style-name="${name}">${text}</text:span>` : text
+        })
+        .join('')
+      return `<text:p>${inner}</text:p>`
+    })
+    .join('')
+}
+
+/** styles.xml com estilos nomeados, layout de página e cabeçalho/rodapé. */
+function buildStylesXml(headerXml: string | null, footerXml: string | null, hfStyles: string): string {
   const headings = [1, 2, 3, 4, 5, 6]
     .map((level) => {
       const size = 22 - level * 2
@@ -228,6 +256,22 @@ function buildStylesXml(): string {
       )
     })
     .join('')
+
+  const pageLayout =
+    '<style:page-layout style:name="PL1">' +
+    '<style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" ' +
+    'fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm" ' +
+    'style:print-orientation="portrait"/>' +
+    '<style:header-style><style:header-footer-properties fo:min-height="1cm" fo:margin-bottom="0.3cm"/></style:header-style>' +
+    '<style:footer-style><style:header-footer-properties fo:min-height="1cm" fo:margin-top="0.3cm"/></style:footer-style>' +
+    '</style:page-layout>'
+
+  const masterPage =
+    '<style:master-page style:name="Standard" style:page-layout-name="PL1">' +
+    (headerXml ? `<style:header>${headerXml}</style:header>` : '') +
+    (footerXml ? `<style:footer>${footerXml}</style:footer>` : '') +
+    '</style:master-page>'
+
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
     `<office:document-styles ${NS} office:version="1.2"><office:styles>` +
@@ -238,7 +282,8 @@ function buildStylesXml(): string {
     '<style:text-properties fo:font-style="italic"/></style:style>' +
     '<style:style style:name="Preformatted_20_Text" style:display-name="Preformatted Text" style:family="paragraph">' +
     '<style:text-properties style:font-name="Courier New" fo:font-family="\'Courier New\'"/></style:style>' +
-    '</office:styles></office:document-styles>'
+    `</office:styles><office:automatic-styles>${pageLayout}${hfStyles}</office:automatic-styles>` +
+    `<office:master-styles>${masterPage}</office:master-styles></office:document-styles>`
   )
 }
 
@@ -252,9 +297,17 @@ const MANIFEST_XML =
   '</manifest:manifest>'
 
 /** Converte um documento TipTap completo em um buffer .odt. */
-export async function exportOdt(doc: TipTapJSON): Promise<Buffer> {
+export async function exportOdt(
+  doc: TipTapJSON,
+  options: { header?: string; footer?: string } = {}
+): Promise<Buffer> {
   const styles = new TextStyleRegistry()
   const body = (doc.content ?? []).map((node) => blockToOdt(node, styles)).join('')
+
+  // Estilos de texto do cabeçalho/rodapé vivem no styles.xml (registro próprio).
+  const hfStyles = new TextStyleRegistry()
+  const headerXml = bandToOdt(options.header, hfStyles)
+  const footerXml = bandToOdt(options.footer, hfStyles)
 
   const content =
     '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -267,7 +320,7 @@ export async function exportOdt(doc: TipTapJSON): Promise<Buffer> {
   // O mimetype deve ser o primeiro arquivo e estar sem compressão.
   zip.file('mimetype', ODT_MIME, { compression: 'STORE' })
   zip.file('META-INF/manifest.xml', MANIFEST_XML)
-  zip.file('styles.xml', buildStylesXml())
+  zip.file('styles.xml', buildStylesXml(headerXml, footerXml, hfStyles.toXml()))
   zip.file('content.xml', content)
 
   return zip.generateAsync({ type: 'nodebuffer', mimeType: ODT_MIME }) as Promise<Buffer>
