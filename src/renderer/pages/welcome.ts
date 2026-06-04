@@ -42,7 +42,7 @@ export class WelcomeScreen {
     this.root.innerHTML = `
       <div class="welcome">
         <div class="welcome-hero">
-          <div class="welcome-logo">Prosa</div>
+          <img class="welcome-logo-img" src="assets/prosa-logo.png" alt="Prosa" />
           <p class="welcome-tagline">Escreva. Formate. Publique.</p>
           <div class="welcome-actions">
             <button class="btn btn-primary" id="welcome-new">

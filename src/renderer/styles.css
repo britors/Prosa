@@ -102,6 +102,15 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
+.welcome-logo-img {
+  width: 168px;
+  height: 168px;
+  object-fit: contain;
+  border-radius: 28px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 32px rgba(6, 182, 212, 0.18);
+}
+
 .welcome-tagline {
   color: var(--text-secondary);
   font-size: 18px;

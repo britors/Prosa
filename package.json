@@ -22,24 +22,31 @@
     "productName": "Prosa",
     "copyright": "© 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
-      "src/renderer/index.html",
       "package.json"
     ],
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm"
       ],
-      "category": "Office"
+      "category": "Office",
+      "icon": "build/icon.png",
+      "maintainer": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
+      "vendor": "W3TI SERVIÇOS DE INFORMÁTICA LTDA",
+      "synopsis": "Editor de texto moderno — suíte W3TI",
+      "description": "Prosa — processador de texto moderno, open source e em modo escuro, parte da suíte de escritório W3TI."
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "mac": {
       "target": [

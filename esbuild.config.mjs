@@ -4,6 +4,7 @@
 
 import esbuild from 'esbuild'
 import { cpSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 const watch = process.argv.includes('--watch')
 
@@ -50,11 +51,15 @@ const rendererConfig = {
   banner
 }
 
-/** Copies static assets (HTML, CSS) into the dist folder. */
+/** Copies static assets (HTML, CSS, imagens) into the dist folder. */
 function copyStatic() {
-  mkdirSync('dist/renderer', { recursive: true })
+  mkdirSync('dist/renderer/assets', { recursive: true })
   cpSync('src/renderer/index.html', 'dist/renderer/index.html')
+  cpSync('src/renderer/splash.html', 'dist/renderer/splash.html')
   cpSync('src/renderer/styles.css', 'dist/renderer/styles.css')
+  cpSync('src/renderer/assets', 'dist/renderer/assets', { recursive: true })
+  // Ícone usado pela janela em runtime.
+  cpSync('build/icon.png', join('dist', 'icon.png'))
 }
 
 async function run() {

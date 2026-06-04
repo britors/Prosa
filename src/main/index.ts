@@ -38,12 +38,55 @@ const APP_INFO: AppInfo = {
 }
 
 let mainWindow: BrowserWindow | null = null
+let splashWindow: BrowserWindow | null = null
+/** Momento em que a splash foi exibida (para garantir tempo mínimo). */
+let splashShownAt = 0
+/** Tempo mínimo, em ms, que a splash permanece visível. */
+const SPLASH_MIN_MS = 1400
 /** Indica se o documento atual possui alterações não salvas. */
 let documentDirty = false
+
+/** Caminho do ícone da aplicação (gerado a partir do logo). */
+const ICON_PATH = join(__dirname, '..', 'icon.png')
 
 /** Envia uma ação de menu para o renderer tratar. */
 function sendMenuAction(action: string, payload?: unknown): void {
   mainWindow?.webContents.send('menu:action', action, payload)
+}
+
+/** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
+function createSplash(): void {
+  splashWindow = new BrowserWindow({
+    width: 460,
+    height: 340,
+    frame: false,
+    resizable: false,
+    center: true,
+    show: false,
+    backgroundColor: '#0F1117',
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    icon: ICON_PATH,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  })
+  void splashWindow.loadFile(join(__dirname, '../renderer/splash.html'))
+  splashWindow.once('ready-to-show', () => {
+    splashWindow?.show()
+    splashShownAt = Date.now()
+  })
+  splashWindow.on('closed', () => {
+    splashWindow = null
+  })
+}
+
+/** Fecha a splash (respeitando o tempo mínimo) e revela a janela principal. */
+function finishSplash(): void {
+  const elapsed = Date.now() - (splashShownAt || Date.now())
+  const wait = Math.max(0, SPLASH_MIN_MS - elapsed)
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close()
+    mainWindow?.show()
+  }, wait)
 }
 
 /** Cria a janela principal da aplicação. */
@@ -55,6 +98,7 @@ function createWindow(): void {
     minHeight: 600,
     backgroundColor: '#0F1117',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    icon: ICON_PATH,
     show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -67,7 +111,7 @@ function createWindow(): void {
   void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
+    finishSplash()
   })
 
   mainWindow.on('close', (event) => {
@@ -375,6 +419,7 @@ function registerIpc(): void {
 
 app.whenReady().then(() => {
   registerIpc()
+  createSplash()
   createWindow()
 
   app.on('activate', () => {
