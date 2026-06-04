@@ -1,9 +1,9 @@
-# Pacote AUR — `prosa-bin`
+# Pacote AUR — `prosa`
 
-`PKGBUILD` (e `.SRCINFO`) do pacote binário do Prosa para a
-[Arch User Repository](https://aur.archlinux.org/). Instala o `.deb` oficial
-publicado no GitHub Releases em `/opt/Prosa`, com symlink em `/usr/bin/prosa`,
-atalho `.desktop` e ícone.
+`PKGBUILD` (e `.SRCINFO`) do pacote do Prosa para a
+[Arch User Repository](https://aur.archlinux.org/packages/prosa). Instala o
+`.deb` oficial publicado no GitHub Releases em `/opt/Prosa`, com symlink em
+`/usr/bin/prosa`, atalho `.desktop` e ícone.
 
 ## Publicar / atualizar na AUR
 
@@ -20,7 +20,7 @@ atalho `.desktop` e ícone.
    ```bash
    makepkg -si
    ```
-3. Envie para a AUR (repositório `ssh://aur@aur.archlinux.org/prosa-bin.git`):
+3. Envie para a AUR (repositório `ssh://aur@aur.archlinux.org/prosa.git`):
    ```bash
    git add PKGBUILD .SRCINFO
    git commit -m "Atualiza para ${VERSION}"

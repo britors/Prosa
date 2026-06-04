@@ -104,7 +104,7 @@ Baixe o instalador da sua plataforma na página de
 | Debian/Ubuntu | `prosa_<versão>_amd64.deb` |
 | Fedora/openSUSE | `prosa-<versão>.x86_64.rpm` |
 | Windows | `Prosa Setup <versão>.exe` |
-| Arch Linux | `yay -S prosa-bin` (AUR) |
+| Arch Linux | `yay -S prosa` (AUR) |
 
 Os instaladores são gerados automaticamente pelo GitHub Actions a cada tag
 `vX.Y.Z` (veja `.github/workflows/release.yml`).

@@ -1,5 +1,5 @@
 # Maintainer: W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>
-pkgname=prosa-bin
+pkgname=prosa
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Editor de texto moderno, open source e em modo escuro — suíte W3TI"
@@ -8,8 +8,6 @@ url="https://github.com/britors/Prosa"
 license=('GPL-3.0-or-later')
 depends=('gtk3' 'nss' 'libnotify' 'libxtst' 'libxss' 'libsecret' 'at-spi2-core')
 optdepends=('xdg-utils: abrir links externos')
-provides=('prosa')
-conflicts=('prosa')
 options=('!strip' '!debug')
 source=("prosa-${pkgver}.deb::https://github.com/britors/Prosa/releases/download/v${pkgver}/prosa_${pkgver}_amd64.deb")
 noextract=("prosa-${pkgver}.deb")
