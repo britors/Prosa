@@ -1,7 +1,7 @@
 {
   "name": "prosa",
   "productName": "Prosa",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
   "license": "GPL-3.0-or-later",
   "description": "Editor de texto moderno — suite W3TI",
@@ -39,7 +39,7 @@
         "rpm"
       ],
       "category": "Office",
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "maintainer": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
       "vendor": "W3TI SERVIÇOS DE INFORMÁTICA LTDA",
       "synopsis": "Editor de texto moderno — suíte W3TI",
