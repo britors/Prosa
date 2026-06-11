@@ -4,7 +4,7 @@
 
 import { DocumentView, type DocumentViewElements } from './pages/document.js'
 import { WelcomeScreen } from './pages/welcome.js'
-import { setAppTheme } from './components/theme-selector.js'
+import { applyTheme } from './components/theme-engine.js'
 import type { AppInfo, OpenedDocument } from '../shared/types.js'
 
 /** Localiza um elemento obrigatório no DOM. */
@@ -17,7 +17,11 @@ function el<T extends HTMLElement>(id: string): T {
 /** Ponto de entrada do renderer: inicializa a aplicação. */
 async function bootstrap(): Promise<void> {
   const settings = await window.prosa.getSettings()
-  setAppTheme(settings.theme !== 'light')
+  if (settings.palette) {
+    applyTheme(settings.palette)
+  } else {
+    setAppTheme(settings.theme !== 'light')
+  }
 
   const elements: DocumentViewElements = {
     root: el('document-view'),
@@ -117,6 +121,9 @@ function registerMenuActions(
         break
       case 'edit:replace':
         view.openFind(true)
+        break
+      case 'edit:commandPalette':
+        view.openCommandPalette()
         break
       case 'format:bold':
         editor.chain().focus().toggleBold().run()
