@@ -1,7 +1,7 @@
 {
   "name": "prosa",
   "productName": "Prosa",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Rodrigo Brito <rodrigo@w3ti.com.br>",
   "license": "GPL-3.0-or-later",
   "description": "Editor de texto moderno ",
