@@ -12,14 +12,16 @@ export class CommandPalette {
   private onToggleTypewriter?: () => void
   private onDailyNote?: () => void
   private onCitation?: () => void
+  private onGraph?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void, onCitation?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
     this.onToggleTypewriter = onToggleTypewriter
     this.onDailyNote = onDailyNote
     this.onCitation = onCitation
+    this.onGraph = onGraph
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -43,6 +45,7 @@ export class CommandPalette {
         { label: 'Modo Máquina de Escrever', action: () => this.onToggleTypewriter?.() },
         { label: 'Nova Nota Diária', action: () => this.onDailyNote?.() },
         { label: 'Inserir Citação', action: () => this.onCitation?.() },
+        { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
 

@@ -12,6 +12,7 @@ import { Image } from '@tiptap/extension-image'
 import { createToolbar } from '../editor/toolbar.js'
 import { CommandPalette } from './command-palette.js'
 import { CitationManager } from '../components/citation-manager.js'
+import { GraphView } from '../components/graph-view.js'
 import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
 import { FindReplacePanel } from '../components/find-replace.js'
@@ -62,6 +63,7 @@ export class DocumentView {
   private readonly findReplace: FindReplacePanel
   private readonly commandPalette: CommandPalette
   private readonly citationManager: CitationManager
+  private readonly graphView: GraphView
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
   private updateToolbar: () => void = () => {}
@@ -99,9 +101,10 @@ export class DocumentView {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.citationManager.show())
+    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show())
     
     this.citationManager = new CitationManager(els.root, this.editor)
+    this.graphView = new GraphView(els.root)
     
     // Agora createToolbar é assíncrono
     void createToolbar(els.toolbar, this.editor, {
