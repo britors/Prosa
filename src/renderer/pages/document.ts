@@ -298,6 +298,12 @@ export class DocumentView {
     panel?.toggleAttribute('hidden')
   }
 
+  /** Alterna a visibilidade do painel de estilos. */
+  toggleStyles(): void {
+    const panel = this.els.styles.parentElement
+    panel?.toggleAttribute('hidden')
+  }
+
   /** Alterna a visibilidade da barra de contagem de palavras. */
   toggleWordCount(): void {
     this.els.statusBar.toggleAttribute('hidden')

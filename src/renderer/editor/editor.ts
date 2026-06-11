@@ -26,6 +26,7 @@ import { TaskItem } from '@tiptap/extension-task-item'
 import { PageBreak } from './extensions/page-break.js'
 import { FontSize } from './extensions/font-size.js'
 import { FindReplace } from './extensions/find-replace.js'
+import { PaginationPlus } from 'tiptap-pagination-plus'
 
 /** Callbacks de ciclo de vida do editor. */
 export interface EditorCallbacks {
@@ -68,7 +69,11 @@ export function createEditor(
       TaskList,
       TaskItem.configure({ nested: true }),
       PageBreak,
-      FindReplace.configure({ onMatchesUpdate: callbacks.onMatchesUpdate })
+      FindReplace.configure({ onMatchesUpdate: callbacks.onMatchesUpdate }),
+      PaginationPlus.configure({
+        pageHeight: 1123, // ~297mm em pixels (96dpi)
+        pageWidth: 793    // ~210mm em pixels (96dpi)
+      })
     ],
     editorProps: {
       attributes: {

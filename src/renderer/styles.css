@@ -22,6 +22,22 @@
   --radius-panel: 12px;
 }
 
+[data-theme='light'] {
+  --bg: #f9fafb;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --accent: #0891b2;
+  --accent-dark: #067c94;
+  --accent-bg: #e0f2f6;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-dim: #9ca3af;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --document-bg: #ffffff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -420,12 +436,12 @@ body {
   box-sizing: border-box;
   padding: 6mm 20mm;
   min-height: 14mm;
-  background: var(--document-bg);
-  border: 1px dashed var(--border);
+  background: #ffffff; /* Fundo branco */
+  border: 1px solid #e5e7eb; /* Borda cinza clara */
   border-radius: 4px;
   font-family: var(--document-font);
   font-size: 10pt;
-  color: var(--text-secondary);
+  color: #000000; /* Texto preto */
   outline: none;
 }
 
@@ -454,13 +470,13 @@ body {
   min-height: 297mm;
   margin: 0 auto;
   padding: 25mm 20mm;
-  background: var(--document-bg);
+  background: #ffffff; /* Fundo sempre branco */
   border: 1px solid var(--border);
   border-radius: 4px;
   font-family: var(--document-font);
   font-size: 12pt;
   line-height: 1.6;
-  color: #e5e7eb;
+  color: #000000; /* Texto sempre preto por padrão */
   box-shadow: 0 4px 32px rgba(0, 0, 0, 0.4);
   outline: none;
 }
@@ -470,9 +486,21 @@ body {
 }
 
 .prosa-document .page-break {
-  border-top: 2px dashed var(--border);
+  border-top: 2px dashed #9ca3af !important; /* Cinza forçado */
   margin: 2rem 0;
+  position: relative;
   page-break-after: always;
+}
+
+.prosa-document .page-break::before {
+  content: 'PÁGINA' !important;
+  position: absolute;
+  top: -10px;
+  right: 0;
+  font-size: 10px;
+  color: #9ca3af !important; /* Cinza forçado */
+  background: #ffffff !important; /* Fundo do documento forçado */
+  padding: 0 5px;
 }
 
 .prosa-document p.is-editor-empty:first-child::before {
@@ -485,22 +513,22 @@ body {
 
 .prosa-document h1 {
   font-size: 2em;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 0.5em;
 }
 .prosa-document h2 {
   font-size: 1.5em;
-  color: #e5e7eb;
+  color: var(--text-primary);
   margin-bottom: 0.4em;
 }
 .prosa-document h3 {
   font-size: 1.25em;
-  color: #d1d5db;
+  color: var(--text-primary);
 }
 .prosa-document h4,
 .prosa-document h5,
 .prosa-document h6 {
-  color: #d1d5db;
+  color: var(--text-primary);
 }
 
 .prosa-document a {

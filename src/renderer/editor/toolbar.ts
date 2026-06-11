@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Editor } from '@tiptap/core'
+import { setAppTheme } from '../components/theme-selector.js'
 
 /** Fontes padrão exibidas até as fontes do sistema serem carregadas. */
 const DEFAULT_FONTS = ['Inter', 'Georgia', 'Times New Roman', 'Arial', 'Courier New']
@@ -327,6 +328,19 @@ export function createToolbar(
   printBtn.innerHTML = '<i class="ti ti-printer"></i>'
   printBtn.addEventListener('click', handlers.onPrint)
   container.appendChild(printBtn)
+
+  // Alternar tema
+  const themeBtn = document.createElement('button')
+  themeBtn.className = 'toolbar-btn'
+  themeBtn.title = 'Alternar tema (Claro/Escuro)'
+  let isDark = document.documentElement.getAttribute('data-theme') !== 'light'
+  themeBtn.innerHTML = `<i class="ti ti-${isDark ? 'sun' : 'moon'}"></i>`
+  themeBtn.addEventListener('click', () => {
+    isDark = !isDark
+    setAppTheme(isDark)
+    themeBtn.innerHTML = `<i class="ti ti-${isDark ? 'sun' : 'moon'}"></i>`
+  })
+  container.appendChild(themeBtn)
 
   /** Atualiza o estado visual dos botões conforme a seleção atual. */
   const updateActiveStates = (): void => {

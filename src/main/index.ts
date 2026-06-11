@@ -312,6 +312,7 @@ function buildMenu(): void {
         { label: 'Restaurar zoom', accelerator: 'CmdOrCtrl+0', click: () => sendMenuAction('view:zoomReset') },
         { type: 'separator' },
         { label: 'Alternar tópicos', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('view:toggleOutline') },
+        { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
           label: 'Verificar ortografia',

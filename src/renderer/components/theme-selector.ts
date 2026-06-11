@@ -2,6 +2,13 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+/**
+ * Aplica o tema da aplicação (claro/escuro) ao elemento raiz.
+ */
+export function setAppTheme(isDark: boolean): void {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+}
+
 /** Tema de documento: ajusta tipografia e largura da área de edição. */
 export interface DocumentTheme {
   id: string
