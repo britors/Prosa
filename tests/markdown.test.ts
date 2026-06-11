@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { test } from 'node:test'
@@ -17,7 +17,7 @@ const doc: TipTapJSON = {
         { type: 'text', text: 'Um ' },
         { type: 'text', text: 'destaque', marks: [{ type: 'bold' }] },
         { type: 'text', text: ' e um ' },
-        { type: 'text', text: 'link', marks: [{ type: 'link', attrs: { href: 'https://w3ti.com.br' } }] },
+        { type: 'text', text: 'link', marks: [{ type: 'link', attrs: { href: 'https://github.com/britors/Prosa' } }] },
         { type: 'text', text: '.' }
       ]
     },
@@ -45,7 +45,7 @@ test('exporta TipTap JSON para Markdown com título', () => {
 test('exporta negrito e link em Markdown', () => {
   const md = exportMarkdown(doc)
   assert.match(md, /\*\*destaque\*\*/)
-  assert.match(md, /\[link\]\(https:\/\/w3ti\.com\.br\)/)
+  assert.match(md, /\[link\]\(https:\/\/Rodrigo Brito\.com\.br\)/)
 })
 
 test('exporta lista não ordenada em Markdown', () => {

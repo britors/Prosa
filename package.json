@@ -1,11 +1,11 @@
 {
   "name": "prosa",
   "productName": "Prosa",
-  "version": "0.1.1",
-  "author": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
+  "version": "0.2.0",
+  "author": "Rodrigo Brito <rodrigo@w3ti.com.br>",
   "license": "GPL-3.0-or-later",
-  "description": "Editor de texto moderno — suite W3TI",
-  "homepage": "https://w3ti.com.br",
+  "description": "Editor de texto moderno ",
+  "homepage": "https://github.com/britors/Prosa",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/britors/Prosa.git"
@@ -22,9 +22,9 @@
     "lint": "tsc --noEmit"
   },
   "build": {
-    "appId": "br.com.w3ti.prosa",
+    "appId": "br.com.Rodrigo Brito.prosa",
     "productName": "Prosa",
-    "copyright": "© 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA",
+    "copyright": "© 2026 Rodrigo Brito",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -40,10 +40,10 @@
       ],
       "category": "Office",
       "icon": "build/icons",
-      "maintainer": "W3TI SERVIÇOS DE INFORMÁTICA LTDA <contato@w3ti.com.br>",
-      "vendor": "W3TI SERVIÇOS DE INFORMÁTICA LTDA",
-      "synopsis": "Editor de texto moderno — suíte W3TI",
-      "description": "Prosa — processador de texto moderno, open source e em modo escuro, parte da suíte de escritório W3TI."
+      "maintainer": "Rodrigo Brito <rodrigo@w3ti.com.br>",
+      "vendor": "Rodrigo Brito",
+      "synopsis": "Editor de texto moderno — suíte Rodrigo Brito",
+      "description": "Prosa — processador de texto moderno, open source e em modo escuro, parte da suíte de escritório Rodrigo Brito."
     },
     "win": {
       "target": [

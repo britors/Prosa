@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
@@ -30,11 +30,11 @@ const APP_INFO: AppInfo = {
   name: 'Prosa',
   version: app.getVersion(),
   license: 'GPLv3',
-  company: 'W3TI SERVIÇOS DE INFORMÁTICA LTDA',
-  website: 'https://w3ti.com.br',
-  github: 'https://github.com/w3ti/prosa',
-  support: 'contato@w3ti.com.br',
-  copyright: '© 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA'
+  company: 'Rodrigo Brito',
+  website: 'https://github.com/britors/Prosa',
+  github: 'https://github.com/britors/prosa',
+  support: 'rodrigo@w3ti.com.br',
+  copyright: '© 2026 Rodrigo Brito'
 }
 
 let mainWindow: BrowserWindow | null = null

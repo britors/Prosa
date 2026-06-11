@@ -4,7 +4,7 @@
 
 ### Escreva. Formate. Publique.
 
-**Editor de texto moderno, open source e em modo escuro — parte da suíte de escritório W3TI.**
+**Editor de texto moderno, open source e em modo escuro — parte da suíte de escritório Rodrigo Brito.**
 
 [![Licença: GPL v3](https://img.shields.io/badge/Licen%C3%A7a-GPLv3-06B6D4.svg)](LICENSE)
 ![Electron](https://img.shields.io/badge/Electron-34-0891B2.svg)
@@ -49,7 +49,7 @@ importação e exportação de `.docx`, Markdown, texto puro e PDF.
 - 📤 **Exportação** — `.docx`, `.odt`, `.rtf`, Markdown, texto e PDF (printToPDF).
 - 💾 **Formato nativo `.prosa`** — JSON com o documento TipTap e metadados.
 - 🗂️ **Arquivos recentes** e tela de boas-vindas com arrastar-e-soltar.
-- 🌙 **Modo escuro** dedicado, com a identidade visual da W3TI.
+- 🌙 **Modo escuro** dedicado, com a identidade visual da Rodrigo Brito.
 
 ## 📁 Compatibilidade de formatos
 
@@ -168,7 +168,7 @@ Contribuições são bem-vindas! Para contribuir:
 3. Adicione o cabeçalho de licença em todo arquivo novo:
    ```ts
    // Prosa — Editor de Texto
-   // Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+   // Copyright (C) 2026 Rodrigo Brito
    // SPDX-License-Identifier: GPL-3.0-or-later
    ```
 4. Garanta que `npm run typecheck` e `npm test` passem.
@@ -188,10 +188,10 @@ DETERMINADO FIM. Consulte a [GNU General Public License](LICENSE) para mais deta
 
 ## 🏢 Sobre
 
-Desenvolvido pela **W3TI SERVIÇOS DE INFORMÁTICA LTDA**.
+Desenvolvido pela **Rodrigo Brito**.
 
-- 🌐 Site: [w3ti.com.br](https://w3ti.com.br)
-- 💻 GitHub: [github.com/w3ti/prosa](https://github.com/w3ti/prosa)
-- ✉️ Suporte: [contato@w3ti.com.br](mailto:contato@w3ti.com.br)
+- 🌐 Site: [https://github.com/britors/Prosa] [(https://github.com/britors/Prosa))
+- 💻 GitHub: [github.com/britors/prosa](https://github.com/britors/prosa)
+- ✉️ Suporte: [rodrigo@w3ti.com.br](mailto:rodrigo@w3ti.com.br)
 
-© 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+© 2026 Rodrigo Brito

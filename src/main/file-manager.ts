@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { BrowserWindow, dialog } from 'electron'

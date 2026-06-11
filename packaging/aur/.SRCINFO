@@ -1,5 +1,5 @@
 pkgbase = prosa
-	pkgdesc = Editor de texto moderno, open source e em modo escuro — suíte W3TI
+	pkgdesc = Editor de texto moderno, open source e em modo escuro — suíte Rodrigo Brito
 	pkgver = 0.1.1
 	pkgrel = 1
 	url = https://github.com/britors/Prosa

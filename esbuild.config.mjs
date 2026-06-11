@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import esbuild from 'esbuild'
@@ -9,7 +9,7 @@ import { join } from 'node:path'
 const watch = process.argv.includes('--watch')
 
 const banner = {
-  js: '/* Prosa — © 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA — GPL-3.0-or-later */'
+  js: '/* Prosa — © 2026 Rodrigo Brito — GPL-3.0-or-later */'
 }
 
 /** Build configuration for the Electron main process (Node target). */

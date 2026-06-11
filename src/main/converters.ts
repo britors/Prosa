@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import mammoth from 'mammoth'
@@ -341,7 +341,7 @@ export async function exportDocx(
   const footerParagraphs = bandToDocxParagraphs(options.footer)
 
   const document = new Document({
-    creator: 'Prosa — W3TI',
+    creator: 'Prosa — Rodrigo Brito',
     sections: [
       {
         headers: headerParagraphs

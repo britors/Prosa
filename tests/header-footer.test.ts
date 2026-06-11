@@ -1,5 +1,5 @@
 // Prosa — Editor de Texto
-// Copyright (C) 2026 W3TI SERVIÇOS DE INFORMÁTICA LTDA
+// Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { test } from 'node:test'
@@ -45,12 +45,12 @@ test('parseHeaderHtml quebra blocos em linhas e ignora HTML vazio', () => {
 
 test('.docx exportado contém o cabeçalho e o rodapé', async () => {
   const buffer = await exportDocx(doc, {
-    header: 'Cabeçalho W3TI',
+    header: 'Cabeçalho Rodrigo Brito',
     footer: 'Rodapé Prosa'
   })
   const xml = await allXml(buffer)
   assert.match(xml, /header\d*\.xml/)
-  assert.match(xml, /Cabeçalho W3TI/)
+  assert.match(xml, /Cabeçalho Rodrigo Brito/)
   assert.match(xml, /footer\d*\.xml/)
   assert.match(xml, /Rodapé Prosa/)
 })
@@ -63,14 +63,14 @@ test('.docx sem cabeçalho/rodapé não falha', async () => {
 
 test('.odt exportado embute cabeçalho/rodapé no styles.xml', async () => {
   const buffer = await exportOdt(doc, {
-    header: 'Cabeçalho W3TI',
+    header: 'Cabeçalho Rodrigo Brito',
     footer: 'Rodapé Prosa'
   })
   const zip = await JSZip.loadAsync(buffer)
   const styles = await zip.files['styles.xml'].async('string')
   assert.match(styles, /<style:master-page/)
   assert.match(styles, /<style:header>/)
-  assert.match(styles, /Cabeçalho W3TI/)
+  assert.match(styles, /Cabeçalho Rodrigo Brito/)
   assert.match(styles, /<style:footer>/)
   assert.match(styles, /Rodapé Prosa/)
 })
