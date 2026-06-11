@@ -33,8 +33,8 @@ export interface EditorCallbacks {
   onUpdate: (editor: Editor) => void
   onSelectionUpdate: (editor: Editor) => void
   onMatchesUpdate: (current: number, total: number) => void
-  onHeaderClick?: () => void
-  onFooterClick?: () => void
+  onHeaderClick?: (params: { event: MouseEvent }) => void
+  onFooterClick?: (params: { event: MouseEvent }) => void
 }
 
 /** Cria e configura a instância do editor TipTap do Prosa. */
@@ -84,8 +84,14 @@ export function createEditor(
         pageGap: 30,      // Espaço entre páginas
         headerLeft: '',
         footerRight: 'Página {page}',
-        onHeaderClick: () => callbacks.onHeaderClick?.(),
-        onFooterClick: () => callbacks.onFooterClick?.()
+        onHeaderClick: (params: any) => {
+          console.log('PaginationPlus: onHeaderClick triggered')
+          callbacks.onHeaderClick?.(params)
+        },
+        onFooterClick: (params: any) => {
+          console.log('PaginationPlus: onFooterClick triggered')
+          callbacks.onFooterClick?.(params)
+        }
       })
     ],
     editorProps: {

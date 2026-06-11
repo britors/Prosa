@@ -315,6 +315,17 @@ body {
   border-right: 1px solid var(--border);
   overflow-y: auto;
   padding: 12px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+  opacity: 1;
+}
+
+.side-panel[hidden] {
+  width: 0;
+  opacity: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  display: block !important; /* Sobrescreve o display: none do atributo hidden */
 }
 
 #styles-panel {
@@ -519,7 +530,7 @@ body {
 .prompt-title {
   font-weight: 600;
   font-size: 13px;
-  color: var(--text-dim);
+  color: #000000;
   margin-bottom: 4px;
 }
 
@@ -598,12 +609,12 @@ body {
 
 .prosa-document h1 {
   font-size: 2em;
-  color: var(--text-primary);
+  color: #000000;
   margin-bottom: 0.5em;
 }
 .prosa-document h2 {
   font-size: 1.5em;
-  color: var(--text-primary);
+  color: #000000;
   margin-bottom: 0.4em;
 }
 .prosa-document h3 {
@@ -1113,4 +1124,50 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.command-palette {
+  position: fixed;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 500px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  z-index: 2000;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+.palette-input {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.palette-results {
+  margin-top: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.palette-item {
+  padding: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+
+.palette-item:hover {
+  background-color: var(--accent);
+  color: white;
+}
+
+.palette-item.selected {
+  background-color: var(--accent);
+  color: white;
 }

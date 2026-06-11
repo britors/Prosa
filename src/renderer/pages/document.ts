@@ -114,6 +114,22 @@ export class DocumentView {
     els.styles.parentElement?.setAttribute('hidden', '')
 
     this.applySettings()
+    
+    // #8: Tipografia Adaptativa
+    new ResizeObserver((entries) => {
+      const width = entries[0].contentRect.width
+      this.els.editorHost.style.fontSize = width < 800 ? '14px' : '16px'
+    }).observe(this.els.editorHost)
+
+    // #9: Interface Modular (Drag and Drop para painéis)
+    const panels = [els.outline.parentElement, els.styles.parentElement]
+    panels.forEach(panel => {
+      if (panel) {
+        panel.draggable = true
+        panel.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', panel.id))
+      }
+    })
+
     this.refresh()
   }
 

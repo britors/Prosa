@@ -259,6 +259,11 @@ function buildMenu(): void {
         { role: 'copy', label: 'Copiar' },
         { role: 'paste', label: 'Colar' },
         { role: 'selectAll', label: 'Selecionar tudo' },
+        {
+          label: 'Paleta de Comandos',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => sendMenuAction('edit:commandPalette')
+        },
         { type: 'separator' },
         {
           label: 'Localizar',
