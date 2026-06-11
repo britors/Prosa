@@ -24,6 +24,9 @@ import { Superscript } from '@tiptap/extension-superscript'
 import { TaskList } from '@tiptap/extension-task-list'
 import { TaskItem } from '@tiptap/extension-task-item'
 import { PageBreak } from './extensions/page-break.js'
+import { Wikilink } from './extensions/wikilink.js'
+import { Tag } from './extensions/tag.js'
+import { Citation } from './extensions/citation.js'
 import { FontSize } from './extensions/font-size.js'
 import { FindReplace } from './extensions/find-replace.js'
 import { PaginationPlus } from 'tiptap-pagination-plus'
@@ -71,6 +74,9 @@ export function createEditor(
       TaskList,
       TaskItem.configure({ nested: true }),
       PageBreak,
+      Wikilink,
+      Tag,
+      Citation,
       FindReplace.configure({ onMatchesUpdate: callbacks.onMatchesUpdate }),
       PaginationPlus.configure({
         pageHeight: 1123, // A4
