@@ -112,8 +112,6 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     finishSplash()
-    // Abre as ferramentas de desenvolvedor automaticamente para depuração.
-    mainWindow?.webContents.openDevTools()
   })
 
   mainWindow.on('close', (event) => {
