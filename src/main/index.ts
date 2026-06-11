@@ -265,11 +265,19 @@ function buildMenu(): void {
           click: () => sendMenuAction('edit:commandPalette')
         },
         { type: 'separator' },
+        // ...
+        {
+          label: 'Alternar Workspace...',
+          accelerator: 'CmdOrCtrl+Shift+W',
+          click: () => sendMenuAction('workspace:switch')
+        },
+        { type: 'separator' },
         {
           label: 'Localizar',
           accelerator: 'CmdOrCtrl+F',
           click: () => sendMenuAction('edit:find')
         },
+        // ...
         {
           label: 'Substituir',
           accelerator: 'CmdOrCtrl+H',

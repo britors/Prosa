@@ -66,6 +66,7 @@ export interface ProsaSettings {
   showOutline: boolean
   recentFiles: RecentFile[]
   zoom: number
+  workspacePath?: string
 }
 
 /** Conteúdo carregado de um arquivo aberto. */

@@ -5,6 +5,7 @@
 import { DocumentView, type DocumentViewElements } from './pages/document.js'
 import { WelcomeScreen } from './pages/welcome.js'
 import { applyTheme } from './components/theme-engine.js'
+import { setAppTheme } from './components/theme-selector.js'
 import type { AppInfo, OpenedDocument } from '../shared/types.js'
 
 /** Localiza um elemento obrigatório no DOM. */
@@ -124,6 +125,9 @@ function registerMenuActions(
         break
       case 'edit:commandPalette':
         view.openCommandPalette()
+        break
+      case 'workspace:switch':
+        void view.switchWorkspace()
         break
       case 'format:bold':
         editor.chain().focus().toggleBold().run()

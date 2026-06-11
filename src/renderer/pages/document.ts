@@ -103,7 +103,8 @@ export class DocumentView {
     void createToolbar(els.toolbar, this.editor, {
       onFind: () => this.findReplace.show(false),
       onPrint: () => void window.prosa.print(),
-      onInsertImage: () => this.openImagePicker()
+      onInsertImage: () => this.openImagePicker(),
+      onInsertLink: () => this.promptLink()
     }).then((toolbar) => {
         this.updateToolbar = toolbar.updateActiveStates
         // Carrega as fontes instaladas no sistema e popula o seletor.
@@ -183,6 +184,14 @@ export class DocumentView {
     this.editor.commands.updateHeaderContent(this.headerHTML, '')
     this.editor.commands.updateFooterContent(this.footerHTML, 'Página {page}')
   }
+  /** Abre um prompt para inserir link. */
+  private promptLink(): void {
+    const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
+    this.customPrompt('URL do link:', '', event, (url) => {
+        if (url) this.editor.chain().focus().setLink({ href: url }).run()
+    })
+  }
+
   /** Abre um prompt para editar o cabeçalho. */
   private promptHeader(params: { event: MouseEvent }): void {
     console.log('promptHeader');
@@ -467,6 +476,15 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   /** Abre a Paleta de Comandos. */
   openCommandPalette(): void {
     this.commandPalette.show()
+  }
+
+  /** Alterna o workspace do projeto. */
+  async switchWorkspace(): Promise<void> {
+    const path = await window.prosa.selectDirectory()
+    if (path) {
+        window.prosa.setSettings({ workspacePath: path })
+        window.location.reload()
+    }
   }
 
   /** Define o nível de zoom da área de edição. */
