@@ -427,6 +427,13 @@ function registerIpc(): void {
   ipcMain.handle('settings:set', (_event, partial) => setSettings(partial))
   ipcMain.handle('app:info', () => APP_INFO)
   ipcMain.handle('fonts:list', () => listSystemFonts())
+  ipcMain.handle('file:selectDirectory', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
 
   ipcMain.on('document:dirty', (_event, dirty: boolean) => {
     documentDirty = dirty

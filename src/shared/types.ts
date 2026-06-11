@@ -138,6 +138,7 @@ export interface ProsaApi {
   notifyDirty: (dirty: boolean) => void
   getAppInfo: () => Promise<AppInfo>
   getSystemFonts: () => Promise<string[]>
+  selectDirectory: () => Promise<string | null>
 }
 
 /** Informações exibidas na tela "Sobre". */

@@ -42,7 +42,8 @@ const api: ProsaApi = {
     ipcRenderer.send('document:dirty', dirty)
   },
   getAppInfo: () => ipcRenderer.invoke('app:info') as Promise<AppInfo>,
-  getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>
+  getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
+  selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>
 }
 
 contextBridge.exposeInMainWorld('prosa', api)
