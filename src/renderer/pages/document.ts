@@ -10,6 +10,7 @@ import { createEditor, insertImageFile } from '../editor/editor.js'
 import StarterKit from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
 import { createToolbar } from '../editor/toolbar.js'
+import { CommandPalette } from './command-palette.js'
 import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
 import { FindReplacePanel } from '../components/find-replace.js'
@@ -56,6 +57,7 @@ export class DocumentView {
   private readonly outline: SidebarOutline
   private readonly styles: StylesPanel
   private readonly findReplace: FindReplacePanel
+  private readonly commandPalette: CommandPalette
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
   private updateToolbar: () => void = () => {}
@@ -85,6 +87,11 @@ export class DocumentView {
     })
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
+    this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
+        void window.prosa.openDocument(path).then(res => {
+            if (res.ok && res.document) this.load(res.document)
+        })
+    })
     
     // Agora createToolbar é assíncrono
     void createToolbar(els.toolbar, this.editor, {
@@ -392,6 +399,11 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   /** Abre o painel de Localizar (ou Localizar & Substituir). */
   openFind(withReplace: boolean): void {
     this.findReplace.show(withReplace)
+  }
+
+  /** Abre a Paleta de Comandos. */
+  openCommandPalette(): void {
+    this.commandPalette.show()
   }
 
   /** Define o nível de zoom da área de edição. */
