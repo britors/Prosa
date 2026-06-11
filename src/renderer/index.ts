@@ -24,8 +24,6 @@ async function bootstrap(): Promise<void> {
     toolbar: el('toolbar'),
     page: el('page-stack'),
     editorHost: el('editor'),
-    header: el('doc-header'),
-    footer: el('doc-footer'),
     outline: el('outline'),
     styles: el('styles'),
     statusBar: el('status-bar')

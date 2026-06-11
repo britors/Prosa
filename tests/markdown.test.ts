@@ -45,7 +45,7 @@ test('exporta TipTap JSON para Markdown com título', () => {
 test('exporta negrito e link em Markdown', () => {
   const md = exportMarkdown(doc)
   assert.match(md, /\*\*destaque\*\*/)
-  assert.match(md, /\[link\]\(https:\/\/Rodrigo Brito\.com\.br\)/)
+  assert.match(md, /\[link\]\(https:\/\/github\.com\/britors\/Prosa\)/)
 })
 
 test('exporta lista não ordenada em Markdown', () => {

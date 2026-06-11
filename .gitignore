@@ -23,3 +23,6 @@ Thumbs.db
 
 # Configurações locais do Claude Code (mantém apenas as compartilhadas)
 .claude/settings.local.json
+
+packaging/
+build/

@@ -33,6 +33,8 @@ export interface EditorCallbacks {
   onUpdate: (editor: Editor) => void
   onSelectionUpdate: (editor: Editor) => void
   onMatchesUpdate: (current: number, total: number) => void
+  onHeaderClick?: () => void
+  onFooterClick?: () => void
 }
 
 /** Cria e configura a instância do editor TipTap do Prosa. */
@@ -71,8 +73,19 @@ export function createEditor(
       PageBreak,
       FindReplace.configure({ onMatchesUpdate: callbacks.onMatchesUpdate }),
       PaginationPlus.configure({
-        pageHeight: 1123, // ~297mm em pixels (96dpi)
-        pageWidth: 793    // ~210mm em pixels (96dpi)
+        pageHeight: 1123, // A4
+        pageWidth: 794,   // A4
+        marginTop: 48,    // 1.27cm (Distância da borda ao cabeçalho)
+        marginBottom: 48, // 1.27cm (Distância da borda ao rodapé)
+        marginLeft: 96,   // 2.54cm
+        marginRight: 96,  // 2.54cm
+        contentMarginTop: 48,    // 1.27cm (Distância do cabeçalho ao texto)
+        contentMarginBottom: 48, // 1.27cm (Distância do texto ao rodapé)
+        pageGap: 30,      // Espaço entre páginas
+        headerLeft: '',
+        footerRight: 'Página {page}',
+        onHeaderClick: () => callbacks.onHeaderClick?.(),
+        onFooterClick: () => callbacks.onFooterClick?.()
       })
     ],
     editorProps: {

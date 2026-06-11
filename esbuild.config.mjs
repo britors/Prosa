@@ -57,7 +57,10 @@ function copyStatic() {
   cpSync('src/renderer/index.html', 'dist/renderer/index.html')
   cpSync('src/renderer/splash.html', 'dist/renderer/splash.html')
   cpSync('src/renderer/styles.css', 'dist/renderer/styles.css')
+  
+  // Copia recursiva de assets, incluindo ícones
   cpSync('src/renderer/assets', 'dist/renderer/assets', { recursive: true })
+  
   // Ícone usado pela janela em runtime.
   cpSync('build/icon.png', join('dist', 'icon.png'))
 }

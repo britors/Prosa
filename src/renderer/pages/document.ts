@@ -35,8 +35,6 @@ export interface DocumentViewElements {
   /** Pilha que envolve cabeçalho + editor + rodapé (recebe o zoom). */
   page: HTMLElement
   editorHost: HTMLElement
-  header: HTMLElement
-  footer: HTMLElement
   outline: HTMLElement
   styles: HTMLElement
   statusBar: HTMLElement
@@ -55,7 +53,7 @@ export class DocumentView {
   private readonly findReplace: FindReplacePanel
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
-  private readonly updateToolbar: () => void
+  private updateToolbar: () => void = () => {}
 
   private currentPath: string | null = null
   private currentFormat: FileFormat | null = null
@@ -64,6 +62,8 @@ export class DocumentView {
   private zoom: number
   private autoSaveTimer: number | null = null
   private settings: ProsaSettings
+  private headerHTML = ''
+  private footerHTML = ''
 
   constructor(els: DocumentViewElements, settings: ProsaSettings) {
     this.els = els
@@ -74,40 +74,112 @@ export class DocumentView {
       onUpdate: () => this.handleUpdate(),
       onSelectionUpdate: () => this.handleSelectionUpdate(),
       onMatchesUpdate: (current, total) =>
-        this.findReplace.updateCounter(current, total)
+        this.findReplace.updateCounter(current, total),
+      onHeaderClick: () => this.promptHeader(),
+      onFooterClick: () => this.promptFooter()
     })
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
-    const toolbar = createToolbar(els.toolbar, this.editor, {
+    
+    // Agora createToolbar é assíncrono
+    void createToolbar(els.toolbar, this.editor, {
       onFind: () => this.findReplace.show(false),
       onPrint: () => void window.prosa.print(),
       onInsertImage: () => this.openImagePicker()
+    }).then((toolbar) => {
+        this.updateToolbar = toolbar.updateActiveStates
+        // Carrega as fontes instaladas no sistema e popula o seletor.
+        void window.prosa.getSystemFonts().then((fonts) => toolbar.setFonts(fonts))
     })
-    this.updateToolbar = toolbar.updateActiveStates
-    // Carrega as fontes instaladas no sistema e popula o seletor.
-    void window.prosa.getSystemFonts().then((fonts) => toolbar.setFonts(fonts))
+
     this.outline = new SidebarOutline(els.outline, this.editor)
     this.styles = new StylesPanel(els.styles, this.editor)
     this.statusBar = new WordCountBar(els.statusBar, this.editor)
     this.formatDialog = new FormatDialog(els.root)
 
-    // Edições no cabeçalho/rodapé marcam o documento como não salvo.
-    for (const band of [els.header, els.footer]) {
-      band.addEventListener('input', () => {
-        this.setDirty(true)
-        this.scheduleAutoSave()
-      })
-    }
+    // Força o estado oculto padrão para os painéis laterais
+    els.outline.parentElement?.setAttribute('hidden', '')
+    els.styles.parentElement?.setAttribute('hidden', '')
 
     this.applySettings()
     this.refresh()
+  }
+
+  /** Atualiza o conteúdo repetido das bandas de paginação. */
+  private updatePaginationBands(): void {
+    // Sincroniza o conteúdo com o plugin de paginação para repetição em todas as páginas.
+    this.editor.commands.updateHeaderContent(this.headerHTML, '')
+    this.editor.commands.updateFooterContent(this.footerHTML, 'Página {page}')
+  }
+/** Abre um prompt para editar o cabeçalho. */
+private promptHeader(): void {
+  const current = this.headerHTML.replace(/<[^>]*>/g, '')
+  this.customPrompt('Editar cabeçalho:', current, (val) => {
+    this.headerHTML = val
+    this.updatePaginationBands()
+    this.setDirty(true)
+  })
+}
+
+/** Abre um prompt para editar o rodapé. */
+private promptFooter(): void {
+  const current = this.footerHTML.replace(/<[^>]*>/g, '')
+  this.customPrompt('Editar rodapé:', current, (val) => {
+    this.footerHTML = val
+    this.updatePaginationBands()
+    this.setDirty(true)
+  })
+}
+  /** 
+   * Implementação de um prompt customizado via DOM para contornar a restrição do Electron.
+   */
+  private customPrompt(title: string, defaultValue: string, callback: (val: string) => void): void {
+    const overlay = document.createElement('div')
+    overlay.className = 'prompt-overlay'
+    
+    overlay.innerHTML = `
+      <div class="prompt-card">
+        <div class="prompt-title">${title}</div>
+        <input type="text" class="prompt-input" value="${defaultValue.replace(/"/g, '&quot;')}" spellcheck="false">
+        <div class="prompt-actions">
+          <button class="btn btn-cancel">Cancelar</button>
+          <button class="btn btn-primary btn-save">OK</button>
+        </div>
+      </div>
+    `
+
+    const input = overlay.querySelector('input') as HTMLInputElement
+    const btnSave = overlay.querySelector('.btn-save') as HTMLButtonElement
+    const btnCancel = overlay.querySelector('.btn-cancel') as HTMLButtonElement
+
+    const close = () => overlay.remove()
+
+    btnSave.onclick = () => {
+      callback(input.value)
+      close()
+    }
+
+    btnCancel.onclick = close
+    
+    overlay.onclick = (e) => {
+      if (e.target === overlay) close()
+    }
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') btnSave.click()
+      if (e.key === 'Escape') close()
+    }
+
+    document.body.appendChild(overlay)
+    setTimeout(() => input.focus(), 10)
   }
 
   /** Aplica configurações iniciais (zoom, fonte, tema, visibilidade). */
   private applySettings(): void {
     applyDocumentTheme(this.els.editorHost, 'serif')
     this.setZoom(this.zoom)
-    this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)
+    // Força o estado oculto padrão, ignorando a configuração do usuário para o outline.
+    this.els.outline.parentElement?.setAttribute('hidden', '')
     this.els.statusBar.toggleAttribute('hidden', !this.settings.showWordCount)
   }
 
@@ -120,7 +192,7 @@ export class DocumentView {
 
   /** Trata mudanças de seleção: atualiza estados ativos. */
   private handleSelectionUpdate(): void {
-    this.updateToolbar()
+    if (this.updateToolbar) this.updateToolbar()
     this.styles.update()
     this.statusBar.update()
   }
@@ -129,7 +201,7 @@ export class DocumentView {
   private refresh(): void {
     this.outline.update()
     this.styles.update()
-    this.updateToolbar()
+    if (this.updateToolbar) this.updateToolbar()
     this.statusBar.update()
   }
 
@@ -155,12 +227,13 @@ export class DocumentView {
   /** Cria um documento em branco. */
   newDocument(): void {
     this.editor.commands.clearContent()
-    this.els.header.innerHTML = ''
-    this.els.footer.innerHTML = ''
+    this.headerHTML = ''
+    this.footerHTML = ''
     this.currentPath = null
     this.currentFormat = null
     this.documentName = 'Sem título'
     this.statusBar.setDocumentName(this.documentName)
+    this.updatePaginationBands()
     this.setDirty(false)
     this.refresh()
     this.editor.commands.focus()
@@ -169,12 +242,13 @@ export class DocumentView {
   /** Carrega um documento aberto no editor. */
   load(doc: OpenedDocument): void {
     this.editor.commands.setContent(doc.html, false)
-    this.els.header.innerHTML = doc.header ?? ''
-    this.els.footer.innerHTML = doc.footer ?? ''
+    this.headerHTML = doc.header ?? ''
+    this.footerHTML = doc.footer ?? ''
     this.currentPath = doc.path
     this.currentFormat = doc.format
     this.documentName = doc.name
     this.statusBar.setDocumentName(doc.name)
+    this.updatePaginationBands()
     this.setDirty(false)
     this.refresh()
   }
@@ -188,8 +262,8 @@ export class DocumentView {
       html: this.editor.getHTML(),
       json,
       text: documentText(json),
-      header: this.els.header.innerHTML,
-      footer: this.els.footer.innerHTML,
+      header: this.headerHTML,
+      footer: this.footerHTML,
       metadata: {
         title: this.documentName.replace(/\.[^.]+$/, ''),
         author: '',

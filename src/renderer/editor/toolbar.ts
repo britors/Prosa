@@ -4,6 +4,7 @@
 
 import type { Editor } from '@tiptap/core'
 import { setAppTheme } from '../components/theme-selector.js'
+import { getIcon } from '../utils/icons.js'
 
 /** Fontes padrão exibidas até as fontes do sistema serem carregadas. */
 const DEFAULT_FONTS = ['Inter', 'Georgia', 'Times New Roman', 'Arial', 'Courier New']
@@ -32,12 +33,12 @@ interface ToolButton {
   isActive?: (editor: Editor) => boolean
 }
 
-/** Cria um elemento de botão com ícone Tabler. */
-function createButton(def: ToolButton, editor: Editor): HTMLButtonElement {
+/** Cria um elemento de botão com ícone Lucide. */
+async function createButton(def: ToolButton, editor: Editor): Promise<HTMLButtonElement> {
   const button = document.createElement('button')
   button.className = 'toolbar-btn'
   button.title = def.title
-  button.innerHTML = `<i class="ti ti-${def.icon}"></i>`
+  button.innerHTML = await getIcon(def.icon)
   button.addEventListener('click', () => {
     def.command(editor)
     editor.view.focus()
@@ -57,18 +58,18 @@ function createSeparator(): HTMLSpanElement {
  * Monta a barra de ferramentas de formatação e devolve uma função para
  * atualizar os estados ativos conforme a seleção do editor.
  */
-export function createToolbar(
+export async function createToolbar(
   container: HTMLElement,
   editor: Editor,
   handlers: { onFind: () => void; onPrint: () => void; onInsertImage: () => void }
-): ToolbarController {
+): Promise<ToolbarController> {
   const buttons: { el: HTMLButtonElement; def: ToolButton }[] = []
   // Lista atual de fontes do seletor (substituída pelas fontes do sistema).
   let fontFamilies = [...DEFAULT_FONTS]
 
-  const addGroup = (defs: ToolButton[]): void => {
+  const addGroup = async (defs: ToolButton[]): Promise<void> => {
     for (const def of defs) {
-      const el = createButton(def, editor)
+      const el = await createButton(def, editor)
       container.appendChild(el)
       buttons.push({ el, def })
     }
@@ -76,14 +77,14 @@ export function createToolbar(
   }
 
   // Desfazer / Refazer
-  addGroup([
+  await addGroup([
     {
-      icon: 'arrow-back-up',
+      icon: 'undo',
       title: 'Desfazer (Ctrl+Z)',
       command: (e) => e.chain().focus().undo().run()
     },
     {
-      icon: 'arrow-forward-up',
+      icon: 'redo',
       title: 'Refazer (Ctrl+Y)',
       command: (e) => e.chain().focus().redo().run()
     }
@@ -135,7 +136,7 @@ export function createToolbar(
   container.appendChild(createSeparator())
 
   // Marcas inline
-  addGroup([
+  await addGroup([
     {
       icon: 'bold',
       title: 'Negrito (Ctrl+B)',
@@ -175,21 +176,21 @@ export function createToolbar(
   ])
 
   // Títulos e parágrafo
-  addGroup([
+  await addGroup([
     {
-      icon: 'h-1',
+      icon: 'heading-1',
       title: 'Título 1',
       command: (e) => e.chain().focus().toggleHeading({ level: 1 }).run(),
       isActive: (e) => e.isActive('heading', { level: 1 })
     },
     {
-      icon: 'h-2',
+      icon: 'heading-2',
       title: 'Título 2',
       command: (e) => e.chain().focus().toggleHeading({ level: 2 }).run(),
       isActive: (e) => e.isActive('heading', { level: 2 })
     },
     {
-      icon: 'h-3',
+      icon: 'heading-3',
       title: 'Título 3',
       command: (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
       isActive: (e) => e.isActive('heading', { level: 3 })
@@ -203,7 +204,7 @@ export function createToolbar(
   ])
 
   // Alinhamento
-  addGroup([
+  await addGroup([
     {
       icon: 'align-left',
       title: 'Alinhar à esquerda',
@@ -223,7 +224,7 @@ export function createToolbar(
       isActive: (e) => e.isActive({ textAlign: 'right' })
     },
     {
-      icon: 'align-justified',
+      icon: 'align-justify',
       title: 'Justificar',
       command: (e) => e.chain().focus().setTextAlign('justify').run(),
       isActive: (e) => e.isActive({ textAlign: 'justify' })
@@ -231,7 +232,7 @@ export function createToolbar(
   ])
 
   // Listas
-  addGroup([
+  await addGroup([
     {
       icon: 'list',
       title: 'Lista não ordenada',
@@ -239,13 +240,13 @@ export function createToolbar(
       isActive: (e) => e.isActive('bulletList')
     },
     {
-      icon: 'list-numbers',
+      icon: 'list-ordered',
       title: 'Lista ordenada',
       command: (e) => e.chain().focus().toggleOrderedList().run(),
       isActive: (e) => e.isActive('orderedList')
     },
     {
-      icon: 'checkbox',
+      icon: 'list-todo',
       title: 'Lista de tarefas',
       command: (e) => e.chain().focus().toggleTaskList().run(),
       isActive: (e) => e.isActive('taskList')
@@ -253,7 +254,7 @@ export function createToolbar(
   ])
 
   // Inserções
-  addGroup([
+  await addGroup([
     {
       icon: 'link',
       title: 'Inserir link',
@@ -264,7 +265,7 @@ export function createToolbar(
       isActive: (e) => e.isActive('link')
     },
     {
-      icon: 'photo',
+      icon: 'image',
       title: 'Inserir imagem (arquivo)',
       command: () => handlers.onInsertImage()
     },
@@ -275,7 +276,7 @@ export function createToolbar(
         e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
     },
     {
-      icon: 'page-break',
+      icon: 'scissors',
       title: 'Quebra de página',
       command: (e) => e.chain().focus().setPageBreak().run()
     }
@@ -292,9 +293,9 @@ export function createToolbar(
   })
   container.appendChild(colorInput)
 
-  const highlightBtn = createButton(
+  const highlightBtn = await createButton(
     {
-      icon: 'highlight',
+      icon: 'highlighter',
       title: 'Realçar',
       command: (e) => e.chain().focus().toggleHighlight().run(),
       isActive: (e) => e.isActive('highlight')
@@ -305,7 +306,7 @@ export function createToolbar(
   buttons.push({
     el: highlightBtn,
     def: {
-      icon: 'highlight',
+      icon: 'highlighter',
       title: 'Realçar',
       command: (e) => e.chain().focus().toggleHighlight().run(),
       isActive: (e) => e.isActive('highlight')
@@ -317,7 +318,7 @@ export function createToolbar(
   const findBtn = document.createElement('button')
   findBtn.className = 'toolbar-btn'
   findBtn.title = 'Localizar (Ctrl+F)'
-  findBtn.innerHTML = '<i class="ti ti-search"></i>'
+  findBtn.innerHTML = await getIcon('search')
   findBtn.addEventListener('click', handlers.onFind)
   container.appendChild(findBtn)
 
@@ -325,7 +326,7 @@ export function createToolbar(
   const printBtn = document.createElement('button')
   printBtn.className = 'toolbar-btn'
   printBtn.title = 'Imprimir (Ctrl+P)'
-  printBtn.innerHTML = '<i class="ti ti-printer"></i>'
+  printBtn.innerHTML = await getIcon('printer')
   printBtn.addEventListener('click', handlers.onPrint)
   container.appendChild(printBtn)
 
@@ -334,11 +335,12 @@ export function createToolbar(
   themeBtn.className = 'toolbar-btn'
   themeBtn.title = 'Alternar tema (Claro/Escuro)'
   let isDark = document.documentElement.getAttribute('data-theme') !== 'light'
-  themeBtn.innerHTML = `<i class="ti ti-${isDark ? 'sun' : 'moon'}"></i>`
+  themeBtn.innerHTML = await getIcon(isDark ? 'sun' : 'moon')
   themeBtn.addEventListener('click', () => {
     isDark = !isDark
     setAppTheme(isDark)
-    themeBtn.innerHTML = `<i class="ti ti-${isDark ? 'sun' : 'moon'}"></i>`
+    // Atualiza ícone dinamicamente
+    void getIcon(isDark ? 'sun' : 'moon').then(icon => themeBtn.innerHTML = icon)
   })
   container.appendChild(themeBtn)
 
