@@ -38,6 +38,8 @@ const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'md
 export interface DocumentViewElements {
   root: HTMLElement
   toolbar: HTMLElement
+  hRuler: HTMLElement
+  vRuler: HTMLElement
   /** Pilha que envolve cabeçalho + editor + rodapé (recebe o zoom). */
   page: HTMLElement
   editorHost: HTMLElement
@@ -71,6 +73,7 @@ export class DocumentView {
   private settings: ProsaSettings
   private headerHTML = ''
   private footerHTML = ''
+  private typewriterMode = false
 
   constructor(els: DocumentViewElements, settings: ProsaSettings) {
     this.els = els
@@ -79,7 +82,10 @@ export class DocumentView {
 
     this.editor = createEditor(els.editorHost, {
       onUpdate: () => this.handleUpdate(),
-      onSelectionUpdate: () => this.handleSelectionUpdate(),
+      onSelectionUpdate: () => {
+        this.handleSelectionUpdate()
+        if (this.typewriterMode) this.centerCursor()
+      },
       onMatchesUpdate: (current, total) =>
         this.findReplace.updateCounter(current, total),
       onHeaderClick: (params) => this.promptHeader(params),
@@ -91,7 +97,7 @@ export class DocumentView {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    })
+    }, () => this.toggleTypewriterMode())
     
     // Agora createToolbar é assíncrono
     void createToolbar(els.toolbar, this.editor, {
@@ -132,6 +138,29 @@ export class DocumentView {
 
     this.refresh()
   }
+
+  /** Centraliza o cursor verticalmente no editor (Typewriter Mode). */
+  private centerCursor(): void {
+    const { view } = this.editor
+    const { state } = view
+    const { selection } = state
+    const coords = view.coordsAtPos(selection.anchor)
+    
+    const container = this.els.editorHost
+    const containerRect = container.getBoundingClientRect()
+    const scrollTop = container.scrollTop
+    
+    const cursorYRelativeToContainer = coords.top - containerRect.top + scrollTop
+    const targetScrollTop = cursorYRelativeToContainer - containerRect.height / 2
+    
+    container.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
+  }
+
+  /** Alterna o modo máquina de escrever. */
+  toggleTypewriterMode(): void {
+    this.typewriterMode = !this.typewriterMode
+  }
+
 
   /** Atualiza o conteúdo repetido das bandas de paginação. */
   private updatePaginationBands(): void {
