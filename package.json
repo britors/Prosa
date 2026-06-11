@@ -65,13 +65,15 @@
         "dmg"
       ],
       "category": "public.app-category.productivity"
-    },
+    }
+    /*
     "publish": {
       "provider": "github",
       "owner": "britors",
       "repo": "Prosa",
       "releaseType": "release"
     }
+    */
   },
   "dependencies": {
     "@tiptap/core": "^2.11.5",
