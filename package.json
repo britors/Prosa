@@ -56,8 +56,8 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
+      "installerIcon": "build/icon.png",
+      "uninstallerIcon": "build/icon.png",
       "shortcutName": "Prosa"
     },
     "mac": {
