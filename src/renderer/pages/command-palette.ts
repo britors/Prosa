@@ -10,12 +10,14 @@ export class CommandPalette {
   private element: HTMLElement | null = null
   private onOpenFile: (path: string) => void
   private onToggleTypewriter?: () => void
+  private onDailyNote?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
     this.onToggleTypewriter = onToggleTypewriter
+    this.onDailyNote = onDailyNote
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -37,6 +39,7 @@ export class CommandPalette {
         { label: 'Título 2', action: () => this.editor.commands.toggleHeading({ level: 2 }) },
         { label: 'Lista', action: () => this.editor.commands.toggleBulletList() },
         { label: 'Modo Máquina de Escrever', action: () => this.onToggleTypewriter?.() },
+        { label: 'Nova Nota Diária', action: () => this.onDailyNote?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
 

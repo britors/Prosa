@@ -97,7 +97,7 @@ export class DocumentView {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode())
+    }, () => this.toggleTypewriterMode(), () => this.dailyNote())
     
     // Agora createToolbar é assíncrono
     void createToolbar(els.toolbar, this.editor, {
@@ -159,6 +159,21 @@ export class DocumentView {
   /** Alterna o modo máquina de escrever. */
   toggleTypewriterMode(): void {
     this.typewriterMode = !this.typewriterMode
+  }
+
+  /** Cria ou abre o documento diário. */
+  dailyNote(): void {
+    const date = new Date().toISOString().split('T')[0]
+    const name = `Daily-Notes-${date}.prosa`
+    // No renderer, não temos acesso direto ao FS, precisamos delegar ao main
+    void window.prosa.openDocument(name).then(res => {
+        if (res.ok && res.document) this.load(res.document)
+        else {
+            this.newDocument()
+            this.documentName = name
+            this.statusBar.setDocumentName(name)
+        }
+    })
   }
 
 
