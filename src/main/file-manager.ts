@@ -283,19 +283,31 @@ export async function saveDocument(
       target = format ? ensureExtension(result.filePath, format) : result.filePath
     }
     await writeDocument(target, payload, format)
+    await createSnapshot(payload)
     addRecentFile({
       path: target,
       name: basename(target),
       modifiedAt: new Date().toISOString()
     })
-    return { ok: true, path: target }
-  } catch (error) {
+    return { ok: true, path: result.filePath }
+    } catch (error) {
     return { ok: false, error: (error as Error).message }
-  }
-}
+    }
+    }
 
-/** Exporta a janela atual para PDF via printToPDF. */
-export async function exportPdf(
+    /** Cria um snapshot de versão local. */
+    export async function createSnapshot(payload: SavePayload): Promise<void> {
+    if (!payload.path) return
+    const snapshotDir = join(require('node:path').dirname(payload.path), 'snapshots')
+    const { mkdir, writeFile } = require('node:fs/promises')
+    await mkdir(snapshotDir, { recursive: true })
+    const timestamp = new Date().toISOString().replace(/:/g, '-')
+    const snapshotPath = join(snapshotDir, `${basename(payload.path)}.${timestamp}.snapshot`)
+    await writeFile(snapshotPath, JSON.stringify(payload), 'utf-8')
+    }
+
+    /** Exporta a janela atual para PDF via printToPDF. */
+    export async function exportPdf(
   window: BrowserWindow,
   defaultName: string
 ): Promise<FileResult> {
