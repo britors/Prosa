@@ -1,7 +1,7 @@
 {
   "name": "prosa",
   "productName": "Prosa",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Rodrigo Brito <rodrigo@w3ti.com.br>",
   "license": "GPL-3.0-or-later",
   "description": "Editor de texto moderno ",
@@ -101,6 +101,7 @@
     "electron-updater": "^6.3.9",
     "font-list": "^1.6.0",
     "jszip": "^3.10.1",
+    "lucide-static": "^1.17.0",
     "mammoth": "^1.9.0",
     "marked": "^15.0.7",
     "tiptap-pagination-plus": "^3.1.0"
