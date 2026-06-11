@@ -23,16 +23,18 @@ export class WordCountBar {
   private documentName = 'Sem título'
   private dirty = false
   private zoom = 100
+  private startTime = Date.now()
+  private initialWords = 0
 
   constructor(container: HTMLElement, editor: Editor) {
     this.editor = editor
     this.el = container
+    this.initialWords = this.getWordCount()
   }
 
-  /** Define o nome do documento exibido na barra. */
-  setDocumentName(name: string): void {
-    this.documentName = name
-    this.update()
+  private getWordCount(): number {
+    const json = this.editor.getJSON() as TipTapJSON
+    return computeStats(documentText(json)).words
   }
 
   /** Atualiza o indicador de alterações não salvas. */
@@ -54,15 +56,18 @@ export class WordCountBar {
     const stats = computeStats(text)
     const totalPages = Math.max(1, Math.ceil(stats.characters / CHARS_PER_PAGE))
     const { line, col } = this.cursorPosition()
+    
+    // Estatísticas de Foco
+    const elapsedMinutes = (Date.now() - this.startTime) / 60000
+    const wpm = elapsedMinutes > 0 ? Math.round((stats.words - this.initialWords) / elapsedMinutes) : 0
 
     const dirtyMark = this.dirty ? '<span class="status-dirty">•</span>' : ''
     this.el.innerHTML = `
       <span class="status-name">${dirtyMark}${this.documentName}</span>
       <span class="status-spacer"></span>
       <span title="Palavras">${nf.format(stats.words)} palavras</span>
-      <span title="Caracteres">${nf.format(stats.characters)} caracteres</span>
-      <span title="Sem espaços">${nf.format(stats.charactersNoSpaces)} sem espaços</span>
-      <span title="Tempo de leitura">~${nf.format(stats.readingTimeMinutes)} min</span>
+      <span title="Ritmo">${wpm} WPM</span>
+      <span title="Tempo de foco">${Math.round(elapsedMinutes)} min</span>
       <span title="Páginas">${totalPages} pág.</span>
       <span title="Posição">Ln ${line}, Col ${col}</span>
       <span title="Zoom">${this.zoom}%</span>
