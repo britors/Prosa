@@ -2,8 +2,13 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { Editor } from '@tiptap/core'
+import { Color } from '@tiptap/extension-color'
+import { FontFamily } from '@tiptap/extension-font-family'
+import { FontSize } from '../editor/extensions/font-size.js'
+import { Editor, type Editor as EditorType } from '@tiptap/core'
 import { createEditor, insertImageFile } from '../editor/editor.js'
+import StarterKit from '@tiptap/starter-kit'
+import { Image } from '@tiptap/extension-image'
 import { createToolbar } from '../editor/toolbar.js'
 import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
@@ -46,7 +51,7 @@ export interface DocumentViewElements {
  * "sujo" (não salvo) e do ciclo de salvar/abrir.
  */
 export class DocumentView {
-  readonly editor: Editor
+  readonly editor: EditorType
   private readonly els: DocumentViewElements
   private readonly outline: SidebarOutline
   private readonly styles: StylesPanel
@@ -75,8 +80,8 @@ export class DocumentView {
       onSelectionUpdate: () => this.handleSelectionUpdate(),
       onMatchesUpdate: (current, total) =>
         this.findReplace.updateCounter(current, total),
-      onHeaderClick: () => this.promptHeader(),
-      onFooterClick: () => this.promptFooter()
+      onHeaderClick: (params) => this.promptHeader(params),
+      onFooterClick: (params) => this.promptFooter(params)
     })
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
@@ -111,68 +116,114 @@ export class DocumentView {
     this.editor.commands.updateHeaderContent(this.headerHTML, '')
     this.editor.commands.updateFooterContent(this.footerHTML, 'Página {page}')
   }
-/** Abre um prompt para editar o cabeçalho. */
-private promptHeader(): void {
-  const current = this.headerHTML.replace(/<[^>]*>/g, '')
-  this.customPrompt('Editar cabeçalho:', current, (val) => {
-    this.headerHTML = val
-    this.updatePaginationBands()
-    this.setDirty(true)
-  })
-}
+  /** Abre um prompt para editar o cabeçalho. */
+  private promptHeader(params: { event: MouseEvent }): void {
+    console.log('promptHeader');
+    this.customPrompt('Editar cabeçalho:', this.headerHTML, params.event, (val) => {
+      this.headerHTML = val
+      this.updatePaginationBands()
+      this.setDirty(true)
+    }, true)
+  }
 
-/** Abre um prompt para editar o rodapé. */
-private promptFooter(): void {
-  const current = this.footerHTML.replace(/<[^>]*>/g, '')
-  this.customPrompt('Editar rodapé:', current, (val) => {
-    this.footerHTML = val
-    this.updatePaginationBands()
-    this.setDirty(true)
-  })
-}
-  /** 
-   * Implementação de um prompt customizado via DOM para contornar a restrição do Electron.
-   */
-  private customPrompt(title: string, defaultValue: string, callback: (val: string) => void): void {
-    const overlay = document.createElement('div')
-    overlay.className = 'prompt-overlay'
-    
-    overlay.innerHTML = `
-      <div class="prompt-card">
-        <div class="prompt-title">${title}</div>
-        <input type="text" class="prompt-input" value="${defaultValue.replace(/"/g, '&quot;')}" spellcheck="false">
-        <div class="prompt-actions">
-          <button class="btn btn-cancel">Cancelar</button>
-          <button class="btn btn-primary btn-save">OK</button>
-        </div>
+  /** Abre um prompt para editar o rodapé. */
+  private promptFooter(params: { event: MouseEvent }): void {
+    console.log('promptFooter');
+    this.customPrompt('Editar rodapé:', this.footerHTML, params.event, (val) => {
+      this.footerHTML = val
+      this.updatePaginationBands()
+      this.setDirty(true)
+    }, true)
+  }
+
+/** 
+ * Implementação de um prompt customizado inline.
+ */
+private customPrompt(title: string, defaultValue: string, event: MouseEvent, callback: (val: string) => void, richText: boolean = false): void {
+  console.log('DEBUG: customPrompt called with richText:', richText)
+  const editorDom = this.editor.view.dom
+  editorDom.classList.add('is-editing')
+
+  const menu = document.createElement('div')
+  menu.className = 'floating-editor'
+
+  // Posiciona perto do clique
+  menu.style.top = `${event.clientY + 10}px`
+  menu.style.left = `${event.clientX}px`
+
+    menu.innerHTML = `
+      <div class="prompt-title">${title}</div>
+      <div class="mini-toolbar">
+        <button class="btn-tool" id="bold" title="Negrito"><b>B</b></button>
+        <button class="btn-tool" id="italic" title="Itálico"><i>I</i></button>
+        <input type="color" id="color" title="Cor">
+        <input type="number" id="size" title="Tamanho (px)" min="8" max="72" value="12">
+        <button class="btn-tool" id="image" title="Imagem">🖼️</button>
+      </div>
+      <div class="mini-editor-container"></div>
+      <div class="prompt-actions">
+        <button class="btn btn-cancel">Cancelar</button>
+        <button class="btn btn-primary btn-save">OK</button>
       </div>
     `
 
-    const input = overlay.querySelector('input') as HTMLInputElement
-    const btnSave = overlay.querySelector('.btn-save') as HTMLButtonElement
-    const btnCancel = overlay.querySelector('.btn-cancel') as HTMLButtonElement
+    const container = menu.querySelector('.mini-editor-container') as HTMLElement
+    const btnSave = menu.querySelector('.btn-save') as HTMLButtonElement
+    const btnCancel = menu.querySelector('.btn-cancel') as HTMLButtonElement
 
-    const close = () => overlay.remove()
+    let miniEditor: Editor | null = null
+
+    if (richText) {
+        miniEditor = new Editor({
+            element: container,
+            extensions: [StarterKit, Image, Color, FontFamily, FontSize],
+            content: defaultValue
+        })
+
+        menu.querySelector('#bold')?.addEventListener('click', () => miniEditor?.chain().focus().toggleBold().run())
+        menu.querySelector('#italic')?.addEventListener('click', () => miniEditor?.chain().focus().toggleItalic().run())
+        menu.querySelector('#color')?.addEventListener('input', (e) => miniEditor?.chain().focus().setColor((e.target as HTMLInputElement).value).run())
+        menu.querySelector('#size')?.addEventListener('input', (e) => miniEditor?.chain().focus().setFontSize((e.target as HTMLInputElement).value + 'px').run())
+        menu.querySelector('#image')?.addEventListener('click', () => {
+             const input = document.createElement('input')
+             input.type = 'file'
+             input.accept = 'image/*'
+             input.onchange = () => {
+                 if (input.files?.[0]) {
+                     const reader = new FileReader()
+                     reader.onload = (e) => miniEditor?.chain().focus().setImage({ src: e.target?.result as string }).run()
+                     reader.readAsDataURL(input.files[0])
+                 }
+             }
+             input.click()
+        })
+    } else {
+        container.innerHTML = `<input type="text" class="floating-input" value="${defaultValue.replace(/"/g, '&quot;')}" spellcheck="false">`
+    }
+
+    const close = () => {
+        miniEditor?.destroy()
+        menu.remove()
+        editorDom.classList.remove('is-editing')
+    }
 
     btnSave.onclick = () => {
-      callback(input.value)
-      close()
+        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('input') as HTMLInputElement).value
+        callback(val)
+        close()
     }
-
     btnCancel.onclick = close
-    
-    overlay.onclick = (e) => {
-      if (e.target === overlay) close()
-    }
 
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') btnSave.click()
-      if (e.key === 'Escape') close()
-    }
-
-    document.body.appendChild(overlay)
-    setTimeout(() => input.focus(), 10)
+  menu.onclick = (e) => {
+    if (e.target === menu) close()
   }
+
+  document.body.appendChild(menu)
+  setTimeout(() => {
+      if (richText) miniEditor?.commands.focus()
+      else (menu.querySelector('input') as HTMLInputElement)?.focus()
+  }, 10)
+}
 
   /** Aplica configurações iniciais (zoom, fonte, tema, visibilidade). */
   private applySettings(): void {

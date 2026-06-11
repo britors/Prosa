@@ -472,21 +472,98 @@ body {
   color: var(--text-dim);
 }
 
+/* ------------------------------------------------------------------ */
+/* Modo de Foco e Estilização de Profundidade                        */
+/* ------------------------------------------------------------------ */
 .prosa-document {
   max-width: 210mm;
   width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
-  padding: 0; /* O plugin de paginação cuida dos paddings internos */
-  background: #ffffff; /* Fundo sempre branco */
+  padding: 0;
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-family: var(--document-font);
   font-size: 12pt;
   line-height: 1.6;
-  color: #000000; /* Texto sempre preto por padrão */
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.4);
+  color: #000000;
+  /* Dica #32: Sombra de Profundidade */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
   outline: none;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+/* Dica #30: Modo de Foco */
+.prosa-document.is-editing {
+  opacity: 0.4;
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* Dica #31: Estilo do Menu Flutuante */
+/* Edição Inline: Removemos bordas e fundo para parecer que é o próprio cabeçalho */
+.floating-editor {
+  position: absolute;
+  z-index: 1001;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-component);
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mini-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mini-editor-container {
+  min-width: 300px;
+  min-height: 100px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.btn-tool {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.btn-tool:hover {
+  background: var(--accent);
+}
+
+.mini-editor-container .ProseMirror {
+    outline: none;
+    color: var(--text-primary);
+    min-height: 100px;
 }
 
 .prosa-document p {

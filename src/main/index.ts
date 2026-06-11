@@ -112,6 +112,8 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     finishSplash()
+    // Abre as ferramentas de desenvolvedor automaticamente para depuração.
+    mainWindow?.webContents.openDevTools()
   })
 
   mainWindow.on('close', (event) => {
@@ -419,6 +421,10 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(() => {
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception in Main Process:', err)
+  })
+  
   registerIpc()
   createSplash()
   createWindow()
