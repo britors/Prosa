@@ -32,6 +32,12 @@ export class WordCountBar {
     this.initialWords = this.getWordCount()
   }
 
+  /** Define o nome do documento exibido na barra. */
+  setDocumentName(name: string): void {
+    this.documentName = name
+    this.update()
+  }
+
   private getWordCount(): number {
     const json = this.editor.getJSON() as TipTapJSON
     return computeStats(documentText(json)).words

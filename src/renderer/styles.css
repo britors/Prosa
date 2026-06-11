@@ -509,7 +509,6 @@ body {
 .prosa-document.is-editing {
   opacity: 0.4;
   filter: blur(2px);
-  pointer-events: none;
 }
 
 /* Dica #31: Estilo do Menu Flutuante */
@@ -1170,4 +1169,27 @@ body {
 .palette-item.selected {
   background-color: var(--accent);
   color: white;
+}
+
+
+.wikilink {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tag {
+  background: var(--surface);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  font-size: 0.9em;
+  border: 1px solid var(--border);
+}
+
+.citation {
+  color: var(--accent-dark);
+  font-style: italic;
+  cursor: pointer;
 }

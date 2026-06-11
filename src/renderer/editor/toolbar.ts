@@ -61,7 +61,12 @@ function createSeparator(): HTMLSpanElement {
 export async function createToolbar(
   container: HTMLElement,
   editor: Editor,
-  handlers: { onFind: () => void; onPrint: () => void; onInsertImage: () => void }
+  handlers: {
+    onFind: () => void
+    onPrint: () => void
+    onInsertImage: () => void
+    onInsertLink: () => void
+  }
 ): Promise<ToolbarController> {
   const buttons: { el: HTMLButtonElement; def: ToolButton }[] = []
   // Lista atual de fontes do seletor (substituída pelas fontes do sistema).
@@ -258,10 +263,7 @@ export async function createToolbar(
     {
       icon: 'link',
       title: 'Inserir link',
-      command: (e) => {
-        const url = window.prompt('URL do link:')
-        if (url) e.chain().focus().setLink({ href: url }).run()
-      },
+      command: () => handlers.onInsertLink(),
       isActive: (e) => e.isActive('link')
     },
     {
