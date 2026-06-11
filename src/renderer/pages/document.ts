@@ -97,7 +97,7 @@ export class DocumentView {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.toggleReadMode())
+    }, () => this.toggleTypewriterMode(), () => this.dailyNote())
     
     // Agora createToolbar é assíncrono
     void createToolbar(els.toolbar, this.editor, {
@@ -176,13 +176,6 @@ export class DocumentView {
     })
   }
 
-
-  /** Alterna o modo de leitura. */
-  toggleReadMode(): void {
-    const isRead = !this.editor.isEditable
-    this.editor.setEditable(isRead)
-    this.els.toolbar.parentElement?.toggleAttribute('hidden', !isRead)
-  }
 
   /** Atualiza o conteúdo repetido das bandas de paginação. */
   private updatePaginationBands(): void {
@@ -276,9 +269,12 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     }
 
     const close = () => {
-        miniEditor?.destroy()
-        menu.remove()
-        editorDom.classList.remove('is-editing')
+        try {
+            miniEditor?.destroy()
+            menu.remove()
+        } finally {
+            editorDom.classList.remove('is-editing')
+        }
     }
 
     btnSave.onclick = () => {
