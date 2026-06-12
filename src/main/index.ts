@@ -23,6 +23,10 @@ import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
 import type { AppInfo, SavePayload } from '../shared/types.js'
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
+}
+
 const isMac = process.platform === 'darwin'
 
 /** Informações da aplicação exibidas na tela "Sobre". */

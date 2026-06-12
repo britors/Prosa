@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Compila os instaladores (deb, rpm, exe) e publica um Release no GitHub
-# quando uma tag "v*" é enviada. Opcionalmente publica o pacote na AUR.
+# quando uma tag "v*" é enviada.
 
 name: Release
 
@@ -18,10 +18,10 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Linux: gera .deb e .rpm e publica no Release.
+  # Linux: gera .deb, .rpm e .pacman
   # ---------------------------------------------------------------------------
   linux:
-    name: Build Linux (deb, rpm)
+    name: Build Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,23 +31,34 @@ jobs:
           node-version: 20
           cache: npm
 
-      # rpmbuild é necessário para o alvo rpm do electron-builder.
       - name: Instalar ferramentas de empacotamento
         run: sudo apt-get update && sudo apt-get install -y rpm
 
       - run: npm ci
       - run: npm run build
 
-      - name: Empacotar e publicar (deb, rpm)
-        run: npx --no-install electron-builder --linux deb rpm --publish always
+      - name: Empacotar (Linux)
+        run: npx --no-install electron-builder --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            release/*.deb
+            release/*.rpm
+            release/*.pacman
+            release/*.AppImage
+            release/*.yml
+            release/*.blockmap
+
   # ---------------------------------------------------------------------------
-  # Windows: gera o instalador NSIS (.exe) e publica no Release.
+  # Windows: gera o instalador NSIS (.exe)
   # ---------------------------------------------------------------------------
   windows:
-    name: Build Windows (exe)
+    name: Build Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +71,52 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Empacotar e publicar (exe)
-        run: npx --no-install electron-builder --win nsis --publish always
+      - name: Empacotar (Windows)
+        run: npx --no-install electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
+
+  # ---------------------------------------------------------------------------
+  # Publicar Release: Consolida tudo e publica.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish Release
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: Display structure of downloaded files
+        run: ls -R all-artifacts
+
+      - name: Create and Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            all-artifacts/*.deb
+            all-artifacts/*.rpm
+            all-artifacts/*.pacman
+            all-artifacts/*.AppImage
+            all-artifacts/*.exe
+            all-artifacts/*.yml
+            all-artifacts/*.blockmap
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
