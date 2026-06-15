@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { BrowserWindow, dialog } from 'electron'
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename, extname } from 'node:path'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { basename, extname, join, dirname } from 'node:path'
 import {
   exportDocx,
   exportMarkdown,
@@ -298,17 +298,15 @@ export async function saveDocument(
 /** Cria um snapshot de versão local. */
 export async function createSnapshot(payload: SavePayload): Promise<void> {
   if (!payload.path) return
-  const path = require('node:path')
-  const snapshotDir = path.join(path.dirname(payload.path), 'snapshots')
-  const { mkdir, writeFile } = require('node:fs/promises')
+  const snapshotDir = join(dirname(payload.path), 'snapshots')
   await mkdir(snapshotDir, { recursive: true })
   const timestamp = new Date().toISOString().replace(/:/g, '-')
-  const snapshotPath = path.join(snapshotDir, `${path.basename(payload.path)}.${timestamp}.snapshot`)
+  const snapshotPath = join(snapshotDir, `${basename(payload.path)}.${timestamp}.snapshot`)
   await writeFile(snapshotPath, JSON.stringify(payload), 'utf-8')
 }
 
-    /** Exporta a janela atual para PDF via printToPDF. */
-    export async function exportPdf(
+/** Exporta a janela atual para PDF via printToPDF. */
+export async function exportPdf(
   window: BrowserWindow,
   defaultName: string
 ): Promise<FileResult> {
