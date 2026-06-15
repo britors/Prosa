@@ -139,6 +139,22 @@ export interface ProsaApi {
   getAppInfo: () => Promise<AppInfo>
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
+  getPlugins: () => Promise<any[]>
+  getTemplates: () => Promise<any[]>
+  // Updater
+  checkForUpdates: () => Promise<void>
+  downloadUpdate: () => Promise<void>
+  installUpdate: () => void
+  onUpdateStatus: (handler: (status: UpdateStatus) => void) => void
+}
+
+/** Status do auto-updater enviado ao renderer. */
+export interface UpdateStatus {
+  state: 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
+  version?: string
+  percent?: number
+  message?: string
+  releaseNotes?: string | null
 }
 
 /** Informações exibidas na tela "Sobre". */

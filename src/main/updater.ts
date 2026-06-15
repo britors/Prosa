@@ -3,26 +3,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { autoUpdater } from 'electron-updater'
-import type { BrowserWindow } from 'electron'
+import { ipcMain, app, type BrowserWindow } from 'electron'
 
 /**
- * Inicializa o auto-updater (electron-updater). Em desenvolvimento a
- * verificação é ignorada para evitar erros sem um servidor de updates.
+ * Inicializa o auto-updater (electron-updater).
  */
 export function initUpdater(window: BrowserWindow): void {
-  if (!process.env.PROSA_ENABLE_UPDATER) {
-    return
-  }
-
-  autoUpdater.autoDownload = true
+  // Configurações básicas
+  autoUpdater.autoDownload = false // Vamos baixar manualmente via botão
   autoUpdater.autoInstallOnAppQuit = true
 
-  autoUpdater.on('update-available', () => {
-    window.webContents.send('updater:status', { state: 'available' })
+  // Eventos para o renderer
+  autoUpdater.on('checking-for-update', () => {
+    window.webContents.send('updater:status', { state: 'checking' })
   })
+
+  autoUpdater.on('update-available', (info) => {
+    window.webContents.send('updater:status', { 
+      state: 'available', 
+      version: info.version,
+      releaseNotes: info.releaseNotes 
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    window.webContents.send('updater:status', { state: 'up-to-date' })
+  })
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    window.webContents.send('updater:status', { 
+      state: 'downloading', 
+      percent: progressObj.percent 
+    })
+  })
+
   autoUpdater.on('update-downloaded', () => {
     window.webContents.send('updater:status', { state: 'downloaded' })
   })
+
   autoUpdater.on('error', (error) => {
     window.webContents.send('updater:status', {
       state: 'error',
@@ -30,5 +48,22 @@ export function initUpdater(window: BrowserWindow): void {
     })
   })
 
-  void autoUpdater.checkForUpdatesAndNotify()
+  // Handlers IPC para controle manual
+  ipcMain.handle('updater:check', async () => {
+    return await autoUpdater.checkForUpdates()
+  })
+
+  ipcMain.handle('updater:download', async () => {
+    return await autoUpdater.downloadUpdate()
+  })
+
+  ipcMain.handle('updater:install', () => {
+    autoUpdater.quitAndInstall()
+  })
+
+  // Verificação inicial automática
+  if (process.env.PROSA_ENABLE_UPDATER || app.isPackaged) {
+    void autoUpdater.checkForUpdates()
+  }
 }
+

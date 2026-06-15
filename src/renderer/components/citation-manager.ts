@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/core'
 
 export class CitationManager {
   private readonly editor: Editor
+  // @ts-ignore
   private readonly container: HTMLElement
   private element: HTMLElement | null = null
 

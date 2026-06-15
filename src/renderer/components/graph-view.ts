@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export class GraphView {
+  // @ts-ignore
   private readonly container: HTMLElement
   private element: HTMLElement | null = null
 

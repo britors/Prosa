@@ -6,6 +6,7 @@ import { DocumentView, type DocumentViewElements } from './pages/document.js'
 import { WelcomeScreen } from './pages/welcome.js'
 import { applyTheme } from './components/theme-engine.js'
 import { setAppTheme } from './components/theme-selector.js'
+import { UpdateNotification } from './components/update-notification.js'
 import type { AppInfo, OpenedDocument } from '../shared/types.js'
 
 /** Localiza um elemento obrigatório no DOM. */
@@ -17,16 +18,23 @@ function el<T extends HTMLElement>(id: string): T {
 
 /** Ponto de entrada do renderer: inicializa a aplicação. */
 async function bootstrap(): Promise<void> {
+  // Inicializa o sistema de atualização
+  new UpdateNotification()
+
   const settings = await window.prosa.getSettings()
-  if (settings.palette) {
-    applyTheme(settings.palette)
+  const anySettings = settings as any
+  if (anySettings.palette) {
+    applyTheme(anySettings.palette)
   } else {
-    setAppTheme(settings.theme !== 'light')
+    setAppTheme((settings.theme as any) !== 'light')
   }
+
 
   const elements: DocumentViewElements = {
     root: el('document-view'),
     toolbar: el('toolbar'),
+    hRuler: el('toolbar'), // Fallback se não existir régua real
+    vRuler: el('toolbar'),
     page: el('page-stack'),
     editorHost: el('editor'),
     outline: el('outline'),

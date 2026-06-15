@@ -43,7 +43,18 @@ const api: ProsaApi = {
   },
   getAppInfo: () => ipcRenderer.invoke('app:info') as Promise<AppInfo>,
   getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
-  selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>
+  selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
+  getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<any[]>,
+  getTemplates: () => ipcRenderer.invoke('templates:list') as Promise<any[]>,
+  // Updater
+  checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<void>,
+  downloadUpdate: () => ipcRenderer.invoke('updater:download') as Promise<void>,
+  installUpdate: () => { void ipcRenderer.invoke('updater:install') },
+  onUpdateStatus: (handler) => {
+    ipcRenderer.on('updater:status', (_event, status: any) => {
+      handler(status)
+    })
+  }
 }
 
 contextBridge.exposeInMainWorld('prosa', api)
