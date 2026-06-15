@@ -197,6 +197,9 @@ function registerMenuActions(
       case 'help:about':
         void showAbout()
         break
+      case 'file:recentCleared':
+        void showWelcome()
+        break
       default:
         break
     }

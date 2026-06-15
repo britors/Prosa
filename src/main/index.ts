@@ -16,7 +16,8 @@ import { exportPdf, openDocument, saveDocument } from './file-manager.js'
 import {
   getRecentFiles,
   getSettings,
-  setSettings
+  setSettings,
+  clearRecentFiles
 } from './settings.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
@@ -192,10 +193,21 @@ function buildMenu(): void {
   const recent = getRecentFiles()
   const recentItems: MenuItemConstructorOptions[] =
     recent.length > 0
-      ? recent.map((file) => ({
-          label: file.name,
-          click: () => void handleOpen(file.path)
-        }))
+      ? [
+          ...recent.map((file) => ({
+            label: file.name,
+            click: () => void handleOpen(file.path)
+          })),
+          { type: 'separator' as const },
+          {
+            label: 'Limpar recentes',
+            click: () => {
+              clearRecentFiles()
+              buildMenu()
+              mainWindow?.webContents.send('menu:action', 'file:recentCleared')
+            }
+          }
+        ]
       : [{ label: 'Nenhum arquivo recente', enabled: false }]
 
   const template: MenuItemConstructorOptions[] = [
@@ -425,6 +437,13 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('file:recent', () => getRecentFiles())
+  ipcMain.handle('file:clearRecent', () => {
+    const updated = clearRecentFiles()
+    buildMenu()
+    // Notifica o renderer para atualizar a tela de boas-vindas se estiver aberta
+    mainWindow?.webContents.send('menu:action', 'file:recentCleared')
+    return updated
+  })
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, partial) => setSettings(partial))
   ipcMain.handle('app:info', () => APP_INFO)

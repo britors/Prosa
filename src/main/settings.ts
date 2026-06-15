@@ -63,3 +63,9 @@ export function removeRecentFile(path: string): RecentFile[] {
   store.set('recentFiles', updated)
   return updated
 }
+
+/** Limpa completamente a lista de arquivos recentes. */
+export function clearRecentFiles(): RecentFile[] {
+  store.set('recentFiles', [])
+  return []
+}

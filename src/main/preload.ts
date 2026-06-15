@@ -29,6 +29,8 @@ const api: ProsaApi = {
   print: () => ipcRenderer.invoke('file:print') as Promise<FileResult>,
   getRecentFiles: () =>
     ipcRenderer.invoke('file:recent') as Promise<RecentFile[]>,
+  clearRecentFiles: () =>
+    ipcRenderer.invoke('file:clearRecent') as Promise<RecentFile[]>,
   getSettings: () =>
     ipcRenderer.invoke('settings:get') as Promise<ProsaSettings>,
   setSettings: (settings: Partial<ProsaSettings>) =>

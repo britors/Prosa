@@ -132,6 +132,7 @@ export interface ProsaApi {
   exportPdf: (defaultName: string) => Promise<FileResult>
   print: () => Promise<FileResult>
   getRecentFiles: () => Promise<RecentFile[]>
+  clearRecentFiles: () => Promise<RecentFile[]>
   getSettings: () => Promise<ProsaSettings>
   setSettings: (settings: Partial<ProsaSettings>) => Promise<ProsaSettings>
   onMenuAction: (handler: (action: string, payload?: unknown) => void) => void
