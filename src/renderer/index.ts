@@ -4,6 +4,8 @@
 
 import { DocumentView, type DocumentViewElements } from './pages/document.js'
 import { WelcomeScreen } from './pages/welcome.js'
+import { SearchModal } from './components/search-modal.js'
+import { TemplateDialog } from './components/template-dialog.js'
 import { applyTheme } from './components/theme-engine.js'
 import { setAppTheme } from './components/theme-selector.js'
 import { UpdateNotification } from './components/update-notification.js'
@@ -42,7 +44,9 @@ async function bootstrap(): Promise<void> {
     statusBar: el('status-bar')
   }
 
-  const view = new DocumentView(elements, settings)
+  const searchModal = new SearchModal()
+  const view = new DocumentView(elements, settings, searchModal)
+  const templateDialog = new TemplateDialog(elements.root)
   const welcomeRoot = el('welcome-view')
 
   /** Mostra a vista de edição e oculta a tela de boas-vindas. */
@@ -54,7 +58,8 @@ async function bootstrap(): Promise<void> {
   /** Mostra a tela de boas-vindas com a lista atual de recentes. */
   const showWelcome = async (): Promise<void> => {
     const recent = await window.prosa.getRecentFiles()
-    welcome.render(recent)
+    const pinned = await window.prosa.getPinnedFiles()
+    welcome.render(recent, pinned)
     elements.root.hidden = true
     welcome.show()
   }
@@ -65,7 +70,15 @@ async function bootstrap(): Promise<void> {
       showEditor()
     },
     onOpen: () => void openViaDialog(),
-    onOpenRecent: (path) => void openPath(path)
+    onOpenRecent: (path) => void openPath(path),
+    onPin: async (file) => {
+        await window.prosa.pinFile(file)
+        await showWelcome()
+    },
+    onUnpin: async (path) => {
+        await window.prosa.unpinFile(path)
+        await showWelcome()
+    }
   })
 
   /** Abre um arquivo a partir de um caminho conhecido. */
@@ -88,7 +101,7 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  registerMenuActions(view, showEditor, showWelcome, openViaDialog)
+  registerMenuActions(view, showEditor, showWelcome, openViaDialog, searchModal, templateDialog)
   registerDragAndDrop(openPath)
 
   await showWelcome()
@@ -99,7 +112,9 @@ function registerMenuActions(
   view: DocumentView,
   showEditor: () => void,
   showWelcome: () => Promise<void>,
-  openViaDialog: () => Promise<void>
+  openViaDialog: () => Promise<void>,
+  searchModal: SearchModal,
+  templateDialog: TemplateDialog
 ): void {
   const editor = view.editor
 
@@ -119,6 +134,12 @@ function registerMenuActions(
       case 'file:save':
         void view.save(false)
         break
+      case 'file:autoSave':
+        // Autosave apenas se já houver caminho (documento existente)
+        if (view.currentPath) {
+          void view.save(false)
+        }
+        break
       case 'file:saveAs':
         void view.save(true)
         break
@@ -130,6 +151,12 @@ function registerMenuActions(
         break
       case 'edit:replace':
         view.openFind(true)
+        break
+      case 'edit:search':
+        searchModal.show()
+        break
+      case 'edit:templates':
+        void templateDialog.choose()
         break
       case 'edit:commandPalette':
         view.openCommandPalette()

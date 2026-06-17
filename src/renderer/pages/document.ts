@@ -19,6 +19,8 @@ import { FindReplacePanel } from '../components/find-replace.js'
 import { WordCountBar } from '../components/word-count-bar.js'
 import { applyDocumentTheme } from '../components/theme-selector.js'
 import { FormatDialog } from '../components/format-dialog.js'
+import { TemplateDialog } from '../components/template-dialog.js'
+import { SearchModal } from '../components/search-modal.js'
 import { documentText } from '../../shared/document-utils.js'
 import type {
   FileFormat,
@@ -66,6 +68,7 @@ export class DocumentView {
   private readonly graphView: GraphView
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
+  private readonly templateDialog: TemplateDialog
   private updateToolbar: () => void = () => {}
 
   private currentPath: string | null = null
@@ -79,7 +82,7 @@ export class DocumentView {
   private footerHTML = ''
   private typewriterMode = false
 
-  constructor(els: DocumentViewElements, settings: ProsaSettings) {
+  constructor(els: DocumentViewElements, settings: ProsaSettings, searchModal: SearchModal) {
     this.els = els
     this.settings = settings
     this.zoom = settings.zoom
@@ -95,13 +98,17 @@ export class DocumentView {
       onHeaderClick: (params) => this.promptHeader(params),
       onFooterClick: (params) => this.promptFooter(params)
     })
+    this.formatDialog = new FormatDialog(els.root)
+    this.templateDialog = new TemplateDialog(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show())
+    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show())
+
+
     
     this.citationManager = new CitationManager(els.root, this.editor)
     this.graphView = new GraphView(els.root)

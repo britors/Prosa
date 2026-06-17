@@ -18,10 +18,31 @@ const defaults: ProsaSettings = {
   showWordCount: true,
   showOutline: true,
   recentFiles: [],
+  pinnedFiles: [],
   zoom: 100
 }
 
 const store = new Store<ProsaSettings>({ name: 'prosa-settings', defaults })
+
+/** Retorna a lista de arquivos fixados. */
+export function getPinnedFiles(): RecentFile[] {
+  return store.get('pinnedFiles', [])
+}
+
+/** Fixa um arquivo. */
+export function pinFile(file: RecentFile): RecentFile[] {
+  const current = getPinnedFiles().filter((item) => item.path !== file.path)
+  const updated = [...current, file]
+  store.set('pinnedFiles', updated)
+  return updated
+}
+
+/** Remove um arquivo dos fixados. */
+export function unpinFile(path: string): RecentFile[] {
+  const updated = getPinnedFiles().filter((item) => item.path !== path)
+  store.set('pinnedFiles', updated)
+  return updated
+}
 
 /** Retorna todas as configurações atuais. */
 export function getSettings(): ProsaSettings {

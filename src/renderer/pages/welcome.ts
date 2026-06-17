@@ -22,6 +22,8 @@ export interface WelcomeCallbacks {
   onNew: () => void
   onOpen: () => void
   onOpenRecent: (path: string) => void
+  onPin: (file: RecentFile) => void
+  onUnpin: (path: string) => void
 }
 
 /**
@@ -37,8 +39,8 @@ export class WelcomeScreen {
     this.callbacks = callbacks
   }
 
-  /** Renderiza a tela com a lista de arquivos recentes informada. */
-  render(recent: RecentFile[]): void {
+  /** Renderiza a tela com a lista de arquivos recentes e fixados informada. */
+  render(recent: RecentFile[], pinned: RecentFile[]): void {
     this.root.innerHTML = `
       <div class="welcome">
         <div class="welcome-hero">
@@ -54,8 +56,9 @@ export class WelcomeScreen {
           </div>
         </div>
         <div class="welcome-recent">
+          ${pinned.length > 0 ? `<h2>Fixados</h2>${this.renderList(pinned, true)}` : ''}
           <h2>Arquivos recentes</h2>
-          ${this.renderRecent(recent)}
+          ${this.renderList(recent, false)}
         </div>
         <div class="welcome-dropzone" id="welcome-dropzone">
           <i class="ti ti-cloud-upload"></i>
@@ -71,27 +74,44 @@ export class WelcomeScreen {
       this.callbacks.onOpen()
     )
     this.root.querySelectorAll('.recent-item').forEach((item) => {
-      item.addEventListener('click', () => {
+      item.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement
+        if (target.closest('.btn-pin')) return // Ignora clique no botão pin
         const path = (item as HTMLElement).dataset.path
         if (path) this.callbacks.onOpenRecent(path)
       })
     })
+    this.root.querySelectorAll('.btn-pin').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const item = (btn as HTMLElement).closest('.recent-item') as HTMLElement
+        const path = item.dataset.path!
+        const name = item.dataset.name!
+        const modifiedAt = item.dataset.modifiedAt!
+        if (btn.classList.contains('ti-pin')) {
+            this.callbacks.onPin({ path, name, modifiedAt })
+        } else {
+            this.callbacks.onUnpin(path)
+        }
+      })
+    })
   }
 
-  /** Renderiza a lista de arquivos recentes (ou um estado vazio). */
-  private renderRecent(recent: RecentFile[]): string {
-    if (recent.length === 0) {
-      return '<p class="welcome-empty">Nenhum arquivo recente ainda.</p>'
+  /** Renderiza uma lista de arquivos. */
+  private renderList(files: RecentFile[], isPinned: boolean): string {
+    if (files.length === 0) {
+      return '<p class="welcome-empty">Nenhum arquivo.</p>'
     }
-    return `<ul class="recent-list">${recent
+    return `<ul class="recent-list">${files
       .map(
         (file) => `
-        <li class="recent-item" data-path="${file.path}">
-          <i class="ti ti-file-text"></i>
+        <li class="recent-item" data-path="${file.path}" data-name="${file.name}" data-modified-at="${file.modifiedAt}">
+          <i class="ti ${isPinned ? 'ti-pin-filled' : 'ti-file-text'}"></i>
           <div class="recent-info">
             <span class="recent-name">${file.name}</span>
             <span class="recent-path">${file.path}</span>
           </div>
+          <button class="btn-pin ti ${isPinned ? 'ti-pin-off' : 'ti-pin'}"></button>
           <span class="recent-date">${formatDate(file.modifiedAt)}</span>
         </li>`
       )

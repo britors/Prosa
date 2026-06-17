@@ -65,8 +65,10 @@ export interface ProsaSettings {
   showWordCount: boolean
   showOutline: boolean
   recentFiles: RecentFile[]
+  pinnedFiles: RecentFile[]
   zoom: number
   workspacePath?: string
+  syncPath?: string
 }
 
 /** Conteúdo carregado de um arquivo aberto. */
@@ -142,6 +144,13 @@ export interface ProsaApi {
   selectDirectory: () => Promise<string | null>
   getPlugins: () => Promise<any[]>
   getTemplates: () => Promise<any[]>
+  getTemplate: (id: string) => Promise<string>
+  saveTemplate: (name: string, css: string) => Promise<void>
+  deleteTemplate: (id: string) => Promise<void>
+  getPinnedFiles: () => Promise<RecentFile[]>
+  pinFile: (file: RecentFile) => Promise<RecentFile[]>
+  unpinFile: (path: string) => Promise<RecentFile[]>
+  searchFiles: (term: string) => Promise<{ path: string; snippet: string }[]>
   // Updater
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>

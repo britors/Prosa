@@ -60,7 +60,11 @@ export function createEditor(
       Image.configure({ inline: false, allowBase64: true }),
       Link.configure({ openOnClick: false, autolink: true }),
       Highlight.configure({ multicolor: true }),
-      Typography,
+      Typography.configure({
+        // Configuração de aspas inteligentes para o português
+        doubleQuotes: ['“', '”'],
+        singleQuotes: ['‘', '’'],
+      }),
       Placeholder.configure({
         placeholder: 'Comece a escrever sua prosa...'
       }),

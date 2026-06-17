@@ -283,7 +283,7 @@ export async function saveDocument(
       target = format ? ensureExtension(result.filePath, format) : result.filePath
     }
     await writeDocument(target, payload, format)
-    await createSnapshot(payload)
+    await createBackup(target, payload)
     addRecentFile({
       path: target,
       name: basename(target),
@@ -295,14 +295,13 @@ export async function saveDocument(
   }
 }
 
-/** Cria um snapshot de versão local. */
-export async function createSnapshot(payload: SavePayload): Promise<void> {
-  if (!payload.path) return
-  const snapshotDir = join(dirname(payload.path), 'snapshots')
-  await mkdir(snapshotDir, { recursive: true })
+/** Cria um backup automático do arquivo. */
+export async function createBackup(path: string, payload: SavePayload): Promise<void> {
+  const backupDir = join(dirname(path), '.backups')
+  await mkdir(backupDir, { recursive: true })
   const timestamp = new Date().toISOString().replace(/:/g, '-')
-  const snapshotPath = join(snapshotDir, `${basename(payload.path)}.${timestamp}.snapshot`)
-  await writeFile(snapshotPath, JSON.stringify(payload), 'utf-8')
+  const backupPath = join(backupDir, `${basename(path)}.${timestamp}.bak`)
+  await writeFile(backupPath, JSON.stringify(payload), 'utf-8')
 }
 
 /** Exporta a janela atual para PDF via printToPDF. */

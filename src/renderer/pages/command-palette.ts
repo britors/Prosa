@@ -12,10 +12,11 @@ export class CommandPalette {
   private onOpenFile: (path: string) => void
   private onToggleTypewriter?: () => void
   private onDailyNote?: () => void
-  private onCitation?: () => void
   private onGraph?: () => void
+  private onTemplateManager?: () => void
+  private onSearch?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -23,6 +24,8 @@ export class CommandPalette {
     this.onDailyNote = onDailyNote
     this.onCitation = onCitation
     this.onGraph = onGraph
+    this.onTemplateManager = onTemplateManager
+    this.onSearch = onSearch
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -47,6 +50,8 @@ export class CommandPalette {
         { label: 'Nova Nota Diária', action: () => this.onDailyNote?.() },
         { label: 'Inserir Citação', action: () => this.onCitation?.() },
         { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
+        { label: 'Gerenciar Templates', action: () => this.onTemplateManager?.() },
+        { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
 

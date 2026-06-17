@@ -11,14 +11,21 @@ import {
   shell,
   type MenuItemConstructorOptions
 } from 'electron'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import chokidar from 'chokidar'
 import { exportPdf, openDocument, saveDocument } from './file-manager.js'
 import {
   getRecentFiles,
   getSettings,
   setSettings,
-  clearRecentFiles
+  clearRecentFiles,
+  getPinnedFiles,
+  pinFile,
+  unpinFile
 } from './settings.js'
+import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
+import { PluginManager } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
@@ -48,8 +55,69 @@ let splashWindow: BrowserWindow | null = null
 let splashShownAt = 0
 /** Tempo mínimo, em ms, que a splash permanece visível. */
 const SPLASH_MIN_MS = 1400
+/** Referência para o timer de autosave. */
+let autosaveTimer: NodeJS.Timeout | null = null
+/** Observador de arquivos da pasta de sincronização. */
+let syncWatcher: chokidar.FSWatcher | null = null
 /** Indica se o documento atual possui alterações não salvas. */
 let documentDirty = false
+
+/** Gerencia o timer de autosave com base nas configurações atuais. */
+function setupAutosave(): void {
+  if (autosaveTimer) clearInterval(autosaveTimer)
+  autosaveTimer = null
+
+  const settings = getSettings()
+  if (settings.autoSave && settings.autoSaveInterval > 0) {
+    autosaveTimer = setInterval(() => {
+      if (documentDirty && mainWindow) {
+        // Solicita o conteúdo atual ao renderer para salvar
+        mainWindow.webContents.send('menu:action', 'file:autoSave')
+      }
+    }, settings.autoSaveInterval * 60 * 1000)
+  }
+}
+
+/** Inicializa o monitoramento da pasta de sincronização. */
+function setupSyncWatcher(): void {
+  if (syncWatcher) void syncWatcher.close()
+  syncWatcher = null
+
+  const settings = getSettings()
+  if (settings.syncPath) {
+    syncWatcher = chokidar.watch(settings.syncPath, {
+      ignored: /(^|[/\\])\../, // ignore dotfiles
+      persistent: true
+    })
+
+    syncWatcher.on('change', (path) => {
+        mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
+    })
+  }
+}
+
+/** Busca texto em todos os arquivos de uma pasta. */
+async function searchInFiles(dir: string, term: string): Promise<{ path: string; snippet: string }[]> {
+  const results: { path: string; snippet: string }[] = []
+  const files = await readdir(dir)
+  for (const file of files) {
+    const path = join(dir, file)
+    const stats = await stat(path)
+    if (stats.isDirectory()) {
+      if (file !== 'node_modules' && file !== '.git') {
+        results.push(...(await searchInFiles(path, term)))
+      }
+    } else if (file.endsWith('.prosa') || file.endsWith('.md') || file.endsWith('.txt')) {
+      const content = await readFile(path, 'utf-8')
+      if (content.includes(term)) {
+        const index = content.indexOf(term)
+        const snippet = content.substring(Math.max(0, index - 20), Math.min(content.length, index + term.length + 20))
+        results.push({ path, snippet })
+      }
+    }
+  }
+  return results
+}
 
 /** Caminho do ícone da aplicação (gerado a partir do logo). */
 const ICON_PATH = join(__dirname, '..', 'icon.png')
@@ -142,6 +210,11 @@ function createWindow(): void {
 
   buildMenu()
   initUpdater(mainWindow)
+  setupAutosave()
+  setupSyncWatcher()
+  
+  // Inicializa o gerenciador de plugins
+  void PluginManager.getInstance().loadPlugins()
 }
 
 /** Abre o diálogo de impressão do sistema para o documento atual. */
@@ -296,6 +369,11 @@ function buildMenu(): void {
           label: 'Substituir',
           accelerator: 'CmdOrCtrl+H',
           click: () => sendMenuAction('edit:replace')
+        },
+        {
+          label: 'Pesquisar',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => sendMenuAction('edit:search')
         }
       ]
     },
@@ -444,8 +522,27 @@ function registerIpc(): void {
     mainWindow?.webContents.send('menu:action', 'file:recentCleared')
     return updated
   })
+  ipcMain.handle('templates:list', () => getAvailableTemplates())
+  ipcMain.handle('templates:get', (_event, id: string) => getTemplateContent(id))
+  ipcMain.handle('templates:save', (_event, name: string, css: string) => saveTemplate(name, css))
+  ipcMain.handle('templates:delete', (_event, id: string) => deleteTemplate(id))
+  ipcMain.handle('file:pinned', () => getPinnedFiles())
+  ipcMain.handle('file:pin', (_event, file: RecentFile) => pinFile(file))
+  ipcMain.handle('file:unpin', (_event, path: string) => unpinFile(path))
+  ipcMain.handle('file:search', async (_event, term: string) => {
+    const settings = getSettings()
+    if (!settings.workspacePath) return []
+    return await searchInFiles(settings.workspacePath, term)
+  })
+  ipcMain.handle('plugins:list', () => PluginManager.getInstance().getAvailablePlugins())
+
   ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:set', (_event, partial) => setSettings(partial))
+  ipcMain.handle('settings:set', (_event, partial) => {
+    const updated = setSettings(partial)
+    setupAutosave() // Atualiza o timer se necessário
+    if (partial.syncPath !== undefined) setupSyncWatcher()
+    return updated
+  })
   ipcMain.handle('app:info', () => APP_INFO)
   ipcMain.handle('fonts:list', () => listSystemFonts())
   ipcMain.handle('file:selectDirectory', async () => {

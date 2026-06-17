@@ -24,12 +24,16 @@ export class TemplateDialog {
 
   private render(templates: { id: string; name: string }[]): void {
     this.overlay.innerHTML = `
-      <div class="modal" role="dialog" aria-label="Escolher template">
+      <div class="modal" role="dialog" aria-label="Gerenciar Templates">
         <div class="modal-header">
-          <h2>Exportar PDF</h2>
+          <h2>Gerenciar Templates</h2>
           <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
         </div>
-        <p class="modal-subtitle">Escolha um template de exportação:</p>
+        <p class="modal-subtitle">Escolha um template ou crie um novo:</p>
+        <div class="template-actions" style="margin-bottom: 20px;">
+           <input type="text" id="new-template-name" placeholder="Nome do novo template" class="btn">
+           <button id="btn-create-template" class="btn btn-primary">Salvar template atual</button>
+        </div>
         <div class="format-grid">
           <button class="format-card" data-template="">
             <i class="ti ti-file-text"></i>
@@ -44,6 +48,7 @@ export class TemplateDialog {
               <div class="format-card-body">
                 <span class="format-card-title">${t.name}</span>
               </div>
+              <i class="ti ti-trash btn-delete" data-id="${t.id}" title="Excluir"></i>
             </button>`
           ).join('')}
         </div>
@@ -53,11 +58,39 @@ export class TemplateDialog {
     this.overlay.querySelector('.modal-close')?.addEventListener('click', () =>
       this.close(null)
     )
+    this.overlay.querySelector('#btn-create-template')?.addEventListener('click', () => {
+        const input = this.overlay.querySelector('#new-template-name') as HTMLInputElement
+        this.createNewTemplate(input.value)
+    })
+    this.overlay.querySelectorAll<HTMLElement>('.btn-delete').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        if (confirm('Tem certeza que deseja excluir este template?')) {
+            await window.prosa.deleteTemplate(btn.dataset.id!)
+            this.choose()
+        }
+      })
+    })
     this.overlay.querySelectorAll<HTMLElement>('.format-card').forEach((card) => {
       card.addEventListener('click', () => {
         this.close(card.dataset.template ?? null)
       })
     })
+  }
+
+  private async createNewTemplate(name: string): Promise<void> {
+    if (!name) {
+        alert('Por favor, insira um nome para o template.')
+        return
+    }
+    
+    // Supondo que o CSS do template atual esteja em um estilo específico
+    const styleEl = document.getElementById('theme-style') as HTMLStyleElement
+    const css = styleEl ? styleEl.innerHTML : ''
+    
+    await window.prosa.saveTemplate(name, css)
+    this.overlay.hidden = true // Fecha para recarregar
+    this.choose() // Recarrega a lista
   }
 
   private close(templateId: string | null): void {

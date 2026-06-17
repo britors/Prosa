@@ -48,6 +48,13 @@ const api: ProsaApi = {
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
   getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<any[]>,
   getTemplates: () => ipcRenderer.invoke('templates:list') as Promise<any[]>,
+  getTemplate: (id: string) => ipcRenderer.invoke('templates:get', id) as Promise<string>,
+  saveTemplate: (name: string, css: string) => ipcRenderer.invoke('templates:save', name, css),
+  deleteTemplate: (id: string) => ipcRenderer.invoke('templates:delete', id),
+  getPinnedFiles: () => ipcRenderer.invoke('file:pinned') as Promise<RecentFile[]>,
+  pinFile: (file: RecentFile) => ipcRenderer.invoke('file:pin', file) as Promise<RecentFile[]>,
+  unpinFile: (path: string) => ipcRenderer.invoke('file:unpin', path) as Promise<RecentFile[]>,
+  searchFiles: (term: string) => ipcRenderer.invoke('file:search', term) as Promise<{ path: string; snippet: string }[]>,
   // Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<void>,
   downloadUpdate: () => ipcRenderer.invoke('updater:download') as Promise<void>,
