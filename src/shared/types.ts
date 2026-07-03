@@ -52,6 +52,9 @@ export interface RecentFile {
   modifiedAt: string
 }
 
+/** Políticas de autosave suportadas. */
+export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
+
 /** Configurações persistidas via electron-store. */
 export interface ProsaSettings {
   theme: 'dark'
@@ -60,9 +63,7 @@ export interface ProsaSettings {
   lineHeight: number
   spellcheck: boolean
   spellLanguages: string[]
-  autoSave: boolean
-  autoSaveInterval: number
-  autoSavePolicy: 'off' | 'onBlur' | 'debounce' | 'interval'
+  autoSavePolicy: AutoSavePolicy
   autoSaveDebounceSeconds: number
   autoSaveIntervalMinutes: number
   showWordCount: boolean
