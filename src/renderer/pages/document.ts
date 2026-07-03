@@ -22,6 +22,7 @@ import { FormatDialog } from '../components/format-dialog.js'
 import { TemplateDialog } from '../components/template-dialog.js'
 import { PluginDialog } from '../components/plugin-dialog.js'
 import { VersionCompareDialog } from '../components/version-compare-dialog.js'
+import { SyncNotification } from '../components/sync-notification.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -77,6 +78,7 @@ export class DocumentView {
   private readonly templateDialog: TemplateDialog
   private readonly pluginDialog: PluginDialog
   private readonly versionCompareDialog: VersionCompareDialog
+  private readonly syncNotification: SyncNotification
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -112,6 +114,7 @@ export class DocumentView {
     this.templateDialog = new TemplateDialog(els.root)
     this.pluginDialog = new PluginDialog(els.root)
     this.versionCompareDialog = new VersionCompareDialog(els.root)
+    this.syncNotification = new SyncNotification(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
@@ -530,6 +533,28 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
         window.prosa.setSettings({ workspacePath: path })
         window.location.reload()
     }
+  }
+
+  /** Escolhe a pasta observada para sincronização com serviços externos (Dropbox, Drive, etc). */
+  async chooseSyncFolder(): Promise<void> {
+    const path = await window.prosa.selectDirectory()
+    if (path) await window.prosa.setSettings({ syncPath: path })
+  }
+
+  /** Desativa a sincronização com pastas externas. */
+  async disableSync(): Promise<void> {
+    await window.prosa.setSettings({ syncPath: '' })
+  }
+
+  /** Trata uma notificação de que um arquivo da pasta de sincronização mudou externamente. */
+  handleSyncFileChanged(path: string): void {
+    const currentPath = this.currentPath
+    if (!currentPath || path !== currentPath) return
+    this.syncNotification.show(this.documentName, () => {
+      void window.prosa.openDocument(currentPath).then((res) => {
+        if (res.ok && res.document) this.load(res.document)
+      })
+    })
   }
 
   /** Define o nível de zoom da área de edição. */

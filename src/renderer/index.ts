@@ -164,6 +164,15 @@ function registerMenuActions(
       case 'workspace:switch':
         void view.switchWorkspace()
         break
+      case 'sync:choose':
+        void view.chooseSyncFolder()
+        break
+      case 'sync:disable':
+        void view.disableSync()
+        break
+      case 'sync:fileChanged':
+        view.handleSyncFileChanged(payload as string)
+        break
       case 'format:bold':
         editor.chain().focus().toggleBold().run()
         break

@@ -13,11 +13,11 @@ import {
 } from 'electron'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import chokidar, { type FSWatcher } from 'chokidar'
 import { exportPdf } from './export-service.js'
 import { openDocument } from './open-service.js'
 import { saveDocument } from './save-service.js'
 import { listVersions, getVersionText } from './version-history.js'
+import { setupSyncWatcher, markSelfWrite, stopSyncWatcher } from './sync-watcher.js'
 import {
   getRecentFiles,
   getSettings,
@@ -61,8 +61,6 @@ let splashShownAt = 0
 const SPLASH_MIN_MS = 1400
 /** Referência para o timer de autosave. */
 let autosaveTimer: NodeJS.Timeout | null = null
-/** Observador de arquivos da pasta de sincronização. */
-let syncWatcher: FSWatcher | null = null
 /** Indica se o documento atual possui alterações não salvas. */
 let documentDirty = false
 /** Intervalos disponíveis para autosave por inatividade (segundos). */
@@ -88,22 +86,9 @@ function setupAutosave(): void {
   }
 }
 
-/** Inicializa o monitoramento da pasta de sincronização. */
-function setupSyncWatcher(): void {
-  if (syncWatcher) void syncWatcher.close()
-  syncWatcher = null
-
-  const settings = getSettings()
-  if (settings.syncPath) {
-    syncWatcher = chokidar.watch(settings.syncPath, {
-      ignored: /(^|[/\\])\../, // ignore dotfiles
-      persistent: true
-    })
-
-    syncWatcher.on('change', (path: string) => {
-        mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
-    })
-  }
+/** Notifica o renderer sobre uma mudança externa num arquivo da pasta de sincronização. */
+function notifySyncChange(path: string): void {
+  mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
 }
 
 /** Busca texto em todos os arquivos de uma pasta. */
@@ -257,8 +242,8 @@ function createWindow(): void {
   buildMenu()
   initUpdater(mainWindow)
   setupAutosave()
-  setupSyncWatcher()
-  
+  setupSyncWatcher(notifySyncChange)
+
   // Inicializa o gerenciador de plugins (nunca deve derrubar a janela principal)
   void loadPlugins().catch((err) => console.error('[plugins] Erro inesperado ao carregar plugins:', err))
 }
@@ -460,6 +445,20 @@ function buildMenu(): void {
                 checked: settings.backupKeepVersions === count,
                 click: () => applyBackupSettings({ backupKeepVersions: count })
               }))
+            }
+          ]
+        },
+        {
+          label: 'Sincronização',
+          submenu: [
+            {
+              label: 'Escolher pasta...',
+              click: () => sendMenuAction('sync:choose')
+            },
+            {
+              label: 'Desativar sincronização',
+              enabled: !!settings.syncPath,
+              click: () => sendMenuAction('sync:disable')
             }
           ]
         },
@@ -666,6 +665,7 @@ function registerIpc(): void {
     const result = await saveDocument(mainWindow, payload, false)
     if (result.ok) {
       documentDirty = false
+      if (result.path) markSelfWrite(result.path)
       buildMenu()
     }
     return result
@@ -676,6 +676,7 @@ function registerIpc(): void {
     const result = await saveDocument(mainWindow, payload, true)
     if (result.ok) {
       documentDirty = false
+      if (result.path) markSelfWrite(result.path)
       buildMenu()
     }
     return result
@@ -726,7 +727,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:set', (_event, partial) => {
     const updated = setSettings(partial)
     setupAutosave() // Atualiza o timer se necessário
-    if (partial.syncPath !== undefined) setupSyncWatcher()
+    if (partial.syncPath !== undefined) setupSyncWatcher(notifySyncChange)
     buildMenu()
     return updated
   })
@@ -769,4 +770,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   unloadPlugins()
+  stopSyncWatcher()
 })
