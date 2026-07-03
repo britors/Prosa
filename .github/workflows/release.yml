@@ -104,6 +104,24 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R all-artifacts
 
+      - name: Validate updater metadata matches published Windows installer
+        run: |
+          set -euo pipefail
+          expected_installer="$(sed -n "s/^path: //p" all-artifacts/latest.yml | head -n1)"
+          if [ -z "$expected_installer" ]; then
+            echo "Erro: não foi possível ler o campo 'path' em all-artifacts/latest.yml"
+            exit 1
+          fi
+
+          if [ ! -f "all-artifacts/$expected_installer" ]; then
+            echo "Erro: latest.yml aponta para '$expected_installer', mas esse arquivo não está entre os artifacts."
+            echo "Artifacts disponíveis:"
+            ls -1 all-artifacts
+            exit 1
+          fi
+
+          echo "OK: latest.yml e artefato do instalador estão alinhados ($expected_installer)."
+
       - name: Create and Publish Release
         uses: softprops/action-gh-release@v2
         with:
