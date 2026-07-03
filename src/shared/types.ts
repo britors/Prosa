@@ -106,6 +106,8 @@ export interface ProsaSettings {
   pdfPageSize: PdfPageSize
   pdfLandscape: boolean
   pdfPrintBackground: boolean
+  focusWorkMinutes: number
+  focusBreakMinutes: number
   showWordCount: boolean
   showOutline: boolean
   distractionFree: boolean

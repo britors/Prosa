@@ -23,6 +23,7 @@ import { TemplateDialog } from '../components/template-dialog.js'
 import { PluginDialog } from '../components/plugin-dialog.js'
 import { VersionCompareDialog } from '../components/version-compare-dialog.js'
 import { SyncNotification } from '../components/sync-notification.js'
+import { FocusTimer } from '../components/focus-timer.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -79,6 +80,7 @@ export class DocumentView {
   private readonly pluginDialog: PluginDialog
   private readonly versionCompareDialog: VersionCompareDialog
   private readonly syncNotification: SyncNotification
+  private readonly focusTimer: FocusTimer
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -142,7 +144,8 @@ export class DocumentView {
 
     this.outline = new SidebarOutline(els.outline, this.editor)
     this.styles = new StylesPanel(els.styles, this.editor)
-    this.statusBar = new WordCountBar(els.statusBar, this.editor)
+    this.focusTimer = new FocusTimer(settings.focusWorkMinutes, settings.focusBreakMinutes)
+    this.statusBar = new WordCountBar(els.statusBar, this.editor, this.focusTimer.el)
     this.formatDialog = new FormatDialog(els.root)
 
     this.dirtyState = new DirtyStateController(
@@ -469,6 +472,10 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     if (partial.showWordCount !== undefined && !this.distractionFreeController.isEnabled()) {
       this.els.statusBar.toggleAttribute('hidden', !partial.showWordCount)
+    }
+
+    if (partial.focusWorkMinutes !== undefined || partial.focusBreakMinutes !== undefined) {
+      this.focusTimer.setDurations(this.settings.focusWorkMinutes, this.settings.focusBreakMinutes)
     }
 
     if (partial.autoSavePolicy !== undefined || partial.autoSaveDebounceSeconds !== undefined) {

@@ -867,6 +867,22 @@ body.is-resizing-image {
   flex: 1;
 }
 
+.focus-timer {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.focus-timer:hover {
+  color: var(--accent);
+}
+
 .status-dirty {
   color: var(--accent);
   margin-right: 4px;

@@ -69,6 +69,10 @@ const AUTOSAVE_DEBOUNCE_OPTIONS = [10, 30, 60, 120]
 const AUTOSAVE_INTERVAL_OPTIONS = [1, 5, 15, 30]
 /** Quantidade de versões mantidas no backup automático. */
 const BACKUP_KEEP_OPTIONS = [5, 10, 20, 50]
+/** Durações disponíveis para a fase de trabalho do timer de foco (minutos). */
+const FOCUS_WORK_OPTIONS = [15, 25, 45, 60]
+/** Durações disponíveis para a fase de pausa do timer de foco (minutos). */
+const FOCUS_BREAK_OPTIONS = [5, 10, 15]
 
 /** Gerencia o timer de autosave com base nas configurações atuais. */
 function setupAutosave(): void {
@@ -156,6 +160,19 @@ function applyPdfSettings(partial: {
 }): void {
   setSettings(partial)
   buildMenu()
+}
+
+/** Atualiza preferências do timer de foco e notifica o renderer das novas durações. */
+function applyFocusTimerSettings(partial: {
+  focusWorkMinutes?: number
+  focusBreakMinutes?: number
+}): void {
+  const updated = setSettings(partial)
+  buildMenu()
+  sendMenuAction('settings:updated', {
+    focusWorkMinutes: updated.focusWorkMinutes,
+    focusBreakMinutes: updated.focusBreakMinutes
+  })
 }
 
 /** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
@@ -526,6 +543,29 @@ function buildMenu(): void {
           label: 'Alternar Workspace...',
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => sendMenuAction('workspace:switch')
+        },
+        {
+          label: 'Timer de Foco',
+          submenu: [
+            {
+              label: 'Duração do trabalho',
+              submenu: FOCUS_WORK_OPTIONS.map((minutes) => ({
+                label: `${minutes} min`,
+                type: 'radio' as const,
+                checked: settings.focusWorkMinutes === minutes,
+                click: () => applyFocusTimerSettings({ focusWorkMinutes: minutes })
+              }))
+            },
+            {
+              label: 'Duração da pausa',
+              submenu: FOCUS_BREAK_OPTIONS.map((minutes) => ({
+                label: `${minutes} min`,
+                type: 'radio' as const,
+                checked: settings.focusBreakMinutes === minutes,
+                click: () => applyFocusTimerSettings({ focusBreakMinutes: minutes })
+              }))
+            }
+          ]
         },
         { type: 'separator' },
         {

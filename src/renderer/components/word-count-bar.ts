@@ -25,10 +25,12 @@ export class WordCountBar {
   private zoom = 100
   private startTime = Date.now()
   private initialWords = 0
+  private readonly focusTimerEl: HTMLElement | null
 
-  constructor(container: HTMLElement, editor: Editor) {
+  constructor(container: HTMLElement, editor: Editor, focusTimerEl: HTMLElement | null = null) {
     this.editor = editor
     this.el = container
+    this.focusTimerEl = focusTimerEl
     this.initialWords = this.getWordCount()
   }
 
@@ -78,6 +80,7 @@ export class WordCountBar {
       <span title="Posição">Ln ${line}, Col ${col}</span>
       <span title="Zoom">${this.zoom}%</span>
     `
+    if (this.focusTimerEl) this.el.appendChild(this.focusTimerEl)
   }
 
   /** Calcula a posição (linha, coluna) do cursor no documento. */

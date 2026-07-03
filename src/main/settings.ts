@@ -21,6 +21,8 @@ const defaults: ProsaSettings = {
   pdfPageSize: 'A4',
   pdfLandscape: false,
   pdfPrintBackground: true,
+  focusWorkMinutes: 25,
+  focusBreakMinutes: 5,
   showWordCount: true,
   showOutline: true,
   distractionFree: false,
@@ -78,6 +80,8 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
   const pdfPrintBackground =
     typeof raw.pdfPrintBackground === 'boolean' ? raw.pdfPrintBackground : defaults.pdfPrintBackground
   const backupOnSave = typeof raw.backupOnSave === 'boolean' ? raw.backupOnSave : defaults.backupOnSave
+  const focusWorkMinutes = normalizePositiveInt(raw.focusWorkMinutes, defaults.focusWorkMinutes)
+  const focusBreakMinutes = normalizePositiveInt(raw.focusBreakMinutes, defaults.focusBreakMinutes)
 
   return {
     ...defaults,
@@ -89,7 +93,9 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
     backupKeepVersions,
     pdfPageSize,
     pdfLandscape,
-    pdfPrintBackground
+    pdfPrintBackground,
+    focusWorkMinutes,
+    focusBreakMinutes
   }
 }
 
