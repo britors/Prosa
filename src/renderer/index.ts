@@ -276,12 +276,23 @@ function registerDragAndDrop(openPath: (path: string) => Promise<void>): void {
 async function showAbout(): Promise<void> {
   const info: AppInfo = await window.prosa.getAppInfo()
   window.alert(
-    `${info.name} ${info.version}\n` +
+    `${info.name} ${info.version}\n\n` +
+      `Bem-vindo ao Prosa.\n` +
+      `Este projeto nasceu com muito carinho para quem vive da escrita, da criacao e das ideias.\n` +
+      `Nossa missao e oferecer uma experiencia leve, bonita e confiavel para voce focar no que importa: escrever bem.\n\n` +
+      `Destaques do projeto:\n` +
+      `- Escrita sem distracoes\n` +
+      `- Editor rico com recursos avancados\n` +
+      `- Importacao e exportacao para multiplos formatos\n` +
+      `- Open source e em evolucao continua\n\n` +
+      `Feito com apoio da comunidade e de pessoas que acreditam em software livre de qualidade.\n\n` +
       `Licença: ${info.license}\n` +
-      `${info.company}\n` +
-      `${info.website}\n` +
+      `Desenvolvido por: ${info.company}\n` +
+      `Site: ${info.website}\n` +
+      `GitHub: ${info.github}\n` +
       `Suporte: ${info.support}\n\n` +
-      `${info.copyright}`
+      `${info.copyright}\n` +
+      `Obrigado por usar, compartilhar feedback e ajudar o Prosa a crescer.`
   )
 }
 

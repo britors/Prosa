@@ -13,6 +13,7 @@ import type { TipTapJSON } from '../../shared/types.js'
 export class SidebarOutline {
   private readonly container: HTMLElement
   private readonly editor: Editor
+  private activeHeadingIndex = -1
 
   constructor(container: HTMLElement, editor: Editor) {
     this.container = container
@@ -31,7 +32,7 @@ export class SidebarOutline {
     this.container.innerHTML = ''
     const heading = document.createElement('div')
     heading.className = 'panel-title'
-    heading.textContent = 'Tópicos'
+    heading.textContent = 'Sumário'
     this.container.appendChild(heading)
 
     if (outline.length === 0) {
@@ -44,12 +45,27 @@ export class SidebarOutline {
 
     const list = document.createElement('ul')
     list.className = 'outline-list'
+    list.setAttribute('role', 'list')
+    const counters = [0, 0, 0, 0, 0, 0]
     outline.forEach((item) => {
       const li = document.createElement('li')
       li.className = `outline-item outline-level-${item.level}`
-      li.textContent = item.text || '(sem título)'
+      if (item.index === this.activeHeadingIndex) {
+        li.classList.add('active')
+      }
+      counters[item.level - 1] += 1
+      for (let i = item.level; i < counters.length; i += 1) counters[i] = 0
+      const number = counters.slice(0, item.level).filter((n) => n > 0).join('.')
+      li.textContent = `${number} ${item.text || '(sem título)'}`
       li.style.paddingLeft = `${(item.level - 1) * 12 + 8}px`
+      li.tabIndex = 0
       li.addEventListener('click', () => this.scrollToHeading(item.index))
+      li.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          this.scrollToHeading(item.index)
+        }
+      })
       list.appendChild(li)
     })
     this.container.appendChild(list)
@@ -60,6 +76,8 @@ export class SidebarOutline {
     const headings = this.editor.view.dom.querySelectorAll('h1, h2, h3, h4, h5, h6')
     const target = headings[index]
     if (target instanceof HTMLElement) {
+      this.activeHeadingIndex = index
+      this.update()
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }

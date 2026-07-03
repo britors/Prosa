@@ -55,6 +55,9 @@ export interface RecentFile {
 /** Políticas de autosave suportadas. */
 export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 
+/** Tamanhos de página suportados na exportação PDF. */
+export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
+
 /** Configurações persistidas via electron-store. */
 export interface ProsaSettings {
   theme: 'dark'
@@ -66,6 +69,11 @@ export interface ProsaSettings {
   autoSavePolicy: AutoSavePolicy
   autoSaveDebounceSeconds: number
   autoSaveIntervalMinutes: number
+  backupOnSave: boolean
+  backupKeepVersions: number
+  pdfPageSize: PdfPageSize
+  pdfLandscape: boolean
+  pdfPrintBackground: boolean
   showWordCount: boolean
   showOutline: boolean
   distractionFree: boolean
