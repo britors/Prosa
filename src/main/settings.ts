@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Store from 'electron-store'
-import type { ProsaSettings, RecentFile } from '../shared/types.js'
+import type { AutoSavePolicy, ProsaSettings, RecentFile } from '../shared/types.js'
 
 /** Valores padrão das configurações do Prosa. */
 const defaults: ProsaSettings = {
@@ -13,8 +13,6 @@ const defaults: ProsaSettings = {
   lineHeight: 1.6,
   spellcheck: true,
   spellLanguages: ['pt-BR', 'en-US'],
-  autoSave: true,
-  autoSaveInterval: 30,
   autoSavePolicy: 'interval',
   autoSaveDebounceSeconds: 30,
   autoSaveIntervalMinutes: 5,
@@ -27,6 +25,52 @@ const defaults: ProsaSettings = {
 }
 
 const store = new Store<ProsaSettings>({ name: 'prosa-settings', defaults })
+
+type StoredSettings = Partial<ProsaSettings> & {
+  autoSave?: boolean
+  autoSaveInterval?: number
+}
+
+const VALID_AUTOSAVE_POLICIES: readonly AutoSavePolicy[] = ['off', 'onBlur', 'debounce', 'interval']
+
+function isAutoSavePolicy(value: unknown): value is AutoSavePolicy {
+  return typeof value === 'string' && VALID_AUTOSAVE_POLICIES.includes(value as AutoSavePolicy)
+}
+
+function normalizePositiveInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(1, Math.round(value))
+}
+
+function normalizeSettings(raw: StoredSettings): ProsaSettings {
+  let autoSavePolicy: AutoSavePolicy
+  if (isAutoSavePolicy(raw.autoSavePolicy)) {
+    autoSavePolicy = raw.autoSavePolicy
+  } else if (raw.autoSave === false) {
+    autoSavePolicy = 'off'
+  } else if (raw.autoSave === true && typeof raw.autoSaveInterval === 'number') {
+    autoSavePolicy = 'debounce'
+  } else {
+    autoSavePolicy = defaults.autoSavePolicy
+  }
+
+  const autoSaveDebounceSeconds = normalizePositiveInt(
+    raw.autoSaveDebounceSeconds ?? raw.autoSaveInterval,
+    defaults.autoSaveDebounceSeconds
+  )
+  const autoSaveIntervalMinutes = normalizePositiveInt(
+    raw.autoSaveIntervalMinutes,
+    defaults.autoSaveIntervalMinutes
+  )
+
+  return {
+    ...defaults,
+    ...raw,
+    autoSavePolicy,
+    autoSaveDebounceSeconds,
+    autoSaveIntervalMinutes
+  }
+}
 
 /** Retorna a lista de arquivos fixados. */
 export function getPinnedFiles(): RecentFile[] {
@@ -50,10 +94,15 @@ export function unpinFile(path: string): RecentFile[] {
 
 /** Retorna todas as configurações atuais. */
 export function getSettings(): ProsaSettings {
-  return {
-    ...defaults,
-    ...(store.store as ProsaSettings)
+  const raw = store.store as StoredSettings
+  const normalized = normalizeSettings(raw)
+
+  if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
+    store.clear()
+    store.set(normalized)
   }
+
+  return normalized
 }
 
 /** Atualiza parcialmente as configurações e devolve o estado final. */

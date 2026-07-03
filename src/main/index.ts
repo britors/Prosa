@@ -137,18 +137,11 @@ function applyAutosaveSettings(partial: {
   autoSaveDebounceSeconds?: number
   autoSaveIntervalMinutes?: number
 }): void {
-  const updated = setSettings({
-    ...partial,
-    autoSave:
-      partial.autoSavePolicy !== undefined
-        ? partial.autoSavePolicy !== 'off'
-        : getSettings().autoSave
-  })
+  const updated = setSettings(partial)
 
   setupAutosave()
   buildMenu()
   sendMenuAction('settings:updated', {
-    autoSave: updated.autoSave,
     autoSavePolicy: updated.autoSavePolicy,
     autoSaveDebounceSeconds: updated.autoSaveDebounceSeconds,
     autoSaveIntervalMinutes: updated.autoSaveIntervalMinutes
