@@ -110,6 +110,29 @@ async function openRecentDocument(page: Page): Promise<void> {
   await page.waitForSelector('#editor .ProseMirror')
 }
 
+test('E2E renderer: aspas retas viram curvas ao digitar (Typography)', async () => {
+  const ctx = await launchAppWithRecentDocument({
+    fileName: 'aspas.txt',
+    initialContent: ''
+  })
+
+  try {
+    await openRecentDocument(ctx.page)
+
+    const editor = ctx.page.locator('#editor .ProseMirror')
+    await editor.click()
+    await ctx.page.keyboard.type(`Ela disse "ola" e 'oi'`)
+
+    await waitFor(async () => {
+      const text = await editor.innerText()
+      return text.includes('“ola”') && text.includes('‘oi’')
+    })
+  } finally {
+    await ctx.app.close()
+    await rm(ctx.tempRoot, { recursive: true, force: true })
+  }
+})
+
 test('E2E renderer: abrir documento, find/replace e toggles de painel/distraction-free', async () => {
   const ctx = await launchAppWithRecentDocument({
     fileName: 'fluxo-ui.txt',
