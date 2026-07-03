@@ -152,6 +152,7 @@ interface PersistenceState {
   documentName: string
   headerHTML: string
   footerHTML: string
+  frontmatter: Record<string, string>
 }
 
 interface PersistencePayloadData {
@@ -196,7 +197,8 @@ export class DocumentPersistenceController {
       currentFormat: null,
       documentName: 'Sem título',
       headerHTML: '',
-      footerHTML: ''
+      footerHTML: '',
+      frontmatter: {}
     }
     this.deps.setState(next)
     this.deps.setDocumentName(next.documentName)
@@ -213,7 +215,8 @@ export class DocumentPersistenceController {
       currentFormat: doc.format,
       documentName: doc.name,
       headerHTML: doc.header ?? '',
-      footerHTML: doc.footer ?? ''
+      footerHTML: doc.footer ?? '',
+      frontmatter: doc.frontmatter ?? {}
     })
     this.deps.setDocumentName(doc.name)
     this.deps.updatePaginationBands()
@@ -283,6 +286,7 @@ export class DocumentPersistenceController {
       text: documentText(payloadData.json),
       header: state.headerHTML,
       footer: state.footerHTML,
+      frontmatter: state.frontmatter,
       metadata: {
         title: state.documentName.replace(/\.[^.]+$/, ''),
         author: '',

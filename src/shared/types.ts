@@ -52,11 +52,52 @@ export interface RecentFile {
   modifiedAt: string
 }
 
+/** Versão de backup disponível para comparação. */
+export interface BackupVersion {
+  file: string
+  modifiedAt: string
+}
+
 /** Políticas de autosave suportadas. */
 export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 
 /** Tamanhos de página suportados na exportação PDF. */
 export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
+
+/** Perfil de fonte nomeado, aplicável ao editor. */
+export interface FontProfile {
+  id: string
+  name: string
+  fontFamily: string
+  fontSize: number
+  lineHeight: number
+}
+
+/** Permissões que um plugin pode declarar (conjunto v1, deliberadamente mínimo). */
+export type PluginPermission = 'storage'
+
+/** Manifesto declarado por um plugin em manifest.json. */
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  entrypoint: string
+  permissions: PluginPermission[]
+  description?: string
+  author?: string
+}
+
+/** Estado de um plugin exposto ao renderer (sem o entrypoint, irrelevante para a UI). */
+export interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  permissions: PluginPermission[]
+  description?: string
+  author?: string
+  status: 'loaded' | 'error'
+  error?: string
+}
 
 /** Configurações persistidas via electron-store. */
 export interface ProsaSettings {
@@ -74,6 +115,11 @@ export interface ProsaSettings {
   pdfPageSize: PdfPageSize
   pdfLandscape: boolean
   pdfPrintBackground: boolean
+  focusWorkMinutes: number
+  focusBreakMinutes: number
+  wordGoal: number
+  fontProfiles: FontProfile[]
+  activeFontProfileId: string
   showWordCount: boolean
   showOutline: boolean
   distractionFree: boolean
@@ -95,6 +141,8 @@ export interface OpenedDocument {
   header?: string
   /** HTML do rodapé (apenas para o formato nativo .prosa). */
   footer?: string
+  /** Frontmatter YAML (chave/valor), extraído de arquivos .md ou guardado em .prosa. */
+  frontmatter?: Record<string, string>
 }
 
 /** Resultado de uma operação de abrir/salvar arquivo. */
@@ -123,6 +171,8 @@ export interface SavePayload {
   header?: string
   /** HTML do rodapé da página. */
   footer?: string
+  /** Frontmatter YAML (chave/valor) a preservar/escrever no .md ou .prosa. */
+  frontmatter?: Record<string, string>
 }
 
 /** Estilo de parágrafo rápido do painel de estilos. */
@@ -155,7 +205,7 @@ export interface ProsaApi {
   getAppInfo: () => Promise<AppInfo>
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
-  getPlugins: () => Promise<any[]>
+  getPlugins: () => Promise<PluginInfo[]>
   getTemplates: () => Promise<any[]>
   getTemplate: (id: string) => Promise<string>
   saveTemplate: (name: string, css: string) => Promise<void>
@@ -164,6 +214,10 @@ export interface ProsaApi {
   pinFile: (file: RecentFile) => Promise<RecentFile[]>
   unpinFile: (path: string) => Promise<RecentFile[]>
   searchFiles: (term: string) => Promise<{ path: string; snippet: string }[]>
+  listVersions: (path: string) => Promise<BackupVersion[]>
+  getVersionText: (path: string, file: string) => Promise<string>
+  saveFontProfile: (profile: Omit<FontProfile, 'id'>) => Promise<FontProfile[]>
+  deleteFontProfile: (id: string) => Promise<FontProfile[]>
   // Updater
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>

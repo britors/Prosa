@@ -1,0 +1,132 @@
+<div align="center">
+
+# Plugins do Prosa
+
+### Isolamento por padrão, permissões explícitas.
+
+</div>
+
+---
+
+## Introdução
+
+O Prosa carrega plugins de forma isolada: cada plugin instalado roda em seu próprio
+processo do sistema operacional (via `utilityProcess` do Electron), sem referência à
+janela principal, ao editor ou ao sistema de arquivos além do que for explicitamente
+concedido. Um plugin não tem acesso a nada por padrão — cada capacidade precisa ser
+declarada no manifesto e é verificada pelo processo principal a cada chamada.
+
+## Formato do plugin
+
+Cada plugin vive em sua própria pasta dentro do diretório de dados do usuário:
+
+```
+<userData>/plugins/<id>/
+  manifest.json
+  index.js         (ou o entrypoint declarado no manifesto)
+```
+
+### Schema de `manifest.json`
+
+| Campo | Tipo | Obrigatório | Descrição |
+| --- | --- | :---: | --- |
+| `id` | string | sim | Apenas `a-z`, `0-9` e `-`. Precisa ser idêntico ao nome da pasta. |
+| `name` | string | sim | Nome de exibição. |
+| `version` | string | sim | Versão no formato semver (ex: `1.0.0`). |
+| `entrypoint` | string | sim | Caminho relativo (terminando em `.js`) para o arquivo executado no processo isolado. Precisa resolver para dentro da própria pasta do plugin. |
+| `permissions` | string[] | não | Lista de permissões solicitadas (ver tabela abaixo). Padrão: nenhuma. |
+| `description` | string | não | Descrição curta, exibida no diálogo de plugins. |
+| `author` | string | não | Autor do plugin. |
+
+Manifestos inválidos (campo ausente, `entrypoint` fora da pasta, permissão
+desconhecida, `id` que não bate com a pasta etc.) são rejeitados com uma mensagem de
+erro específica, o plugin aparece como "Falha" no diálogo de plugins, e **o restante do
+aplicativo continua funcionando normalmente** — um plugin quebrado nunca impede o Prosa
+de iniciar.
+
+## Permissões (v1)
+
+O conjunto de permissões é deliberadamente mínimo: cada uma só existe quando já há
+código no processo principal que a aplica de verdade.
+
+| Permissão | Concede |
+| --- | --- |
+| `storage` | Acesso a um armazenamento chave-valor próprio do plugin (`storage:get`/`storage:set`), persistido em `<userData>/plugins-data/<id>/store.json`. Sem essa permissão, toda requisição de `storage` é recusada e registrada como tentativa negada. |
+
+Novas permissões só serão adicionadas junto com a funcionalidade que elas de fato
+protegem — nunca de forma especulativa.
+
+## Modelo de isolamento
+
+- Cada plugin é iniciado com `utilityProcess.fork()`: um processo do SO separado do
+  processo principal do Electron e da janela do editor.
+- O plugin **não recebe** referência a `BrowserWindow`, `app`, ao DOM do renderer ou a
+  qualquer objeto interno do Prosa.
+- Toda comunicação acontece por um conjunto fixo e pequeno de mensagens trocadas via
+  `process.parentPort.postMessage()` (do lado do plugin) e `postMessage()`/`on('message')`
+  (do lado do processo principal) — não é o mesmo canal de IPC usado entre o processo
+  principal e a interface do editor.
+- Cada capacidade (hoje, só `storage`) é conferida contra as permissões declaradas no
+  manifesto antes de ser executada.
+- `stdout`/`stderr` do plugin são espelhados no log do processo principal com o prefixo
+  `[plugin:<id>]`, e o encerramento inesperado do processo marca o plugin como "Falha"
+  sem afetar os demais plugins nem o restante do aplicativo.
+
+## Escrevendo um plugin — exemplo mínimo
+
+`manifest.json`:
+
+```json
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "entrypoint": "index.js",
+  "permissions": ["storage"]
+}
+```
+
+`index.js`:
+
+```js
+process.parentPort.postMessage({ type: 'log', message: 'olá do plugin!' })
+
+process.parentPort.postMessage({
+  type: 'storage:set',
+  requestId: '1',
+  key: 'saudacao',
+  value: 'oi'
+})
+
+process.parentPort.on('message', (event) => {
+  console.log('resposta do processo principal:', event.data)
+})
+
+process.parentPort.postMessage({ type: 'storage:get', requestId: '2', key: 'saudacao' })
+```
+
+## Diagnóstico
+
+- `[plugins] <id>: carregado (vX.Y.Z, permissões: ...)` — plugin carregado com sucesso.
+- `[plugins] <id>: manifesto inválido — ...` / `[plugins] <id>: manifest.json inválido (...)` — falha de validação, com a lista de problemas encontrados.
+- `[plugins] <id>: processo encerrado (código N)` — o processo do plugin caiu.
+- `[plugin:<id>] ...` — saída de `console.log`/`console.error` do próprio plugin.
+
+O diálogo "Gerenciar Plugins" (acessível pela paleta de comandos, `Ctrl+K`) mostra o
+mesmo estado — nome, versão, permissões declaradas e, em caso de falha, a mensagem de
+erro.
+
+## Limitações conhecidas / roadmap
+
+- Apenas a permissão `storage` tem enforcement real nesta versão — é uma prova do
+  pipeline completo (manifesto → permissão → processo isolado → IPC controlado →
+  aplicação da permissão), não um conjunto completo de capacidades. Futuras permissões
+  (acesso ao editor, rede, clipboard etc.) chegarão junto com o código que as impõe.
+- `utilityProcess` isola o plugin do processo principal e da janela do editor, mas o
+  processo do plugin continua sendo um processo Node comum: ele tem acesso normal ao
+  `fs`/`net`/`child_process` do próprio sistema operacional dentro do seu processo. O
+  modelo de permissões do Node (`--permission`, `--allow-fs-read`, etc.) poderia
+  restringir isso também, mas ainda é experimental na versão de Node empacotada pelo
+  Electron e fica de fora desta versão — é um candidato natural para uma issue de
+  follow-up, não algo que quisemos arriscar junto com o restante da base de sandbox.
+- Não há tratamento especial para symlinks dentro da pasta do plugin em v1.

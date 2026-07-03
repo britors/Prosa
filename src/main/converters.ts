@@ -36,9 +36,16 @@ export async function importDocx(buffer: Buffer): Promise<string> {
   return result.value
 }
 
+/** Substitui blocos $$...$$ por um placeholder HTML reconhecido pelo nó mathBlock. */
+function preprocessMathBlocks(markdown: string): string {
+  return markdown.replace(/\$\$\n([\s\S]*?)\n\$\$/g, (_match, latex: string) => {
+    return `<div data-math-block data-latex="${encodeURIComponent(latex)}"></div>`
+  })
+}
+
 /** Converte Markdown em HTML para alimentar o editor. */
 export function importMarkdown(markdown: string): string {
-  return marked.parse(markdown, { async: false }) as string
+  return marked.parse(preprocessMathBlocks(markdown), { async: false }) as string
 }
 
 /** Converte texto puro em HTML, preservando parágrafos. */
@@ -161,6 +168,8 @@ function blockToMarkdown(node: TipTapJSON, depth = 0): string {
       return inlineToMarkdown(node) + '\n'
     case 'table':
       return tableToMarkdown(node)
+    case 'mathBlock':
+      return `$$\n${String(node.attrs?.latex ?? '')}\n$$\n`
     default:
       return inlineToMarkdown(node)
   }
@@ -279,6 +288,13 @@ function blockToDocx(node: TipTapJSON): (Paragraph | DocxTable)[] {
       )
     case 'table':
       return [tableToDocx(node)]
+    case 'mathBlock':
+      return [
+        new Paragraph({
+          alignment: 'center',
+          children: [new TextRun({ text: String(node.attrs?.latex ?? ''), font: 'Courier New' })]
+        })
+      ]
     default:
       return [new Paragraph({ children: inlineToRuns(node) })]
   }

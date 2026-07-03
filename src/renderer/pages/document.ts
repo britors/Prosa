@@ -17,9 +17,15 @@ import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
 import { FindReplacePanel } from '../components/find-replace.js'
 import { WordCountBar } from '../components/word-count-bar.js'
-import { applyDocumentTheme } from '../components/theme-selector.js'
 import { FormatDialog } from '../components/format-dialog.js'
 import { TemplateDialog } from '../components/template-dialog.js'
+import { PluginDialog } from '../components/plugin-dialog.js'
+import { VersionCompareDialog } from '../components/version-compare-dialog.js'
+import { SyncNotification } from '../components/sync-notification.js'
+import { FocusTimer } from '../components/focus-timer.js'
+import { FontProfileDialog } from '../components/font-profile-dialog.js'
+import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
+import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -73,6 +79,12 @@ export class DocumentView {
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
   private readonly templateDialog: TemplateDialog
+  private readonly pluginDialog: PluginDialog
+  private readonly versionCompareDialog: VersionCompareDialog
+  private readonly syncNotification: SyncNotification
+  private readonly focusTimer: FocusTimer
+  private readonly fontProfileDialog: FontProfileDialog
+  private readonly frontmatterDialog: FrontmatterDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -86,6 +98,7 @@ export class DocumentView {
   private settings: ProsaSettings
   private headerHTML = ''
   private footerHTML = ''
+  private frontmatter: Record<string, string> = {}
   private typewriterMode = false
 
   constructor(els: DocumentViewElements, settings: ProsaSettings, searchModal: SearchModal) {
@@ -102,17 +115,30 @@ export class DocumentView {
       onMatchesUpdate: (current, total) =>
         this.findReplace.updateCounter(current, total),
       onHeaderClick: (params) => this.promptHeader(params),
-      onFooterClick: (params) => this.promptFooter(params)
+      onFooterClick: (params) => this.promptFooter(params),
+      onMathEdit: (request) => this.customPrompt('Fórmula LaTeX:', request.latex, request.event, request.onSave)
     })
     this.formatDialog = new FormatDialog(els.root)
     this.templateDialog = new TemplateDialog(els.root)
+    this.pluginDialog = new PluginDialog(els.root)
+    this.versionCompareDialog = new VersionCompareDialog(els.root)
+    this.syncNotification = new SyncNotification(els.root)
+    this.fontProfileDialog = new FontProfileDialog(els.root)
+    this.frontmatterDialog = new FrontmatterDialog(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show())
+    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show(), () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON), () => void this.fontProfileDialog.show(this.settings.activeFontProfileId, (profile) => {
+      applyFontProfile(this.els.editorHost, profile)
+      this.settings.activeFontProfileId = profile.id
+      void window.prosa.setSettings({ activeFontProfileId: profile.id })
+    }), () => this.frontmatterDialog.show(this.frontmatter, (fm) => {
+      this.frontmatter = fm
+      this.setDirty(true)
+    }), () => this.insertMathBlock())
 
 
     
@@ -133,7 +159,9 @@ export class DocumentView {
 
     this.outline = new SidebarOutline(els.outline, this.editor)
     this.styles = new StylesPanel(els.styles, this.editor)
-    this.statusBar = new WordCountBar(els.statusBar, this.editor)
+    this.focusTimer = new FocusTimer(settings.focusWorkMinutes, settings.focusBreakMinutes)
+    this.statusBar = new WordCountBar(els.statusBar, this.editor, this.focusTimer.el)
+    this.statusBar.setGoal(settings.wordGoal)
     this.formatDialog = new FormatDialog(els.root)
 
     this.dirtyState = new DirtyStateController(
@@ -254,13 +282,15 @@ export class DocumentView {
     documentName: string
     headerHTML: string
     footerHTML: string
+    frontmatter: Record<string, string>
   } {
     return {
       currentPath: this.currentPath,
       currentFormat: this.currentFormat,
       documentName: this.documentName,
       headerHTML: this.headerHTML,
-      footerHTML: this.footerHTML
+      footerHTML: this.footerHTML,
+      frontmatter: this.frontmatter
     }
   }
 
@@ -270,12 +300,14 @@ export class DocumentView {
     documentName: string
     headerHTML: string
     footerHTML: string
+    frontmatter: Record<string, string>
   }): void {
     this.currentPath = state.currentPath
     this.currentFormat = state.currentFormat
     this.documentName = state.documentName
     this.headerHTML = state.headerHTML
     this.footerHTML = state.footerHTML
+    this.frontmatter = state.frontmatter
   }
 
 
@@ -290,6 +322,14 @@ export class DocumentView {
     const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
     this.customPrompt('URL do link:', '', event, (url) => {
         if (url) this.editor.chain().focus().setLink({ href: url }).run()
+    })
+  }
+
+  /** Abre um prompt para inserir uma nova fórmula matemática. */
+  insertMathBlock(): void {
+    const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
+    this.customPrompt('Fórmula LaTeX:', '', event, (latex) => {
+      if (latex) this.editor.chain().focus().insertContent({ type: 'mathBlock', attrs: { latex } }).run()
     })
   }
 
@@ -317,7 +357,6 @@ export class DocumentView {
  * Implementação de um prompt customizado inline.
  */
 private customPrompt(title: string, defaultValue: string, event: MouseEvent, callback: (val: string) => void, richText: boolean = false): void {
-  console.log('DEBUG: customPrompt called with richText:', richText)
   const editorDom = this.editor.view.dom
   editorDom.classList.add('is-editing')
 
@@ -330,13 +369,14 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     menu.innerHTML = `
       <div class="prompt-title">${title}</div>
+      ${richText ? `
       <div class="mini-toolbar">
         <button class="btn-tool" id="bold" title="Negrito"><b>B</b></button>
         <button class="btn-tool" id="italic" title="Itálico"><i>I</i></button>
         <input type="color" id="color" title="Cor">
         <input type="number" id="size" title="Tamanho (px)" min="8" max="72" value="12">
         <button class="btn-tool" id="image" title="Imagem">🖼️</button>
-      </div>
+      </div>` : ''}
       <div class="mini-editor-container"></div>
       <div class="prompt-actions">
         <button class="btn btn-cancel">Cancelar</button>
@@ -388,7 +428,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     }
 
     btnSave.onclick = () => {
-        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('input') as HTMLInputElement).value
+        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('.floating-input') as HTMLInputElement).value
         callback(val)
         close()
     }
@@ -401,13 +441,13 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   document.body.appendChild(menu)
   setTimeout(() => {
       if (richText) miniEditor?.commands.focus()
-      else (menu.querySelector('input') as HTMLInputElement)?.focus()
+      else (menu.querySelector('.floating-input') as HTMLInputElement)?.focus()
   }, 10)
 }
 
   /** Aplica configurações iniciais (zoom, fonte, tema, visibilidade). */
   private applySettings(): void {
-    applyDocumentTheme(this.els.editorHost, 'serif')
+    applyFontProfile(this.els.editorHost, resolveFontProfile(this.settings.activeFontProfileId, this.settings.fontProfiles))
     this.setZoom(this.zoom)
     this.els.toolbar.removeAttribute('hidden')
     this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)
@@ -460,6 +500,14 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     if (partial.showWordCount !== undefined && !this.distractionFreeController.isEnabled()) {
       this.els.statusBar.toggleAttribute('hidden', !partial.showWordCount)
+    }
+
+    if (partial.focusWorkMinutes !== undefined || partial.focusBreakMinutes !== undefined) {
+      this.focusTimer.setDurations(this.settings.focusWorkMinutes, this.settings.focusBreakMinutes)
+    }
+
+    if (partial.wordGoal !== undefined) {
+      this.statusBar.setGoal(partial.wordGoal)
     }
 
     if (partial.autoSavePolicy !== undefined || partial.autoSaveDebounceSeconds !== undefined) {
@@ -524,6 +572,28 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
         window.prosa.setSettings({ workspacePath: path })
         window.location.reload()
     }
+  }
+
+  /** Escolhe a pasta observada para sincronização com serviços externos (Dropbox, Drive, etc). */
+  async chooseSyncFolder(): Promise<void> {
+    const path = await window.prosa.selectDirectory()
+    if (path) await window.prosa.setSettings({ syncPath: path })
+  }
+
+  /** Desativa a sincronização com pastas externas. */
+  async disableSync(): Promise<void> {
+    await window.prosa.setSettings({ syncPath: '' })
+  }
+
+  /** Trata uma notificação de que um arquivo da pasta de sincronização mudou externamente. */
+  handleSyncFileChanged(path: string): void {
+    const currentPath = this.currentPath
+    if (!currentPath || path !== currentPath) return
+    this.syncNotification.show(this.documentName, () => {
+      void window.prosa.openDocument(currentPath).then((res) => {
+        if (res.ok && res.document) this.load(res.document)
+      })
+    })
   }
 
   /** Define o nível de zoom da área de edição. */

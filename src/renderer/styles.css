@@ -17,6 +17,8 @@
   --danger: #d85a30;
   --document-bg: #1e2030;
   --document-font: Georgia, 'Times New Roman', serif;
+  --document-font-size: 12pt;
+  --document-line-height: 1.6;
   --editor-zoom: 1;
   --radius-component: 8px;
   --radius-panel: 12px;
@@ -518,8 +520,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   font-family: var(--document-font);
-  font-size: 12pt;
-  line-height: 1.6;
+  font-size: var(--document-font-size);
+  line-height: var(--document-line-height);
   color: #000000;
   /* Dica #32: Sombra de Profundidade */
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
@@ -867,6 +869,44 @@ body.is-resizing-image {
   flex: 1;
 }
 
+.goal-bar {
+  display: inline-flex;
+  align-items: center;
+}
+
+.goal-bar-track {
+  display: inline-block;
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.goal-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.focus-timer {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.focus-timer:hover {
+  color: var(--accent);
+}
+
 .status-dirty {
   color: var(--accent);
   margin-right: 4px;
@@ -991,6 +1031,136 @@ body.is-resizing-image {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.35;
+}
+
+.plugin-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.plugin-status-loaded {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.plugin-status-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.plugin-error-text {
+  color: var(--danger);
+}
+
+.modal-wide {
+  width: 900px;
+  max-width: calc(100vw - 48px);
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 12px 0 6px;
+}
+
+.field-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-component);
+  background: var(--bg);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.math-block {
+  display: block;
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-component);
+  text-align: center;
+  cursor: pointer;
+  overflow-x: auto;
+}
+
+.math-block:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.math-block .math-error {
+  color: var(--danger);
+  font-style: italic;
+}
+
+.frontmatter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.frontmatter-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.frontmatter-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.new-profile-form {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.diff-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-component);
+}
+
+.diff-column {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px 0;
+}
+
+.diff-column + .diff-column {
+  border-left: 1px solid var(--border);
+}
+
+.diff-line {
+  padding: 0 10px;
+}
+
+.diff-line-added {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.diff-line-removed {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 
 /* ------------------------------------------------------------------ */

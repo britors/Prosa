@@ -1,16 +1,12 @@
-<div align="center">
-
 # Prosa
 
-### Escreva. Formate. Publique.
+## Escreva. Formate. Publique
 
 **Editor de texto moderno, open source e em modo escuro — parte da suíte de escritório Rodrigo Brito.**
 
 [![Licença: GPL v3](https://img.shields.io/badge/Licen%C3%A7a-GPLv3-06B6D4.svg)](LICENSE)
 ![Electron](https://img.shields.io/badge/Electron-34-0891B2.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-06B6D4.svg)
-
-</div>
 
 ---
 
@@ -21,6 +17,8 @@ leveza e a estética de um editor atual.
 
 O editor é construído sobre o [TipTap](https://tiptap.dev) (ProseMirror) e suporta
 importação e exportação de `.docx`, Markdown, texto puro e PDF.
+
+![alt text](prosa.png)
 
 ## ✨ Funcionalidades
 
@@ -164,11 +162,11 @@ xvfb-run -a npm run test:e2e
 
 ## 🏗️ Estrutura do projeto
 
-```
+```bash
 src/
 ├── main/         # Processo principal do Electron (janela, menus, IPC, arquivos)
 ├── renderer/     # Interface: editor TipTap, barra de ferramentas, painéis, páginas
-└── shared/       # Tipos e utilidades compartilhadas entre os processos
+└── shared/      # Tipos e utilidades compartilhadas entre os processos
 tests/            # Testes unitários (node:test)
 ```
 
@@ -179,11 +177,13 @@ Contribuições são bem-vindas! Para contribuir:
 1. Faça um fork do repositório e crie um branch a partir de `main`.
 2. Mantenha o **TypeScript em modo estrito** — sem `any` desnecessário.
 3. Adicione o cabeçalho de licença em todo arquivo novo:
+
    ```ts
    // Prosa — Editor de Texto
    // Copyright (C) 2026 Rodrigo Brito
    // SPDX-License-Identifier: GPL-3.0-or-later
    ```
+
 4. Garanta que `npm run typecheck` e `npm test` passem.
 5. Abra um Pull Request descrevendo a mudança.
 

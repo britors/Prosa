@@ -13,8 +13,11 @@ import {
 } from 'electron'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import chokidar, { type FSWatcher } from 'chokidar'
-import { exportPdf, openDocument, saveDocument } from './file-manager.js'
+import { exportPdf } from './export-service.js'
+import { openDocument } from './open-service.js'
+import { saveDocument } from './save-service.js'
+import { listVersions, getVersionText } from './version-history.js'
+import { setupSyncWatcher, markSelfWrite, stopSyncWatcher } from './sync-watcher.js'
 import {
   getRecentFiles,
   getSettings,
@@ -23,14 +26,16 @@ import {
   clearPinnedFiles,
   getPinnedFiles,
   pinFile,
-  unpinFile
+  unpinFile,
+  saveFontProfile,
+  deleteFontProfile
 } from './settings.js'
 import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
-import { PluginManager } from './plugins.js'
+import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
-import type { AppInfo, RecentFile, SavePayload } from '../shared/types.js'
+import type { AppInfo, FontProfile, RecentFile, SavePayload } from '../shared/types.js'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
@@ -58,8 +63,6 @@ let splashShownAt = 0
 const SPLASH_MIN_MS = 1400
 /** Referência para o timer de autosave. */
 let autosaveTimer: NodeJS.Timeout | null = null
-/** Observador de arquivos da pasta de sincronização. */
-let syncWatcher: FSWatcher | null = null
 /** Indica se o documento atual possui alterações não salvas. */
 let documentDirty = false
 /** Intervalos disponíveis para autosave por inatividade (segundos). */
@@ -68,6 +71,12 @@ const AUTOSAVE_DEBOUNCE_OPTIONS = [10, 30, 60, 120]
 const AUTOSAVE_INTERVAL_OPTIONS = [1, 5, 15, 30]
 /** Quantidade de versões mantidas no backup automático. */
 const BACKUP_KEEP_OPTIONS = [5, 10, 20, 50]
+/** Durações disponíveis para a fase de trabalho do timer de foco (minutos). */
+const FOCUS_WORK_OPTIONS = [15, 25, 45, 60]
+/** Durações disponíveis para a fase de pausa do timer de foco (minutos). */
+const FOCUS_BREAK_OPTIONS = [5, 10, 15]
+/** Metas de palavras disponíveis para a barra de progresso (0 = desativada). */
+const WORD_GOAL_OPTIONS = [0, 500, 1000, 2500, 5000]
 
 /** Gerencia o timer de autosave com base nas configurações atuais. */
 function setupAutosave(): void {
@@ -85,22 +94,9 @@ function setupAutosave(): void {
   }
 }
 
-/** Inicializa o monitoramento da pasta de sincronização. */
-function setupSyncWatcher(): void {
-  if (syncWatcher) void syncWatcher.close()
-  syncWatcher = null
-
-  const settings = getSettings()
-  if (settings.syncPath) {
-    syncWatcher = chokidar.watch(settings.syncPath, {
-      ignored: /(^|[/\\])\../, // ignore dotfiles
-      persistent: true
-    })
-
-    syncWatcher.on('change', (path: string) => {
-        mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
-    })
-  }
+/** Notifica o renderer sobre uma mudança externa num arquivo da pasta de sincronização. */
+function notifySyncChange(path: string): void {
+  mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
 }
 
 /** Busca texto em todos os arquivos de uma pasta. */
@@ -168,6 +164,26 @@ function applyPdfSettings(partial: {
 }): void {
   setSettings(partial)
   buildMenu()
+}
+
+/** Atualiza preferências do timer de foco e notifica o renderer das novas durações. */
+function applyFocusTimerSettings(partial: {
+  focusWorkMinutes?: number
+  focusBreakMinutes?: number
+}): void {
+  const updated = setSettings(partial)
+  buildMenu()
+  sendMenuAction('settings:updated', {
+    focusWorkMinutes: updated.focusWorkMinutes,
+    focusBreakMinutes: updated.focusBreakMinutes
+  })
+}
+
+/** Atualiza a meta de palavras e notifica o renderer. */
+function applyWordGoalSettings(partial: { wordGoal: number }): void {
+  const updated = setSettings(partial)
+  buildMenu()
+  sendMenuAction('settings:updated', { wordGoal: updated.wordGoal })
 }
 
 /** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
@@ -254,10 +270,10 @@ function createWindow(): void {
   buildMenu()
   initUpdater(mainWindow)
   setupAutosave()
-  setupSyncWatcher()
-  
-  // Inicializa o gerenciador de plugins
-  void PluginManager.getInstance().loadPlugins()
+  setupSyncWatcher(notifySyncChange)
+
+  // Inicializa o gerenciador de plugins (nunca deve derrubar a janela principal)
+  void loadPlugins().catch((err) => console.error('[plugins] Erro inesperado ao carregar plugins:', err))
 }
 
 /** Abre o diálogo de impressão do sistema para o documento atual. */
@@ -460,6 +476,20 @@ function buildMenu(): void {
             }
           ]
         },
+        {
+          label: 'Sincronização',
+          submenu: [
+            {
+              label: 'Escolher pasta...',
+              click: () => sendMenuAction('sync:choose')
+            },
+            {
+              label: 'Desativar sincronização',
+              enabled: !!settings.syncPath,
+              click: () => sendMenuAction('sync:disable')
+            }
+          ]
+        },
         { type: 'separator' },
         {
           label: 'Exportar PDF',
@@ -525,6 +555,29 @@ function buildMenu(): void {
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => sendMenuAction('workspace:switch')
         },
+        {
+          label: 'Timer de Foco',
+          submenu: [
+            {
+              label: 'Duração do trabalho',
+              submenu: FOCUS_WORK_OPTIONS.map((minutes) => ({
+                label: `${minutes} min`,
+                type: 'radio' as const,
+                checked: settings.focusWorkMinutes === minutes,
+                click: () => applyFocusTimerSettings({ focusWorkMinutes: minutes })
+              }))
+            },
+            {
+              label: 'Duração da pausa',
+              submenu: FOCUS_BREAK_OPTIONS.map((minutes) => ({
+                label: `${minutes} min`,
+                type: 'radio' as const,
+                checked: settings.focusBreakMinutes === minutes,
+                click: () => applyFocusTimerSettings({ focusBreakMinutes: minutes })
+              }))
+            }
+          ]
+        },
         { type: 'separator' },
         {
           label: 'Localizar',
@@ -588,6 +641,15 @@ function buildMenu(): void {
         { label: 'Alternar tópicos', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('view:toggleOutline') },
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
+        {
+          label: 'Meta de Palavras',
+          submenu: WORD_GOAL_OPTIONS.map((goal) => ({
+            label: goal === 0 ? 'Nenhuma' : `${goal} palavras`,
+            type: 'radio' as const,
+            checked: settings.wordGoal === goal,
+            click: () => applyWordGoalSettings({ wordGoal: goal })
+          }))
+        },
         {
           label: 'Modo sem distrações',
           accelerator: 'CmdOrCtrl+Shift+D',
@@ -663,6 +725,7 @@ function registerIpc(): void {
     const result = await saveDocument(mainWindow, payload, false)
     if (result.ok) {
       documentDirty = false
+      if (result.path) markSelfWrite(result.path)
       buildMenu()
     }
     return result
@@ -673,6 +736,7 @@ function registerIpc(): void {
     const result = await saveDocument(mainWindow, payload, true)
     if (result.ok) {
       documentDirty = false
+      if (result.path) markSelfWrite(result.path)
       buildMenu()
     }
     return result
@@ -714,13 +778,19 @@ function registerIpc(): void {
     if (!settings.workspacePath) return []
     return await searchInFiles(settings.workspacePath, term)
   })
-  ipcMain.handle('plugins:list', () => PluginManager.getInstance().getAvailablePlugins())
+  ipcMain.handle('plugins:list', () => getAvailablePlugins())
+
+  ipcMain.handle('versions:list', (_event, path: string) => listVersions(path))
+  ipcMain.handle('versions:text', (_event, path: string, file: string) => getVersionText(path, file))
+
+  ipcMain.handle('fontProfiles:save', (_event, profile: Omit<FontProfile, 'id'>) => saveFontProfile(profile))
+  ipcMain.handle('fontProfiles:delete', (_event, id: string) => deleteFontProfile(id))
 
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, partial) => {
     const updated = setSettings(partial)
     setupAutosave() // Atualiza o timer se necessário
-    if (partial.syncPath !== undefined) setupSyncWatcher()
+    if (partial.syncPath !== undefined) setupSyncWatcher(notifySyncChange)
     buildMenu()
     return updated
   })
@@ -759,4 +829,9 @@ app.on('window-all-closed', () => {
   if (!isMac) {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  unloadPlugins()
+  stopSyncWatcher()
 })

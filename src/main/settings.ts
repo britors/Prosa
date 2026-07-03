@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Store from 'electron-store'
-import type { AutoSavePolicy, ProsaSettings, RecentFile } from '../shared/types.js'
+import { randomUUID } from 'node:crypto'
+import type { AutoSavePolicy, FontProfile, ProsaSettings, RecentFile } from '../shared/types.js'
 
 /** Valores padrão das configurações do Prosa. */
 const defaults: ProsaSettings = {
@@ -21,6 +22,11 @@ const defaults: ProsaSettings = {
   pdfPageSize: 'A4',
   pdfLandscape: false,
   pdfPrintBackground: true,
+  focusWorkMinutes: 25,
+  focusBreakMinutes: 5,
+  wordGoal: 0,
+  fontProfiles: [],
+  activeFontProfileId: 'serif',
   showWordCount: true,
   showOutline: true,
   distractionFree: false,
@@ -52,6 +58,23 @@ function normalizePdfPageSize(value: unknown): ProsaSettings['pdfPageSize'] {
   return defaults.pdfPageSize
 }
 
+function isFontProfile(value: unknown): value is FontProfile {
+  if (typeof value !== 'object' || value === null) return false
+  const p = value as Record<string, unknown>
+  return (
+    typeof p.id === 'string' &&
+    typeof p.name === 'string' &&
+    typeof p.fontFamily === 'string' &&
+    typeof p.fontSize === 'number' &&
+    typeof p.lineHeight === 'number'
+  )
+}
+
+function normalizeFontProfiles(value: unknown): FontProfile[] {
+  if (!Array.isArray(value)) return defaults.fontProfiles
+  return value.filter(isFontProfile)
+}
+
 function normalizeSettings(raw: StoredSettings): ProsaSettings {
   let autoSavePolicy: AutoSavePolicy
   if (isAutoSavePolicy(raw.autoSavePolicy)) {
@@ -78,6 +101,15 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
   const pdfPrintBackground =
     typeof raw.pdfPrintBackground === 'boolean' ? raw.pdfPrintBackground : defaults.pdfPrintBackground
   const backupOnSave = typeof raw.backupOnSave === 'boolean' ? raw.backupOnSave : defaults.backupOnSave
+  const focusWorkMinutes = normalizePositiveInt(raw.focusWorkMinutes, defaults.focusWorkMinutes)
+  const focusBreakMinutes = normalizePositiveInt(raw.focusBreakMinutes, defaults.focusBreakMinutes)
+  const wordGoal =
+    typeof raw.wordGoal === 'number' && Number.isFinite(raw.wordGoal)
+      ? Math.max(0, Math.round(raw.wordGoal))
+      : defaults.wordGoal
+  const fontProfiles = normalizeFontProfiles(raw.fontProfiles)
+  const activeFontProfileId =
+    typeof raw.activeFontProfileId === 'string' ? raw.activeFontProfileId : defaults.activeFontProfileId
 
   return {
     ...defaults,
@@ -89,7 +121,12 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
     backupKeepVersions,
     pdfPageSize,
     pdfLandscape,
-    pdfPrintBackground
+    pdfPrintBackground,
+    focusWorkMinutes,
+    focusBreakMinutes,
+    wordGoal,
+    fontProfiles,
+    activeFontProfileId
   }
 }
 
@@ -117,6 +154,21 @@ export function unpinFile(path: string): RecentFile[] {
 export function clearPinnedFiles(): RecentFile[] {
   store.set('pinnedFiles', [])
   return []
+}
+
+/** Salva um novo perfil de fonte customizado. */
+export function saveFontProfile(profile: Omit<FontProfile, 'id'>): FontProfile[] {
+  const current = store.get('fontProfiles', [])
+  const updated = [...current, { ...profile, id: randomUUID() }]
+  store.set('fontProfiles', updated)
+  return updated
+}
+
+/** Remove um perfil de fonte customizado. */
+export function deleteFontProfile(id: string): FontProfile[] {
+  const updated = store.get('fontProfiles', []).filter((p) => p.id !== id)
+  store.set('fontProfiles', updated)
+  return updated
 }
 
 /** Retorna todas as configurações atuais. */

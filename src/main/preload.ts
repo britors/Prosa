@@ -5,7 +5,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
+  BackupVersion,
   FileResult,
+  FontProfile,
+  PluginInfo,
   ProsaApi,
   ProsaSettings,
   RecentFile,
@@ -46,7 +49,7 @@ const api: ProsaApi = {
   getAppInfo: () => ipcRenderer.invoke('app:info') as Promise<AppInfo>,
   getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
-  getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<any[]>,
+  getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<PluginInfo[]>,
   getTemplates: () => ipcRenderer.invoke('templates:list') as Promise<any[]>,
   getTemplate: (id: string) => ipcRenderer.invoke('templates:get', id) as Promise<string>,
   saveTemplate: (name: string, css: string) => ipcRenderer.invoke('templates:save', name, css),
@@ -55,6 +58,11 @@ const api: ProsaApi = {
   pinFile: (file: RecentFile) => ipcRenderer.invoke('file:pin', file) as Promise<RecentFile[]>,
   unpinFile: (path: string) => ipcRenderer.invoke('file:unpin', path) as Promise<RecentFile[]>,
   searchFiles: (term: string) => ipcRenderer.invoke('file:search', term) as Promise<{ path: string; snippet: string }[]>,
+  listVersions: (path: string) => ipcRenderer.invoke('versions:list', path) as Promise<BackupVersion[]>,
+  getVersionText: (path: string, file: string) => ipcRenderer.invoke('versions:text', path, file) as Promise<string>,
+  saveFontProfile: (profile: Omit<FontProfile, 'id'>) =>
+    ipcRenderer.invoke('fontProfiles:save', profile) as Promise<FontProfile[]>,
+  deleteFontProfile: (id: string) => ipcRenderer.invoke('fontProfiles:delete', id) as Promise<FontProfile[]>,
   // Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<void>,
   downloadUpdate: () => ipcRenderer.invoke('updater:download') as Promise<void>,

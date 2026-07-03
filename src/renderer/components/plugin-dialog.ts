@@ -2,6 +2,17 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PluginInfo } from '../../shared/types.js'
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 export class PluginDialog {
   private readonly overlay: HTMLElement
 
@@ -18,7 +29,33 @@ export class PluginDialog {
     this.overlay.hidden = false
   }
 
-  private render(plugins: { id: string; name: string }[]): void {
+  private render(plugins: PluginInfo[]): void {
+    const cards =
+      plugins.length === 0
+        ? '<p class="format-card-desc">Nenhum plugin instalado.</p>'
+        : plugins
+            .map((p) => {
+              const loaded = p.status === 'loaded'
+              const permissions = p.permissions.length > 0 ? p.permissions.join(', ') : 'nenhuma'
+              return `
+            <div class="format-card" data-current="${loaded}">
+              <i class="ti ti-plug"></i>
+              <div class="format-card-body">
+                <span class="format-card-title">
+                  ${escapeHtml(p.name)}
+                  <span class="format-card-ext">v${escapeHtml(p.version)}</span>
+                  <span class="plugin-status plugin-status-${loaded ? 'loaded' : 'error'}">
+                    ${loaded ? 'Carregado' : 'Falha'}
+                  </span>
+                </span>
+                <span class="format-card-desc">Permissões: ${escapeHtml(permissions)}</span>
+                ${p.description ? `<span class="format-card-desc">${escapeHtml(p.description)}</span>` : ''}
+                ${p.error ? `<span class="format-card-desc plugin-error-text">${escapeHtml(p.error)}</span>` : ''}
+              </div>
+            </div>`
+            })
+            .join('')
+
     this.overlay.innerHTML = `
       <div class="modal" role="dialog" aria-label="Plugins">
         <div class="modal-header">
@@ -26,15 +63,7 @@ export class PluginDialog {
           <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
         </div>
         <div class="format-grid">
-          ${plugins.map(
-            (p) => `
-            <div class="format-card">
-              <i class="ti ti-plug"></i>
-              <div class="format-card-body">
-                <span class="format-card-title">${p.name}</span>
-              </div>
-            </div>`
-          ).join('')}
+          ${cards}
         </div>
       </div>
     `

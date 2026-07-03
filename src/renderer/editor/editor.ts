@@ -29,6 +29,7 @@ import { Citation } from './extensions/citation'
 import { FontSize } from './extensions/font-size'
 import { FindReplace } from './extensions/find-replace'
 import { ResizableImage } from './extensions/resizable-image'
+import { MathBlock, type MathEditRequest } from './extensions/math-block'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 
 /** Callbacks de ciclo de vida do editor. */
@@ -38,6 +39,7 @@ export interface EditorCallbacks {
   onMatchesUpdate: (current: number, total: number) => void
   onHeaderClick?: (params: { event: MouseEvent }) => void
   onFooterClick?: (params: { event: MouseEvent }) => void
+  onMathEdit?: (request: MathEditRequest) => void
 }
 
 /** Cria e configura a instância do editor TipTap do Prosa. */
@@ -74,6 +76,7 @@ export function createEditor(
       TaskList,
       TaskItem.configure({ nested: true }),
       PageBreak,
+      MathBlock.configure({ onEditRequest: (request) => callbacks.onMathEdit?.(request) }),
       Wikilink,
       Tag,
       Citation,

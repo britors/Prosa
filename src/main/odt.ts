@@ -185,6 +185,8 @@ function blockToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
         .join('')
     case 'codeBlock':
       return `<text:p text:style-name="Preformatted_20_Text">${inlineToOdt(node, styles)}</text:p>`
+    case 'mathBlock':
+      return `<text:p text:style-name="Preformatted_20_Text">${escapeXml(String(node.attrs?.latex ?? ''))}</text:p>`
     case 'bulletList':
     case 'orderedList':
       return listToOdt(node, styles)

@@ -90,6 +90,8 @@ function blockToRtf(node: TipTapJSON, listPrefix = ''): string {
         .join('')
     case 'codeBlock':
       return `\\pard\\sa180\\f1 ${inlineToRtf(node)}\\f0\\par\n`
+    case 'mathBlock':
+      return `\\pard\\qc\\sa180\\f1 ${escapeRtf(String(node.attrs?.latex ?? ''))}\\f0\\par\n`
     case 'bulletList':
       return (node.content ?? [])
         .map((item) =>

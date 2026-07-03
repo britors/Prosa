@@ -17,8 +17,13 @@ export class CommandPalette {
   private onGraph?: () => void
   private onTemplateManager?: () => void
   private onSearch?: () => void
+  private onPluginManager?: () => void
+  private onVersionHistory?: () => void
+  private onFontProfiles?: () => void
+  private onFrontmatter?: () => void
+  private onInsertMath?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -29,6 +34,11 @@ export class CommandPalette {
     this.onGraph = onGraph
     this.onTemplateManager = onTemplateManager
     this.onSearch = onSearch
+    this.onPluginManager = onPluginManager
+    this.onVersionHistory = onVersionHistory
+    this.onFontProfiles = onFontProfiles
+    this.onFrontmatter = onFrontmatter
+    this.onInsertMath = onInsertMath
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -55,6 +65,11 @@ export class CommandPalette {
         { label: 'Inserir Citação', action: () => this.onCitation?.() },
         { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
         { label: 'Gerenciar Templates', action: () => this.onTemplateManager?.() },
+        { label: 'Gerenciar Plugins', action: () => this.onPluginManager?.() },
+        { label: 'Comparar Versões', action: () => this.onVersionHistory?.() },
+        { label: 'Perfis de Fonte', action: () => this.onFontProfiles?.() },
+        { label: 'Editar Frontmatter', action: () => this.onFrontmatter?.() },
+        { label: 'Inserir Fórmula', action: () => this.onInsertMath?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
