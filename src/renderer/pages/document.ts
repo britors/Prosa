@@ -17,13 +17,14 @@ import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
 import { FindReplacePanel } from '../components/find-replace.js'
 import { WordCountBar } from '../components/word-count-bar.js'
-import { applyDocumentTheme } from '../components/theme-selector.js'
 import { FormatDialog } from '../components/format-dialog.js'
 import { TemplateDialog } from '../components/template-dialog.js'
 import { PluginDialog } from '../components/plugin-dialog.js'
 import { VersionCompareDialog } from '../components/version-compare-dialog.js'
 import { SyncNotification } from '../components/sync-notification.js'
 import { FocusTimer } from '../components/focus-timer.js'
+import { FontProfileDialog } from '../components/font-profile-dialog.js'
+import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -81,6 +82,7 @@ export class DocumentView {
   private readonly versionCompareDialog: VersionCompareDialog
   private readonly syncNotification: SyncNotification
   private readonly focusTimer: FocusTimer
+  private readonly fontProfileDialog: FontProfileDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -117,13 +119,18 @@ export class DocumentView {
     this.pluginDialog = new PluginDialog(els.root)
     this.versionCompareDialog = new VersionCompareDialog(els.root)
     this.syncNotification = new SyncNotification(els.root)
+    this.fontProfileDialog = new FontProfileDialog(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show(), () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON))
+    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show(), () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON), () => void this.fontProfileDialog.show(this.settings.activeFontProfileId, (profile) => {
+      applyFontProfile(this.els.editorHost, profile)
+      this.settings.activeFontProfileId = profile.id
+      void window.prosa.setSettings({ activeFontProfileId: profile.id })
+    }))
 
 
     
@@ -420,7 +427,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Aplica configurações iniciais (zoom, fonte, tema, visibilidade). */
   private applySettings(): void {
-    applyDocumentTheme(this.els.editorHost, 'serif')
+    applyFontProfile(this.els.editorHost, resolveFontProfile(this.settings.activeFontProfileId, this.settings.fontProfiles))
     this.setZoom(this.zoom)
     this.els.toolbar.removeAttribute('hidden')
     this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)

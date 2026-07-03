@@ -19,8 +19,9 @@ export class CommandPalette {
   private onSearch?: () => void
   private onPluginManager?: () => void
   private onVersionHistory?: () => void
+  private onFontProfiles?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -33,6 +34,7 @@ export class CommandPalette {
     this.onSearch = onSearch
     this.onPluginManager = onPluginManager
     this.onVersionHistory = onVersionHistory
+    this.onFontProfiles = onFontProfiles
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -61,6 +63,7 @@ export class CommandPalette {
         { label: 'Gerenciar Templates', action: () => this.onTemplateManager?.() },
         { label: 'Gerenciar Plugins', action: () => this.onPluginManager?.() },
         { label: 'Comparar Versões', action: () => this.onVersionHistory?.() },
+        { label: 'Perfis de Fonte', action: () => this.onFontProfiles?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]

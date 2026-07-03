@@ -64,6 +64,15 @@ export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 /** Tamanhos de página suportados na exportação PDF. */
 export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 
+/** Perfil de fonte nomeado, aplicável ao editor. */
+export interface FontProfile {
+  id: string
+  name: string
+  fontFamily: string
+  fontSize: number
+  lineHeight: number
+}
+
 /** Permissões que um plugin pode declarar (conjunto v1, deliberadamente mínimo). */
 export type PluginPermission = 'storage'
 
@@ -109,6 +118,8 @@ export interface ProsaSettings {
   focusWorkMinutes: number
   focusBreakMinutes: number
   wordGoal: number
+  fontProfiles: FontProfile[]
+  activeFontProfileId: string
   showWordCount: boolean
   showOutline: boolean
   distractionFree: boolean
@@ -201,6 +212,8 @@ export interface ProsaApi {
   searchFiles: (term: string) => Promise<{ path: string; snippet: string }[]>
   listVersions: (path: string) => Promise<BackupVersion[]>
   getVersionText: (path: string, file: string) => Promise<string>
+  saveFontProfile: (profile: Omit<FontProfile, 'id'>) => Promise<FontProfile[]>
+  deleteFontProfile: (id: string) => Promise<FontProfile[]>
   // Updater
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>

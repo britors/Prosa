@@ -7,6 +7,7 @@ import type {
   AppInfo,
   BackupVersion,
   FileResult,
+  FontProfile,
   PluginInfo,
   ProsaApi,
   ProsaSettings,
@@ -59,6 +60,9 @@ const api: ProsaApi = {
   searchFiles: (term: string) => ipcRenderer.invoke('file:search', term) as Promise<{ path: string; snippet: string }[]>,
   listVersions: (path: string) => ipcRenderer.invoke('versions:list', path) as Promise<BackupVersion[]>,
   getVersionText: (path: string, file: string) => ipcRenderer.invoke('versions:text', path, file) as Promise<string>,
+  saveFontProfile: (profile: Omit<FontProfile, 'id'>) =>
+    ipcRenderer.invoke('fontProfiles:save', profile) as Promise<FontProfile[]>,
+  deleteFontProfile: (id: string) => ipcRenderer.invoke('fontProfiles:delete', id) as Promise<FontProfile[]>,
   // Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<void>,
   downloadUpdate: () => ipcRenderer.invoke('updater:download') as Promise<void>,

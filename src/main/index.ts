@@ -26,14 +26,16 @@ import {
   clearPinnedFiles,
   getPinnedFiles,
   pinFile,
-  unpinFile
+  unpinFile,
+  saveFontProfile,
+  deleteFontProfile
 } from './settings.js'
 import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
 import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
-import type { AppInfo, RecentFile, SavePayload } from '../shared/types.js'
+import type { AppInfo, FontProfile, RecentFile, SavePayload } from '../shared/types.js'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
@@ -780,6 +782,9 @@ function registerIpc(): void {
 
   ipcMain.handle('versions:list', (_event, path: string) => listVersions(path))
   ipcMain.handle('versions:text', (_event, path: string, file: string) => getVersionText(path, file))
+
+  ipcMain.handle('fontProfiles:save', (_event, profile: Omit<FontProfile, 'id'>) => saveFontProfile(profile))
+  ipcMain.handle('fontProfiles:delete', (_event, id: string) => deleteFontProfile(id))
 
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, partial) => {

@@ -17,6 +17,8 @@
   --danger: #d85a30;
   --document-bg: #1e2030;
   --document-font: Georgia, 'Times New Roman', serif;
+  --document-font-size: 12pt;
+  --document-line-height: 1.6;
   --editor-zoom: 1;
   --radius-component: 8px;
   --radius-panel: 12px;
@@ -518,8 +520,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   font-family: var(--document-font);
-  font-size: 12pt;
-  line-height: 1.6;
+  font-size: var(--document-font-size);
+  line-height: var(--document-line-height);
   color: #000000;
   /* Dica #32: Sombra de Profundidade */
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
@@ -1074,6 +1076,14 @@ body.is-resizing-image {
   background: var(--bg);
   color: var(--text-primary);
   font: inherit;
+}
+
+.new-profile-form {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
 }
 
 .diff-columns {
