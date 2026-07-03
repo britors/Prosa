@@ -138,6 +138,7 @@ npm start
 | `npm start` | Compila e abre o Prosa. |
 | `npm run typecheck` | Verificação de tipos com `tsc --noEmit`. |
 | `npm test` | Executa os testes com `node:test` + `tsx`. |
+| `npm run test:e2e` | Executa integração/E2E do renderer com Electron. |
 | `npm run dist` | Gera os instaladores com `electron-builder`. |
 
 ## 🧪 Testes
@@ -147,6 +148,18 @@ de `.docx` e Markdown, além das utilidades de contagem e extração de tópicos
 
 ```bash
 npm test
+```
+
+Para os fluxos críticos do renderer (Electron E2E):
+
+```bash
+npm run test:e2e
+```
+
+Em ambientes headless (CI/Linux sem display), execute com Xvfb:
+
+```bash
+xvfb-run -a npm run test:e2e
 ```
 
 ## 🏗️ Estrutura do projeto
