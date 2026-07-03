@@ -20,6 +20,7 @@ import {
   getSettings,
   setSettings,
   clearRecentFiles,
+  clearPinnedFiles,
   getPinnedFiles,
   pinFile,
   unpinFile
@@ -65,6 +66,8 @@ let documentDirty = false
 const AUTOSAVE_DEBOUNCE_OPTIONS = [10, 30, 60, 120]
 /** Intervalos disponíveis para autosave periódico (minutos). */
 const AUTOSAVE_INTERVAL_OPTIONS = [1, 5, 15, 30]
+/** Quantidade de versões mantidas no backup automático. */
+const BACKUP_KEEP_OPTIONS = [5, 10, 20, 50]
 
 /** Gerencia o timer de autosave com base nas configurações atuais. */
 function setupAutosave(): void {
@@ -146,6 +149,25 @@ function applyAutosaveSettings(partial: {
     autoSaveDebounceSeconds: updated.autoSaveDebounceSeconds,
     autoSaveIntervalMinutes: updated.autoSaveIntervalMinutes
   })
+}
+
+/** Atualiza preferências de backup automático. */
+function applyBackupSettings(partial: {
+  backupOnSave?: boolean
+  backupKeepVersions?: number
+}): void {
+  setSettings(partial)
+  buildMenu()
+}
+
+/** Atualiza preferências de exportação PDF. */
+function applyPdfSettings(partial: {
+  pdfPageSize?: 'A4' | 'Letter' | 'Legal'
+  pdfLandscape?: boolean
+  pdfPrintBackground?: boolean
+}): void {
+  setSettings(partial)
+  buildMenu()
 }
 
 /** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
@@ -304,6 +326,25 @@ function buildMenu(): void {
           }
         ]
       : [{ label: 'Nenhum arquivo recente', enabled: false }]
+  const pinned = getPinnedFiles()
+  const pinnedItems: MenuItemConstructorOptions[] =
+    pinned.length > 0
+      ? [
+          ...pinned.map((file) => ({
+            label: file.name,
+            click: () => void handleOpen(file.path)
+          })),
+          { type: 'separator' as const },
+          {
+            label: 'Limpar fixados',
+            click: () => {
+              clearPinnedFiles()
+              buildMenu()
+              mainWindow?.webContents.send('menu:action', 'file:recentCleared')
+            }
+          }
+        ]
+      : [{ label: 'Nenhum arquivo fixado', enabled: false }]
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -398,6 +439,27 @@ function buildMenu(): void {
             }
           ]
         },
+        {
+          label: 'Backups automáticos',
+          submenu: [
+            {
+              label: 'Ativar backup ao salvar',
+              type: 'checkbox',
+              checked: settings.backupOnSave,
+              click: () => applyBackupSettings({ backupOnSave: !settings.backupOnSave })
+            },
+            { type: 'separator' },
+            {
+              label: 'Manter versões',
+              submenu: BACKUP_KEEP_OPTIONS.map((count) => ({
+                label: `${count}`,
+                type: 'radio' as const,
+                checked: settings.backupKeepVersions === count,
+                click: () => applyBackupSettings({ backupKeepVersions: count })
+              }))
+            }
+          ]
+        },
         { type: 'separator' },
         {
           label: 'Exportar PDF',
@@ -405,10 +467,37 @@ function buildMenu(): void {
           click: () => sendMenuAction('file:exportPdf')
         },
         {
+          label: 'Configurações de PDF',
+          submenu: [
+            {
+              label: 'Tamanho da página',
+              submenu: ['A4', 'Letter', 'Legal'].map((size) => ({
+                label: size,
+                type: 'radio' as const,
+                checked: settings.pdfPageSize === size,
+                click: () => applyPdfSettings({ pdfPageSize: size as 'A4' | 'Letter' | 'Legal' })
+              }))
+            },
+            {
+              label: 'Orientação paisagem',
+              type: 'checkbox',
+              checked: settings.pdfLandscape,
+              click: () => applyPdfSettings({ pdfLandscape: !settings.pdfLandscape })
+            },
+            {
+              label: 'Imprimir fundo',
+              type: 'checkbox',
+              checked: settings.pdfPrintBackground,
+              click: () => applyPdfSettings({ pdfPrintBackground: !settings.pdfPrintBackground })
+            }
+          ]
+        },
+        {
           label: 'Imprimir...',
           accelerator: 'CmdOrCtrl+P',
           click: () => handlePrint()
         },
+        { label: 'Arquivos fixados', submenu: pinnedItems },
         { label: 'Arquivos recentes', submenu: recentItems },
         { type: 'separator' },
         isMac ? { role: 'close', label: 'Fechar' } : { role: 'quit', label: 'Sair' }
@@ -591,7 +680,12 @@ function registerIpc(): void {
 
   ipcMain.handle('file:exportPdf', async (_event, defaultName: string) => {
     if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
-    return exportPdf(mainWindow, defaultName)
+    const settings = getSettings()
+    return exportPdf(mainWindow, defaultName, {
+      pageSize: settings.pdfPageSize,
+      landscape: settings.pdfLandscape,
+      printBackground: settings.pdfPrintBackground
+    })
   })
 
   ipcMain.handle('file:print', () => {
@@ -612,6 +706,7 @@ function registerIpc(): void {
   ipcMain.handle('templates:save', (_event, name: string, css: string) => saveTemplate(name, css))
   ipcMain.handle('templates:delete', (_event, id: string) => deleteTemplate(id))
   ipcMain.handle('file:pinned', () => getPinnedFiles())
+  ipcMain.handle('file:clearPinned', () => clearPinnedFiles())
   ipcMain.handle('file:pin', (_event, file: RecentFile) => pinFile(file))
   ipcMain.handle('file:unpin', (_event, path: string) => unpinFile(path))
   ipcMain.handle('file:search', async (_event, term: string) => {

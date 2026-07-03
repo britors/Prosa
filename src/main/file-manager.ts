@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { BrowserWindow, dialog } from 'electron'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises'
 import { basename, extname, join, dirname } from 'node:path'
 import {
   exportDocx,
@@ -15,7 +15,7 @@ import {
 import { exportOdt, importOdt } from './odt.js'
 import { exportRtf, importRtf } from './rtf.js'
 import { importDoc } from './doc.js'
-import { addRecentFile, removeRecentFile } from './settings.js'
+import { addRecentFile, getSettings, removeRecentFile } from './settings.js'
 import type {
   FileFormat,
   FileResult,
@@ -283,7 +283,10 @@ export async function saveDocument(
       target = format ? ensureExtension(result.filePath, format) : result.filePath
     }
     await writeDocument(target, payload, format)
-    await createBackup(target, payload)
+    const settings = getSettings()
+    if (settings.backupOnSave) {
+      await createBackup(target, payload, settings.backupKeepVersions)
+    }
     addRecentFile({
       path: target,
       name: basename(target),
@@ -296,18 +299,40 @@ export async function saveDocument(
 }
 
 /** Cria um backup automático do arquivo. */
-export async function createBackup(path: string, payload: SavePayload): Promise<void> {
+export async function createBackup(path: string, payload: SavePayload, keepVersions = 20): Promise<void> {
   const backupDir = join(dirname(path), '.backups')
   await mkdir(backupDir, { recursive: true })
   const timestamp = new Date().toISOString().replace(/:/g, '-')
   const backupPath = join(backupDir, `${basename(path)}.${timestamp}.bak`)
   await writeFile(backupPath, JSON.stringify(payload), 'utf-8')
+
+  const entries = await readdir(backupDir)
+  const prefix = `${basename(path)}.`
+  const backups = entries
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.bak'))
+    .sort((a, b) => b.localeCompare(a))
+
+  const stale = backups.slice(Math.max(1, keepVersions))
+  await Promise.all(
+    stale.map(async (name) => {
+      try {
+        await unlink(join(backupDir, name))
+      } catch {
+        // Ignore race conditions/permissions while pruning old backups.
+      }
+    })
+  )
 }
 
 /** Exporta a janela atual para PDF via printToPDF. */
 export async function exportPdf(
   window: BrowserWindow,
-  defaultName: string
+  defaultName: string,
+  options?: {
+    pageSize?: 'A4' | 'Letter' | 'Legal'
+    landscape?: boolean
+    printBackground?: boolean
+  }
 ): Promise<FileResult> {
   try {
     const result = await dialog.showSaveDialog(window, {
@@ -319,8 +344,9 @@ export async function exportPdf(
       return { ok: false, canceled: true }
     }
     const data = await window.webContents.printToPDF({
-      printBackground: true,
-      pageSize: 'A4',
+      printBackground: options?.printBackground ?? true,
+      pageSize: options?.pageSize ?? 'A4',
+      landscape: options?.landscape ?? false,
       margins: { top: 0.98, bottom: 0.98, left: 0.79, right: 0.79 }
     })
     await writeFile(result.filePath, data)

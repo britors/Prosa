@@ -16,6 +16,11 @@ const defaults: ProsaSettings = {
   autoSavePolicy: 'interval',
   autoSaveDebounceSeconds: 30,
   autoSaveIntervalMinutes: 5,
+  backupOnSave: true,
+  backupKeepVersions: 20,
+  pdfPageSize: 'A4',
+  pdfLandscape: false,
+  pdfPrintBackground: true,
   showWordCount: true,
   showOutline: true,
   distractionFree: false,
@@ -42,6 +47,11 @@ function normalizePositiveInt(value: unknown, fallback: number): number {
   return Math.max(1, Math.round(value))
 }
 
+function normalizePdfPageSize(value: unknown): ProsaSettings['pdfPageSize'] {
+  if (value === 'A4' || value === 'Letter' || value === 'Legal') return value
+  return defaults.pdfPageSize
+}
+
 function normalizeSettings(raw: StoredSettings): ProsaSettings {
   let autoSavePolicy: AutoSavePolicy
   if (isAutoSavePolicy(raw.autoSavePolicy)) {
@@ -62,13 +72,24 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
     raw.autoSaveIntervalMinutes,
     defaults.autoSaveIntervalMinutes
   )
+  const backupKeepVersions = normalizePositiveInt(raw.backupKeepVersions, defaults.backupKeepVersions)
+  const pdfPageSize = normalizePdfPageSize(raw.pdfPageSize)
+  const pdfLandscape = typeof raw.pdfLandscape === 'boolean' ? raw.pdfLandscape : defaults.pdfLandscape
+  const pdfPrintBackground =
+    typeof raw.pdfPrintBackground === 'boolean' ? raw.pdfPrintBackground : defaults.pdfPrintBackground
+  const backupOnSave = typeof raw.backupOnSave === 'boolean' ? raw.backupOnSave : defaults.backupOnSave
 
   return {
     ...defaults,
     ...raw,
     autoSavePolicy,
     autoSaveDebounceSeconds,
-    autoSaveIntervalMinutes
+    autoSaveIntervalMinutes,
+    backupOnSave,
+    backupKeepVersions,
+    pdfPageSize,
+    pdfLandscape,
+    pdfPrintBackground
   }
 }
 
@@ -90,6 +111,12 @@ export function unpinFile(path: string): RecentFile[] {
   const updated = getPinnedFiles().filter((item) => item.path !== path)
   store.set('pinnedFiles', updated)
   return updated
+}
+
+/** Remove todos os arquivos fixados. */
+export function clearPinnedFiles(): RecentFile[] {
+  store.set('pinnedFiles', [])
+  return []
 }
 
 /** Retorna todas as configurações atuais. */

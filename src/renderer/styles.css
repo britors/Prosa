@@ -382,6 +382,12 @@ body {
   color: var(--text-primary);
 }
 
+.outline-item.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .outline-level-1 {
   font-weight: 600;
   color: var(--text-primary);
