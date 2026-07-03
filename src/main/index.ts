@@ -13,7 +13,7 @@ import {
 } from 'electron'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import chokidar from 'chokidar'
+import chokidar, { type FSWatcher } from 'chokidar'
 import { exportPdf, openDocument, saveDocument } from './file-manager.js'
 import {
   getRecentFiles,
@@ -29,7 +29,7 @@ import { PluginManager } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
-import type { AppInfo, SavePayload } from '../shared/types.js'
+import type { AppInfo, RecentFile, SavePayload } from '../shared/types.js'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
@@ -58,9 +58,13 @@ const SPLASH_MIN_MS = 1400
 /** Referência para o timer de autosave. */
 let autosaveTimer: NodeJS.Timeout | null = null
 /** Observador de arquivos da pasta de sincronização. */
-let syncWatcher: chokidar.FSWatcher | null = null
+let syncWatcher: FSWatcher | null = null
 /** Indica se o documento atual possui alterações não salvas. */
 let documentDirty = false
+/** Intervalos disponíveis para autosave por inatividade (segundos). */
+const AUTOSAVE_DEBOUNCE_OPTIONS = [10, 30, 60, 120]
+/** Intervalos disponíveis para autosave periódico (minutos). */
+const AUTOSAVE_INTERVAL_OPTIONS = [1, 5, 15, 30]
 
 /** Gerencia o timer de autosave com base nas configurações atuais. */
 function setupAutosave(): void {
@@ -68,13 +72,13 @@ function setupAutosave(): void {
   autosaveTimer = null
 
   const settings = getSettings()
-  if (settings.autoSave && settings.autoSaveInterval > 0) {
+  if (settings.autoSavePolicy === 'interval' && settings.autoSaveIntervalMinutes > 0) {
     autosaveTimer = setInterval(() => {
       if (documentDirty && mainWindow) {
         // Solicita o conteúdo atual ao renderer para salvar
         mainWindow.webContents.send('menu:action', 'file:autoSave')
       }
-    }, settings.autoSaveInterval * 60 * 1000)
+    }, settings.autoSaveIntervalMinutes * 60 * 1000)
   }
 }
 
@@ -90,7 +94,7 @@ function setupSyncWatcher(): void {
       persistent: true
     })
 
-    syncWatcher.on('change', (path) => {
+    syncWatcher.on('change', (path: string) => {
         mainWindow?.webContents.send('menu:action', 'sync:fileChanged', path)
     })
   }
@@ -125,6 +129,30 @@ const ICON_PATH = join(__dirname, '..', 'icon.png')
 /** Envia uma ação de menu para o renderer tratar. */
 function sendMenuAction(action: string, payload?: unknown): void {
   mainWindow?.webContents.send('menu:action', action, payload)
+}
+
+/** Atualiza preferências de autosave, reaplica timers e notifica o renderer. */
+function applyAutosaveSettings(partial: {
+  autoSavePolicy?: 'off' | 'onBlur' | 'debounce' | 'interval'
+  autoSaveDebounceSeconds?: number
+  autoSaveIntervalMinutes?: number
+}): void {
+  const updated = setSettings({
+    ...partial,
+    autoSave:
+      partial.autoSavePolicy !== undefined
+        ? partial.autoSavePolicy !== 'off'
+        : getSettings().autoSave
+  })
+
+  setupAutosave()
+  buildMenu()
+  sendMenuAction('settings:updated', {
+    autoSave: updated.autoSave,
+    autoSavePolicy: updated.autoSavePolicy,
+    autoSaveDebounceSeconds: updated.autoSaveDebounceSeconds,
+    autoSaveIntervalMinutes: updated.autoSaveIntervalMinutes
+  })
 }
 
 /** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
@@ -263,6 +291,7 @@ async function confirmUnsaved(): Promise<boolean> {
 
 /** Constrói e aplica o menu nativo da aplicação. */
 function buildMenu(): void {
+  const settings = getSettings()
   const recent = getRecentFiles()
   const recentItems: MenuItemConstructorOptions[] =
     recent.length > 0
@@ -319,6 +348,62 @@ function buildMenu(): void {
           label: 'Salvar como...',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => sendMenuAction('file:saveAs')
+        },
+        {
+          label: 'Salvamento automático',
+          submenu: [
+            {
+              label: 'Desativado',
+              type: 'radio',
+              checked: settings.autoSavePolicy === 'off',
+              click: () => applyAutosaveSettings({ autoSavePolicy: 'off' })
+            },
+            {
+              label: 'Ao perder foco',
+              type: 'radio',
+              checked: settings.autoSavePolicy === 'onBlur',
+              click: () => applyAutosaveSettings({ autoSavePolicy: 'onBlur' })
+            },
+            {
+              label: 'Após inatividade',
+              type: 'radio',
+              checked: settings.autoSavePolicy === 'debounce',
+              click: () => applyAutosaveSettings({ autoSavePolicy: 'debounce' })
+            },
+            {
+              label: 'Em intervalo fixo',
+              type: 'radio',
+              checked: settings.autoSavePolicy === 'interval',
+              click: () => applyAutosaveSettings({ autoSavePolicy: 'interval' })
+            },
+            { type: 'separator' },
+            {
+              label: 'Intervalo por inatividade',
+              submenu: AUTOSAVE_DEBOUNCE_OPTIONS.map((seconds) => ({
+                label: `${seconds} s`,
+                type: 'radio' as const,
+                checked: settings.autoSaveDebounceSeconds === seconds,
+                click: () =>
+                  applyAutosaveSettings({
+                    autoSavePolicy: 'debounce',
+                    autoSaveDebounceSeconds: seconds
+                  })
+              }))
+            },
+            {
+              label: 'Intervalo fixo',
+              submenu: AUTOSAVE_INTERVAL_OPTIONS.map((minutes) => ({
+                label: `${minutes} min`,
+                type: 'radio' as const,
+                checked: settings.autoSaveIntervalMinutes === minutes,
+                click: () =>
+                  applyAutosaveSettings({
+                    autoSavePolicy: 'interval',
+                    autoSaveIntervalMinutes: minutes
+                  })
+              }))
+            }
+          ]
         },
         { type: 'separator' },
         {
@@ -422,9 +507,16 @@ function buildMenu(): void {
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
+          label: 'Modo sem distrações',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          type: 'checkbox',
+          checked: settings.distractionFree,
+          click: () => sendMenuAction('view:toggleDistractionFree')
+        },
+        {
           label: 'Verificar ortografia',
           type: 'checkbox',
-          checked: getSettings().spellcheck,
+          checked: settings.spellcheck,
           click: () => toggleSpellcheck()
         },
         { type: 'separator' },
@@ -541,6 +633,7 @@ function registerIpc(): void {
     const updated = setSettings(partial)
     setupAutosave() // Atualiza o timer se necessário
     if (partial.syncPath !== undefined) setupSyncWatcher()
+    buildMenu()
     return updated
   })
   ipcMain.handle('app:info', () => APP_INFO)

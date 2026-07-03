@@ -1,7 +1,7 @@
 {
   "name": "prosa",
   "productName": "Prosa",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": "Rodrigo Brito <rodrigo@w3ti.com.br>",
   "license": "GPL-3.0-or-later",
   "description": "Editor de texto moderno ",
@@ -51,6 +51,7 @@
       "target": [
         "nsis"
       ],
+      "artifactName": "Prosa-Setup-${version}.${ext}",
       "icon": "build/icon.ico"
     },
     "nsis": {
@@ -109,5 +110,10 @@
     "esbuild": "^0.25.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
+  },
+  "allowScripts": {
+    "electron@34.5.8": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
   }
 }

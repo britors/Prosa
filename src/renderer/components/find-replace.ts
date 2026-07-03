@@ -25,19 +25,21 @@ export class FindReplacePanel {
     this.editor = editor
     this.root = document.createElement('div')
     this.root.className = 'find-replace-panel'
+    this.root.setAttribute('role', 'search')
+    this.root.setAttribute('aria-label', 'Localizar e substituir')
     this.root.hidden = true
     this.root.innerHTML = `
       <div class="fr-row">
-        <input type="text" class="fr-find" placeholder="Localizar" />
-        <span class="fr-counter">0/0</span>
-        <button class="fr-btn fr-prev" title="Anterior"><i class="ti ti-chevron-up"></i></button>
-        <button class="fr-btn fr-next" title="Próxima"><i class="ti ti-chevron-down"></i></button>
-        <button class="fr-btn fr-close" title="Fechar"><i class="ti ti-x"></i></button>
+        <input type="text" class="fr-find" placeholder="Localizar" aria-label="Localizar" />
+        <span class="fr-counter" aria-live="polite">0/0</span>
+        <button type="button" class="fr-btn fr-prev" title="Anterior" aria-label="Ocorrência anterior"><i class="ti ti-chevron-up"></i></button>
+        <button type="button" class="fr-btn fr-next" title="Próxima" aria-label="Próxima ocorrência"><i class="ti ti-chevron-down"></i></button>
+        <button type="button" class="fr-btn fr-close" title="Fechar" aria-label="Fechar localizar e substituir"><i class="ti ti-x"></i></button>
       </div>
       <div class="fr-row">
-        <input type="text" class="fr-replace" placeholder="Substituir por" />
-        <button class="fr-btn fr-replace-one">Substituir</button>
-        <button class="fr-btn fr-replace-all">Todas</button>
+        <input type="text" class="fr-replace" placeholder="Substituir por" aria-label="Substituir por" />
+        <button type="button" class="fr-btn fr-replace-one">Substituir</button>
+        <button type="button" class="fr-btn fr-replace-all">Todas</button>
       </div>
       <div class="fr-row fr-options">
         <label><input type="checkbox" class="fr-case" /> Aa</label>

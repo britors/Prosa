@@ -236,6 +236,22 @@ body {
   height: 100vh;
 }
 
+#document-view.distraction-free .toolbar,
+#document-view.distraction-free #outline-panel,
+#document-view.distraction-free #styles-panel,
+#document-view.distraction-free .status-bar {
+  display: none !important;
+}
+
+#document-view.distraction-free .editor-area {
+  padding: 24px 0 40px;
+  background: radial-gradient(circle at top, #171a24 0%, var(--bg) 55%);
+}
+
+#document-view.distraction-free .prosa-document {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -695,6 +711,41 @@ body {
 .prosa-document img {
   max-width: 100%;
   height: auto;
+}
+
+.prosa-image-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.prosa-image-wrap.is-selected {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, white 35%);
+  outline-offset: 2px;
+}
+
+.prosa-image-wrap .prosa-image-handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #0b5f6f;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: nwse-resize;
+  display: none;
+  padding: 0;
+}
+
+.prosa-image-wrap.is-selected .prosa-image-handle {
+  display: block;
+}
+
+body.is-resizing-image {
+  cursor: nwse-resize;
+  user-select: none;
 }
 
 /* Destaques de busca */

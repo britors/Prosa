@@ -9,7 +9,7 @@ import { TemplateDialog } from './components/template-dialog.js'
 import { applyTheme } from './components/theme-engine.js'
 import { setAppTheme } from './components/theme-selector.js'
 import { UpdateNotification } from './components/update-notification.js'
-import type { AppInfo, OpenedDocument } from '../shared/types.js'
+import type { AppInfo, OpenedDocument, ProsaSettings } from '../shared/types.js'
 
 /** Localiza um elemento obrigatório no DOM. */
 function el<T extends HTMLElement>(id: string): T {
@@ -136,7 +136,7 @@ function registerMenuActions(
         break
       case 'file:autoSave':
         // Autosave apenas se já houver caminho (documento existente)
-        if (view.currentPath) {
+        if (view.hasCurrentPath) {
           void view.save(false)
         }
         break
@@ -221,6 +221,12 @@ function registerMenuActions(
       case 'view:toggleWordCount':
         view.toggleWordCount()
         break
+      case 'view:toggleDistractionFree':
+        view.toggleDistractionFree()
+        break
+      case 'settings:updated':
+        view.updateSettings(payload as Partial<ProsaSettings>)
+        break
       case 'help:about':
         void showAbout()
         break
@@ -240,6 +246,9 @@ function registerMenuActions(
     } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'h') {
       event.preventDefault()
       view.openFind(true)
+    } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'd') {
+      event.preventDefault()
+      view.toggleDistractionFree()
     }
   })
 

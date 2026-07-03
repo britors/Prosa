@@ -36,14 +36,17 @@ interface ToolButton {
 /** Cria um elemento de botão com ícone Lucide. */
 async function createButton(def: ToolButton, editor: Editor): Promise<HTMLButtonElement> {
   const button = document.createElement('button')
+  button.type = 'button'
   button.className = 'toolbar-btn'
   button.title = def.title
+  button.setAttribute('aria-label', def.title)
   button.innerHTML = await getIcon(def.icon)
   button.addEventListener('click', () => {
     def.command(editor)
     editor.view.focus()
   })
   button.dataset.active = 'false'
+  button.setAttribute('aria-pressed', 'false')
   return button
 }
 
@@ -68,6 +71,9 @@ export async function createToolbar(
     onInsertLink: () => void
   }
 ): Promise<ToolbarController> {
+  container.setAttribute('role', 'toolbar')
+  container.setAttribute('aria-label', 'Barra de ferramentas de formatação')
+
   const buttons: { el: HTMLButtonElement; def: ToolButton }[] = []
   // Lista atual de fontes do seletor (substituída pelas fontes do sistema).
   let fontFamilies = [...DEFAULT_FONTS]
@@ -99,6 +105,7 @@ export async function createToolbar(
   const fontSelect = document.createElement('select')
   fontSelect.className = 'toolbar-select'
   fontSelect.title = 'Família da fonte'
+  fontSelect.setAttribute('aria-label', 'Família da fonte')
 
   /** Reconstrói as opções do seletor a partir da lista de fontes atual. */
   const renderFontOptions = (): void => {
@@ -127,6 +134,7 @@ export async function createToolbar(
   const sizeSelect = document.createElement('select')
   sizeSelect.className = 'toolbar-select toolbar-select-sm'
   sizeSelect.title = 'Tamanho da fonte'
+  sizeSelect.setAttribute('aria-label', 'Tamanho da fonte')
   sizeSelect.innerHTML =
     '<option value="">pt</option>' +
     FONT_SIZES.map((s) => `<option value="${s}">${s}</option>`).join('')
@@ -289,6 +297,7 @@ export async function createToolbar(
   colorInput.type = 'color'
   colorInput.className = 'toolbar-color'
   colorInput.title = 'Cor do texto'
+  colorInput.setAttribute('aria-label', 'Cor do texto')
   colorInput.value = '#06b6d4'
   colorInput.addEventListener('input', () => {
     editor.chain().focus().setColor(colorInput.value).run()
@@ -318,24 +327,30 @@ export async function createToolbar(
 
   // Localizar
   const findBtn = document.createElement('button')
+  findBtn.type = 'button'
   findBtn.className = 'toolbar-btn'
   findBtn.title = 'Localizar (Ctrl+F)'
+  findBtn.setAttribute('aria-label', 'Localizar')
   findBtn.innerHTML = await getIcon('search')
   findBtn.addEventListener('click', handlers.onFind)
   container.appendChild(findBtn)
 
   // Imprimir
   const printBtn = document.createElement('button')
+  printBtn.type = 'button'
   printBtn.className = 'toolbar-btn'
   printBtn.title = 'Imprimir (Ctrl+P)'
+  printBtn.setAttribute('aria-label', 'Imprimir')
   printBtn.innerHTML = await getIcon('printer')
   printBtn.addEventListener('click', handlers.onPrint)
   container.appendChild(printBtn)
 
   // Alternar tema
   const themeBtn = document.createElement('button')
+  themeBtn.type = 'button'
   themeBtn.className = 'toolbar-btn'
   themeBtn.title = 'Alternar tema (Claro/Escuro)'
+  themeBtn.setAttribute('aria-label', 'Alternar tema claro e escuro')
   let isDark = document.documentElement.getAttribute('data-theme') !== 'light'
   themeBtn.innerHTML = await getIcon(isDark ? 'sun' : 'moon')
   themeBtn.addEventListener('click', () => {
@@ -350,7 +365,9 @@ export async function createToolbar(
   const updateActiveStates = (): void => {
     for (const { el, def } of buttons) {
       if (def.isActive) {
-        el.dataset.active = String(def.isActive(editor))
+        const active = def.isActive(editor)
+        el.dataset.active = String(active)
+        el.setAttribute('aria-pressed', String(active))
       }
     }
     const fontFamily = (editor.getAttributes('textStyle').fontFamily as string) ?? ''

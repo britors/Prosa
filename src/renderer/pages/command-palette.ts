@@ -11,16 +11,19 @@ export class CommandPalette {
   private element: HTMLElement | null = null
   private onOpenFile: (path: string) => void
   private onToggleTypewriter?: () => void
+  private onToggleDistractionFree?: () => void
   private onDailyNote?: () => void
+  private onCitation?: () => void
   private onGraph?: () => void
   private onTemplateManager?: () => void
   private onSearch?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
     this.onToggleTypewriter = onToggleTypewriter
+    this.onToggleDistractionFree = onToggleDistractionFree
     this.onDailyNote = onDailyNote
     this.onCitation = onCitation
     this.onGraph = onGraph
@@ -47,6 +50,7 @@ export class CommandPalette {
         { label: 'Título 2', action: () => this.editor.commands.toggleHeading({ level: 2 }) },
         { label: 'Lista', action: () => this.editor.commands.toggleBulletList() },
         { label: 'Modo Máquina de Escrever', action: () => this.onToggleTypewriter?.() },
+        { label: 'Modo Sem Distrações', action: () => this.onToggleDistractionFree?.() },
         { label: 'Nova Nota Diária', action: () => this.onDailyNote?.() },
         { label: 'Inserir Citação', action: () => this.onCitation?.() },
         { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
@@ -57,9 +61,12 @@ export class CommandPalette {
 
     this.element = document.createElement('div')
     this.element.className = 'command-palette'
+    this.element.setAttribute('role', 'dialog')
+    this.element.setAttribute('aria-modal', 'true')
+    this.element.setAttribute('aria-label', 'Paleta de comandos')
     this.element.innerHTML = `
-      <input type="text" class="palette-input" placeholder="Comandos ou arquivos..." />
-      <div class="palette-results"></div>
+      <input type="text" class="palette-input" placeholder="Comandos ou arquivos..." aria-label="Pesquisar comandos" aria-autocomplete="list" />
+      <div class="palette-results" role="listbox" aria-label="Resultados da paleta"></div>
     `
     // ... rest of the logic unchanged
 
@@ -72,7 +79,7 @@ export class CommandPalette {
     const render = (query = '') => {
         const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()))
         results.innerHTML = filtered
-            .map((c, i) => `<div class="palette-item ${i === selectedIndex ? 'selected' : ''}" data-index="${i}">${c.label}</div>`).join('')
+        .map((c, i) => `<div class="palette-item ${i === selectedIndex ? 'selected' : ''}" data-index="${i}" role="option" aria-selected="${i === selectedIndex}">${c.label}</div>`).join('')
         
         selectedIndex = Math.min(selectedIndex, Math.max(0, filtered.length - 1))
         

@@ -15,8 +15,12 @@ const defaults: ProsaSettings = {
   spellLanguages: ['pt-BR', 'en-US'],
   autoSave: true,
   autoSaveInterval: 30,
+  autoSavePolicy: 'interval',
+  autoSaveDebounceSeconds: 30,
+  autoSaveIntervalMinutes: 5,
   showWordCount: true,
   showOutline: true,
+  distractionFree: false,
   recentFiles: [],
   pinnedFiles: [],
   zoom: 100

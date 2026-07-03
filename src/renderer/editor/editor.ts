@@ -10,7 +10,6 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
-import { Image } from '@tiptap/extension-image'
 import { Link } from '@tiptap/extension-link'
 import { Highlight } from '@tiptap/extension-highlight'
 import { Typography } from '@tiptap/extension-typography'
@@ -29,6 +28,7 @@ import { Tag } from './extensions/tag'
 import { Citation } from './extensions/citation'
 import { FontSize } from './extensions/font-size'
 import { FindReplace } from './extensions/find-replace'
+import { ResizableImage } from './extensions/resizable-image'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 
 /** Callbacks de ciclo de vida do editor. */
@@ -57,14 +57,10 @@ export function createEditor(
       TableRow,
       TableHeader,
       TableCell,
-      Image.configure({ inline: false, allowBase64: true }),
+      ResizableImage.configure({ inline: false, allowBase64: true }),
       Link.configure({ openOnClick: false, autolink: true }),
       Highlight.configure({ multicolor: true }),
-      Typography.configure({
-        // Configuração de aspas inteligentes para o português
-        doubleQuotes: ['“', '”'],
-        singleQuotes: ['‘', '’'],
-      }),
+      Typography,
       Placeholder.configure({
         placeholder: 'Comece a escrever sua prosa...'
       }),

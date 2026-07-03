@@ -62,8 +62,12 @@ export interface ProsaSettings {
   spellLanguages: string[]
   autoSave: boolean
   autoSaveInterval: number
+  autoSavePolicy: 'off' | 'onBlur' | 'debounce' | 'interval'
+  autoSaveDebounceSeconds: number
+  autoSaveIntervalMinutes: number
   showWordCount: boolean
   showOutline: boolean
+  distractionFree: boolean
   recentFiles: RecentFile[]
   pinnedFiles: RecentFile[]
   zoom: number

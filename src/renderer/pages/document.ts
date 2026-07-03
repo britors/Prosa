@@ -21,12 +21,16 @@ import { applyDocumentTheme } from '../components/theme-selector.js'
 import { FormatDialog } from '../components/format-dialog.js'
 import { TemplateDialog } from '../components/template-dialog.js'
 import { SearchModal } from '../components/search-modal.js'
-import { documentText } from '../../shared/document-utils.js'
+import {
+  AutoSaveController,
+  DocumentPersistenceController,
+  DirtyStateController,
+  DistractionFreeController
+} from './document-controllers.js'
 import type {
   FileFormat,
   OpenedDocument,
   ProsaSettings,
-  SavePayload,
   TipTapJSON
 } from '../../shared/types.js'
 
@@ -69,14 +73,16 @@ export class DocumentView {
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
   private readonly templateDialog: TemplateDialog
+  private readonly dirtyState: DirtyStateController
+  private readonly autoSaveController: AutoSaveController
+  private readonly distractionFreeController: DistractionFreeController
+  private readonly persistenceController: DocumentPersistenceController
   private updateToolbar: () => void = () => {}
 
   private currentPath: string | null = null
   private currentFormat: FileFormat | null = null
   private documentName = 'Sem título'
-  private dirty = false
   private zoom: number
-  private autoSaveTimer: number | null = null
   private settings: ProsaSettings
   private headerHTML = ''
   private footerHTML = ''
@@ -106,7 +112,7 @@ export class DocumentView {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show())
+    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show())
 
 
     
@@ -130,11 +136,62 @@ export class DocumentView {
     this.statusBar = new WordCountBar(els.statusBar, this.editor)
     this.formatDialog = new FormatDialog(els.root)
 
-    // Força o estado oculto padrão para os painéis laterais
-    els.outline.parentElement?.setAttribute('hidden', '')
-    els.styles.parentElement?.setAttribute('hidden', '')
+    this.dirtyState = new DirtyStateController(
+      (dirty) => this.statusBar.setDirty(dirty),
+      (dirty) => window.prosa.notifyDirty(dirty)
+    )
+
+    this.autoSaveController = new AutoSaveController(
+      () => ({
+        currentPath: this.currentPath,
+        dirty: this.dirtyState.isDirty(),
+        autoSavePolicy: this.settings.autoSavePolicy,
+        autoSaveDebounceSeconds: this.settings.autoSaveDebounceSeconds
+      }),
+      async () => this.save(false)
+    )
+
+    this.distractionFreeController = new DistractionFreeController(
+      {
+        root: this.els.root,
+        toolbar: this.els.toolbar,
+        outlinePanel: this.els.outline.parentElement,
+        stylesPanel: this.els.styles.parentElement,
+        statusBar: this.els.statusBar
+      },
+      this.settings.distractionFree,
+      (partial) => {
+        this.settings = { ...this.settings, ...partial }
+        void window.prosa.setSettings(partial)
+      }
+    )
+
+    this.persistenceController = new DocumentPersistenceController(
+      {
+        getState: () => this.getPersistenceState(),
+        setState: (state) => this.setPersistenceState(state),
+        chooseFormat: async (preset) => this.formatDialog.choose(preset),
+        saveDocument: async (payload) => window.prosa.saveDocument(payload),
+        saveDocumentAs: async (payload) => window.prosa.saveDocumentAs(payload),
+        exportPdf: async (name) => window.prosa.exportPdf(name),
+        setDirty: (dirty) => this.setDirty(dirty),
+        setDocumentName: (name) => this.statusBar.setDocumentName(name),
+        setEditorContent: (html) => this.editor.commands.setContent(html, false),
+        clearEditorContent: () => this.editor.commands.clearContent(),
+        focusEditor: () => this.editor.commands.focus(),
+        updatePaginationBands: () => this.updatePaginationBands(),
+        refresh: () => this.refresh(),
+        getPayloadData: () => ({
+          html: this.editor.getHTML(),
+          json: this.editor.getJSON() as TipTapJSON
+        }),
+        alertError: (message) => window.alert(message)
+      },
+      WRITABLE_FORMATS
+    )
 
     this.applySettings()
+    window.addEventListener('blur', () => this.autoSaveController.onWindowBlur())
     
     // #8: Tipografia Adaptativa
     new ResizeObserver((entries) => {
@@ -185,10 +242,40 @@ export class DocumentView {
         if (res.ok && res.document) this.load(res.document)
         else {
             this.newDocument()
-            this.documentName = name
+            this.setPersistenceState({ ...this.getPersistenceState(), documentName: name })
             this.statusBar.setDocumentName(name)
         }
     })
+  }
+
+  private getPersistenceState(): {
+    currentPath: string | null
+    currentFormat: FileFormat | null
+    documentName: string
+    headerHTML: string
+    footerHTML: string
+  } {
+    return {
+      currentPath: this.currentPath,
+      currentFormat: this.currentFormat,
+      documentName: this.documentName,
+      headerHTML: this.headerHTML,
+      footerHTML: this.footerHTML
+    }
+  }
+
+  private setPersistenceState(state: {
+    currentPath: string | null
+    currentFormat: FileFormat | null
+    documentName: string
+    headerHTML: string
+    footerHTML: string
+  }): void {
+    this.currentPath = state.currentPath
+    this.currentFormat = state.currentFormat
+    this.documentName = state.documentName
+    this.headerHTML = state.headerHTML
+    this.footerHTML = state.footerHTML
   }
 
 
@@ -322,16 +409,18 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   private applySettings(): void {
     applyDocumentTheme(this.els.editorHost, 'serif')
     this.setZoom(this.zoom)
-    // Força o estado oculto padrão, ignorando a configuração do usuário para o outline.
-    this.els.outline.parentElement?.setAttribute('hidden', '')
+    this.els.toolbar.removeAttribute('hidden')
+    this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)
+    this.els.styles.parentElement?.setAttribute('hidden', '')
     this.els.statusBar.toggleAttribute('hidden', !this.settings.showWordCount)
+    this.distractionFreeController.setEnabled(this.settings.distractionFree, false)
   }
 
   /** Trata atualizações de conteúdo: marca como sujo e atualiza painéis. */
   private handleUpdate(): void {
     this.setDirty(true)
     this.refresh()
-    this.scheduleAutoSave()
+    this.autoSaveController.scheduleDebounced()
   }
 
   /** Trata mudanças de seleção: atualiza estados ativos. */
@@ -351,70 +440,41 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Define o estado de alterações não salvas e notifica o main. */
   private setDirty(dirty: boolean): void {
-    if (this.dirty === dirty) return
-    this.dirty = dirty
-    this.statusBar.setDirty(dirty)
-    window.prosa.notifyDirty(dirty)
+    this.dirtyState.setDirty(dirty)
   }
 
-  /** Agenda um auto-save respeitando o intervalo das configurações. */
-  private scheduleAutoSave(): void {
-    if (!this.settings.autoSave || !this.currentPath) return
-    if (this.autoSaveTimer !== null) {
-      window.clearTimeout(this.autoSaveTimer)
+  /** Atualiza as configurações em tempo real e reaplica efeitos locais. */
+  updateSettings(partial: Partial<ProsaSettings>): void {
+    this.settings = { ...this.settings, ...partial }
+
+    if (
+      partial.distractionFree !== undefined &&
+      partial.distractionFree !== this.distractionFreeController.isEnabled()
+    ) {
+      this.distractionFreeController.setEnabled(partial.distractionFree, false)
     }
-    this.autoSaveTimer = window.setTimeout(() => {
-      void this.save(false)
-    }, this.settings.autoSaveInterval * 1000)
+
+    if (partial.showOutline !== undefined && !this.distractionFreeController.isEnabled()) {
+      this.els.outline.parentElement?.toggleAttribute('hidden', !partial.showOutline)
+    }
+
+    if (partial.showWordCount !== undefined && !this.distractionFreeController.isEnabled()) {
+      this.els.statusBar.toggleAttribute('hidden', !partial.showWordCount)
+    }
+
+    if (partial.autoSavePolicy !== undefined || partial.autoSaveDebounceSeconds !== undefined) {
+      this.autoSaveController.scheduleDebounced()
+    }
   }
 
   /** Cria um documento em branco. */
   newDocument(): void {
-    this.editor.commands.clearContent()
-    this.headerHTML = ''
-    this.footerHTML = ''
-    this.currentPath = null
-    this.currentFormat = null
-    this.documentName = 'Sem título'
-    this.statusBar.setDocumentName(this.documentName)
-    this.updatePaginationBands()
-    this.setDirty(false)
-    this.refresh()
-    this.editor.commands.focus()
+    this.persistenceController.newDocument()
   }
 
   /** Carrega um documento aberto no editor. */
   load(doc: OpenedDocument): void {
-    this.editor.commands.setContent(doc.html, false)
-    this.headerHTML = doc.header ?? ''
-    this.footerHTML = doc.footer ?? ''
-    this.currentPath = doc.path
-    this.currentFormat = doc.format
-    this.documentName = doc.name
-    this.statusBar.setDocumentName(doc.name)
-    this.updatePaginationBands()
-    this.setDirty(false)
-    this.refresh()
-  }
-
-  /** Monta o payload de salvamento a partir do estado atual do editor. */
-  private buildPayload(): SavePayload {
-    const json = this.editor.getJSON() as TipTapJSON
-    const now = new Date().toISOString()
-    return {
-      path: this.currentPath,
-      html: this.editor.getHTML(),
-      json,
-      text: documentText(json),
-      header: this.headerHTML,
-      footer: this.footerHTML,
-      metadata: {
-        title: this.documentName.replace(/\.[^.]+$/, ''),
-        author: '',
-        createdAt: now,
-        modifiedAt: now
-      }
-    }
+    this.persistenceController.load(doc)
   }
 
   /**
@@ -424,47 +484,12 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
    * perguntar.
    */
   async save(forceDialog: boolean): Promise<void> {
-    const sourceReadOnly =
-      this.currentFormat !== null && !WRITABLE_FORMATS.has(this.currentFormat)
-    const asDialog = forceDialog || sourceReadOnly
-    const needsFormat = asDialog || !this.currentPath
-
-    let chosenFormat: FileFormat | undefined
-    if (needsFormat) {
-      const preset =
-        this.currentFormat && WRITABLE_FORMATS.has(this.currentFormat)
-          ? this.currentFormat
-          : 'prosa'
-      const picked = await this.formatDialog.choose(preset)
-      if (!picked) return // usuário cancelou
-      chosenFormat = picked
-    }
-
-    const payload = this.buildPayload()
-    if (chosenFormat) payload.format = chosenFormat
-
-    const result = asDialog
-      ? await window.prosa.saveDocumentAs(payload)
-      : await window.prosa.saveDocument(payload)
-
-    if (result.ok && result.path) {
-      this.currentPath = result.path
-      if (chosenFormat) this.currentFormat = chosenFormat
-      this.documentName = result.path.split(/[\\/]/).pop() ?? this.documentName
-      this.statusBar.setDocumentName(this.documentName)
-      this.setDirty(false)
-    } else if (result.error) {
-      window.alert(`Erro ao salvar: ${result.error}`)
-    }
+    await this.persistenceController.save(forceDialog)
   }
 
   /** Exporta o documento atual para PDF. */
   async exportPdf(): Promise<void> {
-    const name = this.documentName.replace(/\.[^.]+$/, '')
-    const result = await window.prosa.exportPdf(name)
-    if (result.error) {
-      window.alert(`Erro ao exportar PDF: ${result.error}`)
-    }
+    await this.persistenceController.exportPdf()
   }
 
   /** Abre o seletor de arquivos para inserir uma imagem no documento. */
@@ -526,8 +551,17 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Alterna a visibilidade do painel de tópicos. */
   toggleOutline(): void {
+    if (this.distractionFreeController.isEnabled()) {
+      this.settings.showOutline = !this.settings.showOutline
+      void window.prosa.setSettings({ showOutline: this.settings.showOutline })
+      return
+    }
+
     const panel = this.els.outline.parentElement
     panel?.toggleAttribute('hidden')
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    this.settings.showOutline = !isHidden
+    void window.prosa.setSettings({ showOutline: this.settings.showOutline })
   }
 
   /** Alterna a visibilidade do painel de estilos. */
@@ -538,11 +572,30 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Alterna a visibilidade da barra de contagem de palavras. */
   toggleWordCount(): void {
+    if (this.distractionFreeController.isEnabled()) {
+      this.settings.showWordCount = !this.settings.showWordCount
+      void window.prosa.setSettings({ showWordCount: this.settings.showWordCount })
+      return
+    }
+
     this.els.statusBar.toggleAttribute('hidden')
+    const isHidden = this.els.statusBar.hasAttribute('hidden')
+    this.settings.showWordCount = !isHidden
+    void window.prosa.setSettings({ showWordCount: this.settings.showWordCount })
+  }
+
+  /** Alterna o modo sem distrações (oculta chrome da interface de edição). */
+  toggleDistractionFree(): void {
+    this.distractionFreeController.setEnabled(!this.distractionFreeController.isEnabled())
   }
 
   /** Indica se há alterações não salvas. */
   get isDirty(): boolean {
-    return this.dirty
+    return this.dirtyState.isDirty()
+  }
+
+  /** Indica se o documento atual já possui caminho para autosave sem diálogo. */
+  get hasCurrentPath(): boolean {
+    return this.currentPath !== null
   }
 }
