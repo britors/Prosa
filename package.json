@@ -94,6 +94,7 @@
     "@tiptap/starter-kit": "^2.11.5",
     "@xmldom/xmldom": "^0.9.10",
     "chokidar": "^5.0.0",
+    "diff": "^9.0.0",
     "docx": "^9.1.1",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9",

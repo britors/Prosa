@@ -18,8 +18,9 @@ export class CommandPalette {
   private onTemplateManager?: () => void
   private onSearch?: () => void
   private onPluginManager?: () => void
+  private onVersionHistory?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -31,6 +32,7 @@ export class CommandPalette {
     this.onTemplateManager = onTemplateManager
     this.onSearch = onSearch
     this.onPluginManager = onPluginManager
+    this.onVersionHistory = onVersionHistory
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -58,6 +60,7 @@ export class CommandPalette {
         { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
         { label: 'Gerenciar Templates', action: () => this.onTemplateManager?.() },
         { label: 'Gerenciar Plugins', action: () => this.onPluginManager?.() },
+        { label: 'Comparar Versões', action: () => this.onVersionHistory?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]

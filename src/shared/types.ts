@@ -52,6 +52,12 @@ export interface RecentFile {
   modifiedAt: string
 }
 
+/** Versão de backup disponível para comparação. */
+export interface BackupVersion {
+  file: string
+  modifiedAt: string
+}
+
 /** Políticas de autosave suportadas. */
 export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 
@@ -190,6 +196,8 @@ export interface ProsaApi {
   pinFile: (file: RecentFile) => Promise<RecentFile[]>
   unpinFile: (path: string) => Promise<RecentFile[]>
   searchFiles: (term: string) => Promise<{ path: string; snippet: string }[]>
+  listVersions: (path: string) => Promise<BackupVersion[]>
+  getVersionText: (path: string, file: string) => Promise<string>
   // Updater
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>

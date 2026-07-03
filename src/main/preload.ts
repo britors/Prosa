@@ -5,6 +5,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
+  BackupVersion,
   FileResult,
   PluginInfo,
   ProsaApi,
@@ -56,6 +57,8 @@ const api: ProsaApi = {
   pinFile: (file: RecentFile) => ipcRenderer.invoke('file:pin', file) as Promise<RecentFile[]>,
   unpinFile: (path: string) => ipcRenderer.invoke('file:unpin', path) as Promise<RecentFile[]>,
   searchFiles: (term: string) => ipcRenderer.invoke('file:search', term) as Promise<{ path: string; snippet: string }[]>,
+  listVersions: (path: string) => ipcRenderer.invoke('versions:list', path) as Promise<BackupVersion[]>,
+  getVersionText: (path: string, file: string) => ipcRenderer.invoke('versions:text', path, file) as Promise<string>,
   // Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<void>,
   downloadUpdate: () => ipcRenderer.invoke('updater:download') as Promise<void>,

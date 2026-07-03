@@ -17,6 +17,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import { exportPdf } from './export-service.js'
 import { openDocument } from './open-service.js'
 import { saveDocument } from './save-service.js'
+import { listVersions, getVersionText } from './version-history.js'
 import {
   getRecentFiles,
   getSettings,
@@ -717,6 +718,9 @@ function registerIpc(): void {
     return await searchInFiles(settings.workspacePath, term)
   })
   ipcMain.handle('plugins:list', () => getAvailablePlugins())
+
+  ipcMain.handle('versions:list', (_event, path: string) => listVersions(path))
+  ipcMain.handle('versions:text', (_event, path: string, file: string) => getVersionText(path, file))
 
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, partial) => {

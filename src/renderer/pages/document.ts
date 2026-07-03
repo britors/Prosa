@@ -21,6 +21,7 @@ import { applyDocumentTheme } from '../components/theme-selector.js'
 import { FormatDialog } from '../components/format-dialog.js'
 import { TemplateDialog } from '../components/template-dialog.js'
 import { PluginDialog } from '../components/plugin-dialog.js'
+import { VersionCompareDialog } from '../components/version-compare-dialog.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -75,6 +76,7 @@ export class DocumentView {
   private readonly formatDialog: FormatDialog
   private readonly templateDialog: TemplateDialog
   private readonly pluginDialog: PluginDialog
+  private readonly versionCompareDialog: VersionCompareDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -109,13 +111,14 @@ export class DocumentView {
     this.formatDialog = new FormatDialog(els.root)
     this.templateDialog = new TemplateDialog(els.root)
     this.pluginDialog = new PluginDialog(els.root)
+    this.versionCompareDialog = new VersionCompareDialog(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
         void window.prosa.openDocument(path).then(res => {
             if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show())
+    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show(), () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON))
 
 
     
