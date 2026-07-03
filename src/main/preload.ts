@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
   FileResult,
+  PluginInfo,
   ProsaApi,
   ProsaSettings,
   RecentFile,
@@ -46,7 +47,7 @@ const api: ProsaApi = {
   getAppInfo: () => ipcRenderer.invoke('app:info') as Promise<AppInfo>,
   getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
-  getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<any[]>,
+  getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<PluginInfo[]>,
   getTemplates: () => ipcRenderer.invoke('templates:list') as Promise<any[]>,
   getTemplate: (id: string) => ipcRenderer.invoke('templates:get', id) as Promise<string>,
   saveTemplate: (name: string, css: string) => ipcRenderer.invoke('templates:save', name, css),

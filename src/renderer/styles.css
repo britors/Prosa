@@ -993,6 +993,29 @@ body.is-resizing-image {
   line-height: 1.35;
 }
 
+.plugin-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.plugin-status-loaded {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.plugin-status-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.plugin-error-text {
+  color: var(--danger);
+}
+
 /* ------------------------------------------------------------------ */
 /* Impressão / Exportação PDF — papel branco, texto preto             */
 /* ------------------------------------------------------------------ */

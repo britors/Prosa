@@ -58,6 +58,32 @@ export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 /** Tamanhos de página suportados na exportação PDF. */
 export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 
+/** Permissões que um plugin pode declarar (conjunto v1, deliberadamente mínimo). */
+export type PluginPermission = 'storage'
+
+/** Manifesto declarado por um plugin em manifest.json. */
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  entrypoint: string
+  permissions: PluginPermission[]
+  description?: string
+  author?: string
+}
+
+/** Estado de um plugin exposto ao renderer (sem o entrypoint, irrelevante para a UI). */
+export interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  permissions: PluginPermission[]
+  description?: string
+  author?: string
+  status: 'loaded' | 'error'
+  error?: string
+}
+
 /** Configurações persistidas via electron-store. */
 export interface ProsaSettings {
   theme: 'dark'
@@ -155,7 +181,7 @@ export interface ProsaApi {
   getAppInfo: () => Promise<AppInfo>
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
-  getPlugins: () => Promise<any[]>
+  getPlugins: () => Promise<PluginInfo[]>
   getTemplates: () => Promise<any[]>
   getTemplate: (id: string) => Promise<string>
   saveTemplate: (name: string, css: string) => Promise<void>

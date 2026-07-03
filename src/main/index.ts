@@ -26,7 +26,7 @@ import {
   unpinFile
 } from './settings.js'
 import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
-import { PluginManager } from './plugins.js'
+import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
@@ -256,8 +256,8 @@ function createWindow(): void {
   setupAutosave()
   setupSyncWatcher()
   
-  // Inicializa o gerenciador de plugins
-  void PluginManager.getInstance().loadPlugins()
+  // Inicializa o gerenciador de plugins (nunca deve derrubar a janela principal)
+  void loadPlugins().catch((err) => console.error('[plugins] Erro inesperado ao carregar plugins:', err))
 }
 
 /** Abre o diálogo de impressão do sistema para o documento atual. */
@@ -714,7 +714,7 @@ function registerIpc(): void {
     if (!settings.workspacePath) return []
     return await searchInFiles(settings.workspacePath, term)
   })
-  ipcMain.handle('plugins:list', () => PluginManager.getInstance().getAvailablePlugins())
+  ipcMain.handle('plugins:list', () => getAvailablePlugins())
 
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, partial) => {
@@ -759,4 +759,8 @@ app.on('window-all-closed', () => {
   if (!isMac) {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  unloadPlugins()
 })

@@ -17,8 +17,9 @@ export class CommandPalette {
   private onGraph?: () => void
   private onTemplateManager?: () => void
   private onSearch?: () => void
+  private onPluginManager?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -29,6 +30,7 @@ export class CommandPalette {
     this.onGraph = onGraph
     this.onTemplateManager = onTemplateManager
     this.onSearch = onSearch
+    this.onPluginManager = onPluginManager
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -55,6 +57,7 @@ export class CommandPalette {
         { label: 'Inserir Citação', action: () => this.onCitation?.() },
         { label: 'Visualizar Grafo', action: () => this.onGraph?.() },
         { label: 'Gerenciar Templates', action: () => this.onTemplateManager?.() },
+        { label: 'Gerenciar Plugins', action: () => this.onPluginManager?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
