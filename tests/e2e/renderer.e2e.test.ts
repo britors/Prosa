@@ -133,6 +133,40 @@ test('E2E renderer: aspas retas viram curvas ao digitar (Typography)', async () 
   }
 })
 
+test('E2E renderer: inserir fórmula LaTeX renderiza via KaTeX', async () => {
+  const ctx = await launchAppWithRecentDocument({
+    fileName: 'formula.txt',
+    initialContent: ''
+  })
+
+  try {
+    await openRecentDocument(ctx.page)
+
+    const editor = ctx.page.locator('#editor .ProseMirror')
+    await editor.click()
+
+    await ctx.page.keyboard.press('Control+k')
+    await ctx.page.waitForSelector('.command-palette .palette-input')
+    await ctx.page.locator('.palette-input').fill('Inserir Fórmula')
+    await ctx.page.locator('.palette-item', { hasText: 'Inserir Fórmula' }).click()
+
+    await ctx.page.waitForSelector('.floating-editor .floating-input')
+    await ctx.page.locator('.floating-input').fill('E = mc^2')
+    await ctx.page.locator('.floating-editor .btn-save').click()
+
+    await ctx.page.waitForSelector('.math-block .katex')
+
+    const hasError = await ctx.page.locator('.math-block .math-error').count()
+    assert.equal(hasError, 0)
+
+    const latexAttr = await ctx.page.locator('.math-block').getAttribute('data-latex')
+    assert.equal(decodeURIComponent(latexAttr ?? ''), 'E = mc^2')
+  } finally {
+    await ctx.app.close()
+    await rm(ctx.tempRoot, { recursive: true, force: true })
+  }
+})
+
 test('E2E renderer: abrir documento, find/replace e toggles de painel/distraction-free', async () => {
   const ctx = await launchAppWithRecentDocument({
     fileName: 'fluxo-ui.txt',

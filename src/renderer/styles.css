@@ -1078,6 +1078,27 @@ body.is-resizing-image {
   font: inherit;
 }
 
+.math-block {
+  display: block;
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-component);
+  text-align: center;
+  cursor: pointer;
+  overflow-x: auto;
+}
+
+.math-block:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.math-block .math-error {
+  color: var(--danger);
+  font-style: italic;
+}
+
 .frontmatter-rows {
   display: flex;
   flex-direction: column;

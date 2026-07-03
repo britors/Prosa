@@ -115,7 +115,8 @@ export class DocumentView {
       onMatchesUpdate: (current, total) =>
         this.findReplace.updateCounter(current, total),
       onHeaderClick: (params) => this.promptHeader(params),
-      onFooterClick: (params) => this.promptFooter(params)
+      onFooterClick: (params) => this.promptFooter(params),
+      onMathEdit: (request) => this.customPrompt('Fórmula LaTeX:', request.latex, request.event, request.onSave)
     })
     this.formatDialog = new FormatDialog(els.root)
     this.templateDialog = new TemplateDialog(els.root)
@@ -137,7 +138,7 @@ export class DocumentView {
     }), () => this.frontmatterDialog.show(this.frontmatter, (fm) => {
       this.frontmatter = fm
       this.setDirty(true)
-    }))
+    }), () => this.insertMathBlock())
 
 
     
@@ -324,6 +325,14 @@ export class DocumentView {
     })
   }
 
+  /** Abre um prompt para inserir uma nova fórmula matemática. */
+  insertMathBlock(): void {
+    const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
+    this.customPrompt('Fórmula LaTeX:', '', event, (latex) => {
+      if (latex) this.editor.chain().focus().insertContent({ type: 'mathBlock', attrs: { latex } }).run()
+    })
+  }
+
   /** Abre um prompt para editar o cabeçalho. */
   private promptHeader(params: { event: MouseEvent }): void {
     console.log('promptHeader');
@@ -348,7 +357,6 @@ export class DocumentView {
  * Implementação de um prompt customizado inline.
  */
 private customPrompt(title: string, defaultValue: string, event: MouseEvent, callback: (val: string) => void, richText: boolean = false): void {
-  console.log('DEBUG: customPrompt called with richText:', richText)
   const editorDom = this.editor.view.dom
   editorDom.classList.add('is-editing')
 
@@ -361,13 +369,14 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     menu.innerHTML = `
       <div class="prompt-title">${title}</div>
+      ${richText ? `
       <div class="mini-toolbar">
         <button class="btn-tool" id="bold" title="Negrito"><b>B</b></button>
         <button class="btn-tool" id="italic" title="Itálico"><i>I</i></button>
         <input type="color" id="color" title="Cor">
         <input type="number" id="size" title="Tamanho (px)" min="8" max="72" value="12">
         <button class="btn-tool" id="image" title="Imagem">🖼️</button>
-      </div>
+      </div>` : ''}
       <div class="mini-editor-container"></div>
       <div class="prompt-actions">
         <button class="btn btn-cancel">Cancelar</button>
@@ -419,7 +428,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     }
 
     btnSave.onclick = () => {
-        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('input') as HTMLInputElement).value
+        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('.floating-input') as HTMLInputElement).value
         callback(val)
         close()
     }
@@ -432,7 +441,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   document.body.appendChild(menu)
   setTimeout(() => {
       if (richText) miniEditor?.commands.focus()
-      else (menu.querySelector('input') as HTMLInputElement)?.focus()
+      else (menu.querySelector('.floating-input') as HTMLInputElement)?.focus()
   }, 10)
 }
 

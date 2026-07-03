@@ -60,9 +60,14 @@ function copyStatic() {
   
   // Copia recursiva de assets, incluindo ícones
   cpSync('src/renderer/assets', 'dist/renderer/assets', { recursive: true })
-  
+
   // Ícone usado pela janela em runtime.
   cpSync('build/icon.png', join('dist', 'icon.png'))
+
+  // KaTeX (CSS + fontes) para renderização de fórmulas matemáticas offline.
+  mkdirSync('dist/renderer/vendor/katex/fonts', { recursive: true })
+  cpSync('node_modules/katex/dist/katex.min.css', 'dist/renderer/vendor/katex/katex.min.css')
+  cpSync('node_modules/katex/dist/fonts', 'dist/renderer/vendor/katex/fonts', { recursive: true })
 }
 
 async function run() {

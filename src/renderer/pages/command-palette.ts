@@ -21,8 +21,9 @@ export class CommandPalette {
   private onVersionHistory?: () => void
   private onFontProfiles?: () => void
   private onFrontmatter?: () => void
+  private onInsertMath?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -37,6 +38,7 @@ export class CommandPalette {
     this.onVersionHistory = onVersionHistory
     this.onFontProfiles = onFontProfiles
     this.onFrontmatter = onFrontmatter
+    this.onInsertMath = onInsertMath
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -67,6 +69,7 @@ export class CommandPalette {
         { label: 'Comparar Versões', action: () => this.onVersionHistory?.() },
         { label: 'Perfis de Fonte', action: () => this.onFontProfiles?.() },
         { label: 'Editar Frontmatter', action: () => this.onFrontmatter?.() },
+        { label: 'Inserir Fórmula', action: () => this.onInsertMath?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]
