@@ -146,6 +146,7 @@ export class DocumentView {
     this.styles = new StylesPanel(els.styles, this.editor)
     this.focusTimer = new FocusTimer(settings.focusWorkMinutes, settings.focusBreakMinutes)
     this.statusBar = new WordCountBar(els.statusBar, this.editor, this.focusTimer.el)
+    this.statusBar.setGoal(settings.wordGoal)
     this.formatDialog = new FormatDialog(els.root)
 
     this.dirtyState = new DirtyStateController(
@@ -476,6 +477,10 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     if (partial.focusWorkMinutes !== undefined || partial.focusBreakMinutes !== undefined) {
       this.focusTimer.setDurations(this.settings.focusWorkMinutes, this.settings.focusBreakMinutes)
+    }
+
+    if (partial.wordGoal !== undefined) {
+      this.statusBar.setGoal(partial.wordGoal)
     }
 
     if (partial.autoSavePolicy !== undefined || partial.autoSaveDebounceSeconds !== undefined) {

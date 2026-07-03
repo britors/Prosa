@@ -73,6 +73,8 @@ const BACKUP_KEEP_OPTIONS = [5, 10, 20, 50]
 const FOCUS_WORK_OPTIONS = [15, 25, 45, 60]
 /** Durações disponíveis para a fase de pausa do timer de foco (minutos). */
 const FOCUS_BREAK_OPTIONS = [5, 10, 15]
+/** Metas de palavras disponíveis para a barra de progresso (0 = desativada). */
+const WORD_GOAL_OPTIONS = [0, 500, 1000, 2500, 5000]
 
 /** Gerencia o timer de autosave com base nas configurações atuais. */
 function setupAutosave(): void {
@@ -173,6 +175,13 @@ function applyFocusTimerSettings(partial: {
     focusWorkMinutes: updated.focusWorkMinutes,
     focusBreakMinutes: updated.focusBreakMinutes
   })
+}
+
+/** Atualiza a meta de palavras e notifica o renderer. */
+function applyWordGoalSettings(partial: { wordGoal: number }): void {
+  const updated = setSettings(partial)
+  buildMenu()
+  sendMenuAction('settings:updated', { wordGoal: updated.wordGoal })
 }
 
 /** Cria e exibe a janela de splash com o logo enquanto o app carrega. */
@@ -630,6 +639,15 @@ function buildMenu(): void {
         { label: 'Alternar tópicos', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('view:toggleOutline') },
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
+        {
+          label: 'Meta de Palavras',
+          submenu: WORD_GOAL_OPTIONS.map((goal) => ({
+            label: goal === 0 ? 'Nenhuma' : `${goal} palavras`,
+            type: 'radio' as const,
+            checked: settings.wordGoal === goal,
+            click: () => applyWordGoalSettings({ wordGoal: goal })
+          }))
+        },
         {
           label: 'Modo sem distrações',
           accelerator: 'CmdOrCtrl+Shift+D',

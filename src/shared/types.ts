@@ -108,6 +108,7 @@ export interface ProsaSettings {
   pdfPrintBackground: boolean
   focusWorkMinutes: number
   focusBreakMinutes: number
+  wordGoal: number
   showWordCount: boolean
   showOutline: boolean
   distractionFree: boolean

@@ -867,6 +867,28 @@ body.is-resizing-image {
   flex: 1;
 }
 
+.goal-bar {
+  display: inline-flex;
+  align-items: center;
+}
+
+.goal-bar-track {
+  display: inline-block;
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.goal-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
 .focus-timer {
   font: inherit;
   color: inherit;

@@ -26,12 +26,19 @@ export class WordCountBar {
   private startTime = Date.now()
   private initialWords = 0
   private readonly focusTimerEl: HTMLElement | null
+  private goal = 0
 
   constructor(container: HTMLElement, editor: Editor, focusTimerEl: HTMLElement | null = null) {
     this.editor = editor
     this.el = container
     this.focusTimerEl = focusTimerEl
     this.initialWords = this.getWordCount()
+  }
+
+  /** Define a meta de palavras (0 desativa a barra de progresso). */
+  setGoal(goal: number): void {
+    this.goal = goal
+    this.update()
   }
 
   /** Define o nome do documento exibido na barra. */
@@ -70,10 +77,12 @@ export class WordCountBar {
     const wpm = elapsedMinutes > 0 ? Math.round((stats.words - this.initialWords) / elapsedMinutes) : 0
 
     const dirtyMark = this.dirty ? '<span class="status-dirty">•</span>' : ''
+    const goalBar = this.renderGoalBar(stats.words)
     this.el.innerHTML = `
       <span class="status-name">${dirtyMark}${this.documentName}</span>
       <span class="status-spacer"></span>
       <span title="Palavras">${nf.format(stats.words)} palavras</span>
+      ${goalBar}
       <span title="Ritmo">${wpm} WPM</span>
       <span title="Tempo de foco">${Math.round(elapsedMinutes)} min</span>
       <span title="Páginas">${totalPages} pág.</span>
@@ -81,6 +90,17 @@ export class WordCountBar {
       <span title="Zoom">${this.zoom}%</span>
     `
     if (this.focusTimerEl) this.el.appendChild(this.focusTimerEl)
+  }
+
+  /** Monta a barra de progresso da meta de palavras (vazio quando não há meta). */
+  private renderGoalBar(words: number): string {
+    if (this.goal <= 0) return ''
+    const progress = Math.min(100, Math.round((words / this.goal) * 100))
+    return `
+      <span class="goal-bar" title="Meta: ${nf.format(this.goal)} palavras (${progress}%)">
+        <span class="goal-bar-track"><span class="goal-bar-fill" style="width:${progress}%"></span></span>
+      </span>
+    `
   }
 
   /** Calcula a posição (linha, coluna) do cursor no documento. */
