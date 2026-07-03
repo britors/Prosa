@@ -25,6 +25,7 @@ import { SyncNotification } from '../components/sync-notification.js'
 import { FocusTimer } from '../components/focus-timer.js'
 import { FontProfileDialog } from '../components/font-profile-dialog.js'
 import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
+import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { SearchModal } from '../components/search-modal.js'
 import {
   AutoSaveController,
@@ -83,6 +84,7 @@ export class DocumentView {
   private readonly syncNotification: SyncNotification
   private readonly focusTimer: FocusTimer
   private readonly fontProfileDialog: FontProfileDialog
+  private readonly frontmatterDialog: FrontmatterDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -96,6 +98,7 @@ export class DocumentView {
   private settings: ProsaSettings
   private headerHTML = ''
   private footerHTML = ''
+  private frontmatter: Record<string, string> = {}
   private typewriterMode = false
 
   constructor(els: DocumentViewElements, settings: ProsaSettings, searchModal: SearchModal) {
@@ -120,6 +123,7 @@ export class DocumentView {
     this.versionCompareDialog = new VersionCompareDialog(els.root)
     this.syncNotification = new SyncNotification(els.root)
     this.fontProfileDialog = new FontProfileDialog(els.root)
+    this.frontmatterDialog = new FrontmatterDialog(els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
@@ -130,6 +134,9 @@ export class DocumentView {
       applyFontProfile(this.els.editorHost, profile)
       this.settings.activeFontProfileId = profile.id
       void window.prosa.setSettings({ activeFontProfileId: profile.id })
+    }), () => this.frontmatterDialog.show(this.frontmatter, (fm) => {
+      this.frontmatter = fm
+      this.setDirty(true)
     }))
 
 
@@ -274,13 +281,15 @@ export class DocumentView {
     documentName: string
     headerHTML: string
     footerHTML: string
+    frontmatter: Record<string, string>
   } {
     return {
       currentPath: this.currentPath,
       currentFormat: this.currentFormat,
       documentName: this.documentName,
       headerHTML: this.headerHTML,
-      footerHTML: this.footerHTML
+      footerHTML: this.footerHTML,
+      frontmatter: this.frontmatter
     }
   }
 
@@ -290,12 +299,14 @@ export class DocumentView {
     documentName: string
     headerHTML: string
     footerHTML: string
+    frontmatter: Record<string, string>
   }): void {
     this.currentPath = state.currentPath
     this.currentFormat = state.currentFormat
     this.documentName = state.documentName
     this.headerHTML = state.headerHTML
     this.footerHTML = state.footerHTML
+    this.frontmatter = state.frontmatter
   }
 
 

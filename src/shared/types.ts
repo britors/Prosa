@@ -141,6 +141,8 @@ export interface OpenedDocument {
   header?: string
   /** HTML do rodapé (apenas para o formato nativo .prosa). */
   footer?: string
+  /** Frontmatter YAML (chave/valor), extraído de arquivos .md ou guardado em .prosa. */
+  frontmatter?: Record<string, string>
 }
 
 /** Resultado de uma operação de abrir/salvar arquivo. */
@@ -169,6 +171,8 @@ export interface SavePayload {
   header?: string
   /** HTML do rodapé da página. */
   footer?: string
+  /** Frontmatter YAML (chave/valor) a preservar/escrever no .md ou .prosa. */
+  frontmatter?: Record<string, string>
 }
 
 /** Estilo de parágrafo rápido do painel de estilos. */

@@ -11,6 +11,7 @@ import { exportRtf } from './rtf.js'
 import { addRecentFile, getSettings } from './settings.js'
 import { createBackup } from './backup-service.js'
 import { ensureExtension, SAVE_FILTERS, SAVE_FORMATS, detectFormat } from './file-formats.js'
+import { serializeFrontmatter } from './frontmatter.js'
 import type { FileFormat, FileResult, SavePayload } from '../shared/types.js'
 
 /**
@@ -31,7 +32,8 @@ async function writeDocument(
         html: payload.html,
         metadata: payload.metadata,
         header: payload.header ?? '',
-        footer: payload.footer ?? ''
+        footer: payload.footer ?? '',
+        frontmatter: payload.frontmatter ?? {}
       }
       await writeFile(path, JSON.stringify(file, null, 2), 'utf-8')
       break
@@ -65,7 +67,7 @@ async function writeDocument(
       )
     }
     case 'md': {
-      await writeFile(path, exportMarkdown(payload.json), 'utf-8')
+      await writeFile(path, serializeFrontmatter(payload.frontmatter) + exportMarkdown(payload.json), 'utf-8')
       break
     }
     default: {

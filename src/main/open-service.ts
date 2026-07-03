@@ -11,6 +11,7 @@ import { importRtf } from './rtf.js'
 import { importDoc } from './doc.js'
 import { addRecentFile, removeRecentFile } from './settings.js'
 import { detectFormat, OPEN_FILTERS, UNSUPPORTED_OFFICE } from './file-formats.js'
+import { parseFrontmatter } from './frontmatter.js'
 import type { FileResult, OpenedDocument } from '../shared/types.js'
 
 /** Lê e converte um arquivo do disco para HTML carregável no editor. */
@@ -28,6 +29,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
   let html: string
   let header: string | undefined
   let footer: string | undefined
+  let frontmatter: Record<string, string> | undefined
 
   switch (format) {
     case 'prosa': {
@@ -37,6 +39,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
       html = typeof parsed.html === 'string' ? parsed.html : ''
       header = typeof parsed.header === 'string' ? parsed.header : ''
       footer = typeof parsed.footer === 'string' ? parsed.footer : ''
+      frontmatter = typeof parsed.frontmatter === 'object' && parsed.frontmatter !== null ? parsed.frontmatter : {}
       break
     }
     case 'docx': {
@@ -60,8 +63,10 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
       break
     }
     case 'md': {
-      const md = await readFile(path, 'utf-8')
-      html = importMarkdown(md)
+      const raw = await readFile(path, 'utf-8')
+      const parsed = parseFrontmatter(raw)
+      html = importMarkdown(parsed.body)
+      frontmatter = parsed.frontmatter
       break
     }
     default: {
@@ -78,7 +83,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
   })
   void recorded
 
-  return { path, name: basename(path), format, html, header, footer }
+  return { path, name: basename(path), format, html, header, footer, frontmatter }
 }
 
 /** Abre um arquivo via diálogo (ou caminho direto, ex.: drag-and-drop). */

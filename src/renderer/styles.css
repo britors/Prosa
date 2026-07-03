@@ -1078,6 +1078,27 @@ body.is-resizing-image {
   font: inherit;
 }
 
+.frontmatter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.frontmatter-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.frontmatter-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
 .new-profile-form {
   display: grid;
   grid-template-columns: 2fr 2fr 1fr 1fr auto;
