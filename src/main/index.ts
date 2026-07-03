@@ -14,7 +14,9 @@ import {
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
-import { exportPdf, openDocument, saveDocument } from './file-manager.js'
+import { exportPdf } from './export-service.js'
+import { openDocument } from './open-service.js'
+import { saveDocument } from './save-service.js'
 import {
   getRecentFiles,
   getSettings,
