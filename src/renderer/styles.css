@@ -664,6 +664,11 @@ body {
   margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.mini-variables {
+  gap: 6px;
 }
 
 .mini-editor-container {
@@ -686,6 +691,11 @@ body {
 
 .btn-tool:hover {
   background: var(--accent);
+}
+
+.btn-tool code {
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .mini-editor-container .ProseMirror {

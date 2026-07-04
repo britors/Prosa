@@ -5,6 +5,7 @@
 import { BrowserWindow, dialog } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { exportEpub } from './epub.js'
+import { resolveDocumentVariables, resolveDocumentVariablesInTipTap } from '../shared/document-variables.js'
 import type { FileResult, SavePayload } from '../shared/types.js'
 
 /** Exporta o documento atual para EPUB. */
@@ -14,6 +15,10 @@ export async function exportEpubDocument(
   payload: SavePayload
 ): Promise<FileResult> {
   try {
+    const resolvedJson = resolveDocumentVariablesInTipTap(payload.json, {
+      metadata: payload.metadata,
+      currentPath: payload.path
+    }, { preservePaginationTokens: true })
     const result = await dialog.showSaveDialog(window, {
       title: 'Exportar EPUB',
       defaultPath: `${defaultName || 'documento'}.epub`,
@@ -22,7 +27,12 @@ export async function exportEpubDocument(
     if (result.canceled || !result.filePath) {
       return { ok: false, canceled: true }
     }
-    const buffer = await exportEpub(payload)
+    const buffer = await exportEpub({
+      ...payload,
+      json: resolvedJson,
+      header: resolveDocumentVariables(payload.header ?? '', { metadata: payload.metadata, currentPath: payload.path }, { preservePaginationTokens: true }),
+      footer: resolveDocumentVariables(payload.footer ?? '', { metadata: payload.metadata, currentPath: payload.path }, { preservePaginationTokens: true })
+    })
     await writeFile(result.filePath, buffer)
     return { ok: true, path: result.filePath }
   } catch (error) {
