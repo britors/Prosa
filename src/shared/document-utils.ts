@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { TipTapJSON } from './types.js'
+import type { NoteEntry, TipTapJSON } from './types.js'
 
 /** Velocidade média de leitura em palavras por minuto (pt-BR). */
 const WORDS_PER_MINUTE = 200
@@ -83,6 +83,94 @@ export function extractText(node: TipTapJSON): string {
 /** Texto completo do documento, normalizado para contagem. */
 export function documentText(doc: TipTapJSON): string {
   return extractText(doc).replace(/\n+/g, '\n').trim()
+}
+
+/** Extrai chaves de citação encontradas em marcas `citation`. */
+export function extractCitations(doc: TipTapJSON): string[] {
+  const citations = new Set<string>()
+
+  function walk(node: TipTapJSON): void {
+    for (const mark of node.marks ?? []) {
+      if (mark.type === 'citation') {
+        const citeKey = mark.attrs?.citeKey
+        if (typeof citeKey === 'string' && citeKey.trim()) {
+          citations.add(citeKey.trim())
+        }
+      }
+    }
+    node.content?.forEach(walk)
+  }
+
+  walk(doc)
+  return [...citations]
+}
+
+/** Extrai wikilinks `[[alvo]]` de um documento TipTap. */
+export function extractWikilinks(doc: TipTapJSON): string[] {
+  const links = new Set<string>()
+
+  function walk(node: TipTapJSON): void {
+    for (const mark of node.marks ?? []) {
+      if (mark.type === 'wikilink') {
+        const href = mark.attrs?.href
+        if (typeof href === 'string' && href.startsWith('prosa://wiki/')) {
+          links.add(decodeURIComponent(href.slice('prosa://wiki/'.length)))
+        }
+      }
+    }
+    node.content?.forEach(walk)
+  }
+
+  walk(doc)
+  return [...links]
+}
+
+/** Extrai referências a notas do documento na ordem em que aparecem. */
+export function extractNoteRefs(doc: TipTapJSON): { id: string; kind: NoteEntry['kind'] }[] {
+  const refs: { id: string; kind: NoteEntry['kind'] }[] = []
+
+  function walk(node: TipTapJSON): void {
+    if (node.type === 'noteReference') {
+      const id = String(node.attrs?.noteId ?? '').trim()
+      const kind = node.attrs?.kind === 'endnote' ? 'endnote' : 'footnote'
+      if (id) refs.push({ id, kind })
+    }
+    node.content?.forEach(walk)
+  }
+
+  walk(doc)
+  return refs
+}
+
+/** Ordena e numera as notas de acordo com a ordem em que aparecem no texto. */
+export function indexNotes(
+  doc: TipTapJSON,
+  notes: Record<string, NoteEntry>
+): {
+  footnotes: { id: string; number: number; text: string }[]
+  endnotes: { id: string; number: number; text: string }[]
+  numbers: Map<string, number>
+} {
+  const refs = extractNoteRefs(doc)
+  const counters = { footnote: 0, endnote: 0 }
+  const numbers = new Map<string, number>()
+  const footnotes: { id: string; number: number; text: string }[] = []
+  const endnotes: { id: string; number: number; text: string }[] = []
+
+  for (const ref of refs) {
+    const entry = notes[ref.id]
+    if (!entry) continue
+    counters[entry.kind] += 1
+    numbers.set(ref.id, counters[entry.kind])
+    const item = { id: ref.id, number: counters[entry.kind], text: entry.text }
+    if (entry.kind === 'endnote') {
+      endnotes.push(item)
+    } else {
+      footnotes.push(item)
+    }
+  }
+
+  return { footnotes, endnotes, numbers }
 }
 
 /**

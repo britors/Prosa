@@ -5,14 +5,21 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
+  BibliographyStyle,
   BackupVersion,
   FileResult,
+  HtmlExportOptions,
   FontProfile,
+  NoteEntry,
   PluginInfo,
   ProsaApi,
   ProsaSettings,
   RecentFile,
-  SavePayload
+  SavePayload,
+  TipTapJSON,
+  WorkspaceBibliographyState,
+  WorkspaceLibraryData,
+  WorkspaceRelations
 } from '../shared/types.js'
 
 /**
@@ -29,6 +36,8 @@ const api: ProsaApi = {
     ipcRenderer.invoke('file:saveAs', payload) as Promise<FileResult>,
   exportPdf: (defaultName: string) =>
     ipcRenderer.invoke('file:exportPdf', defaultName) as Promise<FileResult>,
+  exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) =>
+    ipcRenderer.invoke('file:exportHtml', defaultName, doc, options, notes ?? {}) as Promise<FileResult>,
   print: () => ipcRenderer.invoke('file:print') as Promise<FileResult>,
   getRecentFiles: () =>
     ipcRenderer.invoke('file:recent') as Promise<RecentFile[]>,
@@ -50,6 +59,13 @@ const api: ProsaApi = {
   getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
   getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<PluginInfo[]>,
+  getWorkspaceLibrary: () => ipcRenderer.invoke('workspace:getLibrary') as Promise<WorkspaceLibraryData>,
+  getWorkspaceRelations: (path: string) =>
+    ipcRenderer.invoke('workspace:getRelations', path) as Promise<WorkspaceRelations>,
+  importBibTeX: (content: string) =>
+    ipcRenderer.invoke('workspace:importBibTeX', content) as Promise<WorkspaceBibliographyState>,
+  setBibliographyStyle: (style: BibliographyStyle) =>
+    ipcRenderer.invoke('workspace:setBibliographyStyle', style) as Promise<WorkspaceBibliographyState>,
   getTemplates: () => ipcRenderer.invoke('templates:list') as Promise<any[]>,
   getTemplate: (id: string) => ipcRenderer.invoke('templates:get', id) as Promise<string>,
   saveTemplate: (name: string, css: string) => ipcRenderer.invoke('templates:save', name, css),

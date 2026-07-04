@@ -26,6 +26,16 @@ export type FileFormat =
   | 'txt'
   | 'pdf'
 
+/** Modo de exportação HTML. */
+export type HtmlExportMode = 'full' | 'content'
+
+/** Opções da exportação HTML limpa. */
+export interface HtmlExportOptions {
+  mode: HtmlExportMode
+  includeStyles: boolean
+  title?: string
+}
+
 /** Metadados de um documento Prosa. */
 export interface DocumentMetadata {
   title: string
@@ -34,11 +44,75 @@ export interface DocumentMetadata {
   modifiedAt: string
 }
 
+/** Tipo de nota suportado pelo documento. */
+export type NoteKind = 'footnote' | 'endnote'
+
+/** Estrutura persistida de uma nota. */
+export interface NoteEntry {
+  id: string
+  kind: NoteKind
+  text: string
+}
+
+/** Estilos bibliográficos suportados pelo workspace. */
+export type BibliographyStyle = 'ABNT' | 'APA' | 'IEEE'
+
+/** Resumo de um documento indexado no workspace. */
+export interface WorkspaceDocumentSummary {
+  path: string
+  name: string
+  title: string
+  format: FileFormat
+  modifiedAt: string
+  tags: string[]
+  collections: string[]
+  citations: string[]
+  links: string[]
+  excerpt: string
+}
+
+/** Entrada bibliográfica importada de BibTeX. */
+export interface BibliographyEntry {
+  key: string
+  type: string
+  title: string
+  author: string
+  year: string
+  journal?: string
+  publisher?: string
+  raw: string
+}
+
+/** Estado persistido da bibliografia do workspace. */
+export interface WorkspaceBibliographyState {
+  style: BibliographyStyle
+  importedAt: string | null
+  entries: BibliographyEntry[]
+}
+
+/** Relações de um documento dentro do workspace. */
+export interface WorkspaceRelations {
+  backlinks: WorkspaceDocumentSummary[]
+  related: WorkspaceDocumentSummary[]
+  brokenLinks: string[]
+}
+
+/** Dados da biblioteca do workspace. */
+export interface WorkspaceLibraryData {
+  root: string | null
+  documents: WorkspaceDocumentSummary[]
+  recentFiles: RecentFile[]
+  pinnedFiles: RecentFile[]
+  bibliography: WorkspaceBibliographyState
+  error?: string | null
+}
+
 /** Estrutura do arquivo nativo `.prosa` (JSON). */
 export interface ProsaFile {
   version: number
   content: TipTapJSON
   metadata: DocumentMetadata
+  notes?: Record<string, NoteEntry>
   /** HTML do cabeçalho da página (opcional). */
   header?: string
   /** HTML do rodapé da página (opcional). */
@@ -137,6 +211,8 @@ export interface OpenedDocument {
   format: FileFormat
   /** Conteúdo já convertido para HTML para alimentar o editor. */
   html: string
+  /** Notas persistidas no arquivo, quando houver. */
+  notes?: Record<string, NoteEntry>
   /** HTML do cabeçalho (apenas para o formato nativo .prosa). */
   header?: string
   /** HTML do rodapé (apenas para o formato nativo .prosa). */
@@ -165,6 +241,8 @@ export interface SavePayload {
   /** Texto puro (para exportação .txt e contagem). */
   text: string
   metadata: DocumentMetadata
+  /** Notas persistidas no arquivo nativo .prosa. */
+  notes?: Record<string, NoteEntry>
   /** Formato alvo quando exportando. */
   format?: FileFormat
   /** HTML do cabeçalho da página. */
@@ -195,6 +273,7 @@ export interface ProsaApi {
   saveDocument: (payload: SavePayload) => Promise<FileResult>
   saveDocumentAs: (payload: SavePayload) => Promise<FileResult>
   exportPdf: (defaultName: string) => Promise<FileResult>
+  exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => Promise<FileResult>
   print: () => Promise<FileResult>
   getRecentFiles: () => Promise<RecentFile[]>
   clearRecentFiles: () => Promise<RecentFile[]>
@@ -206,6 +285,10 @@ export interface ProsaApi {
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
   getPlugins: () => Promise<PluginInfo[]>
+  getWorkspaceLibrary: () => Promise<WorkspaceLibraryData>
+  getWorkspaceRelations: (path: string) => Promise<WorkspaceRelations>
+  importBibTeX: (content: string) => Promise<WorkspaceBibliographyState>
+  setBibliographyStyle: (style: BibliographyStyle) => Promise<WorkspaceBibliographyState>
   getTemplates: () => Promise<any[]>
   getTemplate: (id: string) => Promise<string>
   saveTemplate: (name: string, css: string) => Promise<void>

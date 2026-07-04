@@ -26,15 +26,22 @@ import { FocusTimer } from '../components/focus-timer.js'
 import { FontProfileDialog } from '../components/font-profile-dialog.js'
 import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
+import { HtmlExportDialog } from '../components/html-export-dialog.js'
+import { NotePanel } from '../components/note-panel.js'
 import { SearchModal } from '../components/search-modal.js'
+import { WorkspaceLibraryDialog } from '../components/workspace-library.js'
 import {
   AutoSaveController,
   DocumentPersistenceController,
   DirtyStateController,
   DistractionFreeController
 } from './document-controllers.js'
+import { formatBibliographyEntry } from '../../shared/bibliography.js'
 import type {
+  BibliographyStyle,
   FileFormat,
+  NoteEntry,
+  NoteKind,
   OpenedDocument,
   ProsaSettings,
   TipTapJSON
@@ -48,6 +55,15 @@ const ZOOM_STEP = 10
 /** Formatos em que o Prosa consegue gravar. */
 const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'md', 'txt'])
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 /** Elementos do DOM necessários para a vista de documento. */
 export interface DocumentViewElements {
   root: HTMLElement
@@ -60,6 +76,7 @@ export interface DocumentViewElements {
   outline: HTMLElement
   styles: HTMLElement
   statusBar: HTMLElement
+  notes: HTMLElement
 }
 
 /**
@@ -85,6 +102,9 @@ export class DocumentView {
   private readonly focusTimer: FocusTimer
   private readonly fontProfileDialog: FontProfileDialog
   private readonly frontmatterDialog: FrontmatterDialog
+  private readonly htmlExportDialog: HtmlExportDialog
+  private readonly notePanel: NotePanel
+  private readonly workspaceLibrary: WorkspaceLibraryDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -99,6 +119,7 @@ export class DocumentView {
   private headerHTML = ''
   private footerHTML = ''
   private frontmatter: Record<string, string> = {}
+  private notes: Record<string, NoteEntry> = {}
   private typewriterMode = false
 
   constructor(els: DocumentViewElements, settings: ProsaSettings, searchModal: SearchModal) {
@@ -125,20 +146,54 @@ export class DocumentView {
     this.syncNotification = new SyncNotification(els.root)
     this.fontProfileDialog = new FontProfileDialog(els.root)
     this.frontmatterDialog = new FrontmatterDialog(els.root)
+    this.htmlExportDialog = new HtmlExportDialog(els.root)
+    this.workspaceLibrary = new WorkspaceLibraryDialog({
+      onOpenDocument: (path) => {
+        void window.prosa.openDocument(path).then((res) => {
+          if (res.ok && res.document) this.load(res.document)
+        })
+      },
+      onCreateAbnt: () => this.createAbntDocument(),
+      onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
+    }, els.root)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
-    this.commandPalette = new CommandPalette(els.root, this.editor, (path) => {
-        void window.prosa.openDocument(path).then(res => {
-            if (res.ok && res.document) this.load(res.document)
+    this.commandPalette = new CommandPalette(
+      els.root,
+      this.editor,
+      (path) => {
+        void window.prosa.openDocument(path).then((res) => {
+          if (res.ok && res.document) this.load(res.document)
         })
-    }, () => this.toggleTypewriterMode(), () => this.toggleDistractionFree(), () => this.dailyNote(), () => this.citationManager.show(), () => this.graphView.show(), () => void this.templateDialog.choose(), () => searchModal.show(), () => void this.pluginDialog.show(), () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON), () => void this.fontProfileDialog.show(this.settings.activeFontProfileId, (profile) => {
-      applyFontProfile(this.els.editorHost, profile)
-      this.settings.activeFontProfileId = profile.id
-      void window.prosa.setSettings({ activeFontProfileId: profile.id })
-    }), () => this.frontmatterDialog.show(this.frontmatter, (fm) => {
-      this.frontmatter = fm
-      this.setDirty(true)
-    }), () => this.insertMathBlock())
+      },
+      () => this.toggleTypewriterMode(),
+      () => this.toggleDistractionFree(),
+      () => this.dailyNote(),
+      () => this.citationManager.show(),
+      () => this.graphView.show(),
+      () => void this.templateDialog.choose(),
+      () => searchModal.show(),
+      () => void this.pluginDialog.show(),
+      () => void this.versionCompareDialog.show(this.currentPath, this.editor.getJSON() as TipTapJSON),
+      () =>
+        void this.fontProfileDialog.show(this.settings.activeFontProfileId, (profile) => {
+          applyFontProfile(this.els.editorHost, profile)
+          this.settings.activeFontProfileId = profile.id
+          void window.prosa.setSettings({ activeFontProfileId: profile.id })
+        }),
+      () =>
+        this.frontmatterDialog.show(this.frontmatter, (fm) => {
+          this.frontmatter = fm
+          this.setDirty(true)
+        }),
+      () => this.insertMathBlock(),
+      () => void this.showWorkspaceLibrary(),
+      () => this.createAbntDocument(),
+      () => this.insertBibliography(),
+      () => this.insertNote('footnote'),
+      () => this.insertNote('endnote'),
+      () => void this.exportHtml()
+    )
 
 
     
@@ -150,7 +205,9 @@ export class DocumentView {
       onFind: () => this.findReplace.show(false),
       onPrint: () => void window.prosa.print(),
       onInsertImage: () => this.openImagePicker(),
-      onInsertLink: () => this.promptLink()
+      onInsertLink: () => this.promptLink(),
+      onInsertFootnote: () => this.insertNote('footnote'),
+      onInsertEndnote: () => this.insertNote('endnote')
     }).then((toolbar) => {
         this.updateToolbar = toolbar.updateActiveStates
         // Carrega as fontes instaladas no sistema e popula o seletor.
@@ -162,7 +219,7 @@ export class DocumentView {
     this.focusTimer = new FocusTimer(settings.focusWorkMinutes, settings.focusBreakMinutes)
     this.statusBar = new WordCountBar(els.statusBar, this.editor, this.focusTimer.el)
     this.statusBar.setGoal(settings.wordGoal)
-    this.formatDialog = new FormatDialog(els.root)
+    this.notePanel = new NotePanel(els.notes, (id) => this.editNote(id), (id) => this.removeNote(id))
 
     this.dirtyState = new DirtyStateController(
       (dirty) => this.statusBar.setDirty(dirty),
@@ -283,6 +340,7 @@ export class DocumentView {
     headerHTML: string
     footerHTML: string
     frontmatter: Record<string, string>
+    notes: Record<string, NoteEntry>
   } {
     return {
       currentPath: this.currentPath,
@@ -290,7 +348,8 @@ export class DocumentView {
       documentName: this.documentName,
       headerHTML: this.headerHTML,
       footerHTML: this.footerHTML,
-      frontmatter: this.frontmatter
+      frontmatter: this.frontmatter,
+      notes: this.notes
     }
   }
 
@@ -301,6 +360,7 @@ export class DocumentView {
     headerHTML: string
     footerHTML: string
     frontmatter: Record<string, string>
+    notes: Record<string, NoteEntry>
   }): void {
     this.currentPath = state.currentPath
     this.currentFormat = state.currentFormat
@@ -308,6 +368,7 @@ export class DocumentView {
     this.headerHTML = state.headerHTML
     this.footerHTML = state.footerHTML
     this.frontmatter = state.frontmatter
+    this.notes = state.notes
   }
 
 
@@ -321,8 +382,62 @@ export class DocumentView {
   private promptLink(): void {
     const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
     this.customPrompt('URL do link:', '', event, (url) => {
-        if (url) this.editor.chain().focus().setLink({ href: url }).run()
+        if (!url) return
+        if (url.startsWith('[[') && url.endsWith(']]')) {
+          const target = url.slice(2, -2).trim()
+          if (target) {
+            this.editor.chain().focus().setWikilink({ href: `prosa://wiki/${encodeURIComponent(target)}` }).run()
+          }
+          return
+        }
+        this.editor.chain().focus().setLink({ href: url }).run()
     })
+  }
+
+  /** Insere uma nova nota e registra seu texto. */
+  insertNote(kind: NoteKind): void {
+    const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
+    this.customPrompt(kind === 'footnote' ? 'Texto da nota de rodapé:' : 'Texto da nota final:', '', event, (text) => {
+      if (!text.trim()) return
+      const id = crypto.randomUUID()
+      this.notes = { ...this.notes, [id]: { id, kind, text } }
+      this.editor.chain().focus().insertContent({ type: 'noteReference', attrs: { noteId: id, kind } }).run()
+      this.setDirty(true)
+      this.refresh()
+    })
+  }
+
+  /** Edita uma nota existente. */
+  editNote(id: string): void {
+    const note = this.notes[id]
+    if (!note) return
+    const event = new MouseEvent('click', { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 })
+    this.customPrompt(note.kind === 'footnote' ? 'Editar nota de rodapé:' : 'Editar nota final:', note.text, event, (text) => {
+      this.notes = { ...this.notes, [id]: { ...note, text } }
+      this.setDirty(true)
+      this.refresh()
+    })
+  }
+
+  /** Remove uma nota e as referências correspondentes no documento. */
+  removeNote(id: string): void {
+    if (!this.notes[id]) return
+    const positions: { from: number; to: number }[] = []
+    this.editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'noteReference' && node.attrs.noteId === id) {
+        positions.push({ from: pos, to: pos + node.nodeSize })
+      }
+    })
+    const tr = this.editor.state.tr
+    for (const range of positions.reverse()) {
+      tr.delete(range.from, range.to)
+    }
+    this.editor.view.dispatch(tr)
+    const next = { ...this.notes }
+    delete next[id]
+    this.notes = next
+    this.setDirty(true)
+    this.refresh()
   }
 
   /** Abre um prompt para inserir uma nova fórmula matemática. */
@@ -476,6 +591,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     this.styles.update()
     if (this.updateToolbar) this.updateToolbar()
     this.statusBar.update()
+    this.notePanel.update(this.editor.getJSON() as TipTapJSON, this.notes)
   }
 
   /** Define o estado de alterações não salvas e notifica o main. */
@@ -540,6 +656,20 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     await this.persistenceController.exportPdf()
   }
 
+  /** Exporta o documento atual para HTML limpo. */
+  async exportHtml(): Promise<void> {
+    const options = await this.htmlExportDialog.choose()
+    if (!options) return
+    const defaultName = this.documentName.replace(/\.[^.]+$/, '')
+    const result = await window.prosa.exportHtml(defaultName, this.editor.getJSON() as TipTapJSON, {
+      ...options,
+      title: defaultName
+    }, this.notes)
+    if (!result.ok && result.error) {
+      window.alert(result.error)
+    }
+  }
+
   /** Abre o seletor de arquivos para inserir uma imagem no documento. */
   openImagePicker(): void {
     const input = document.createElement('input')
@@ -563,6 +693,73 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   /** Abre a Paleta de Comandos. */
   openCommandPalette(): void {
     this.commandPalette.show()
+  }
+
+  /** Abre a biblioteca do workspace. */
+  async showWorkspaceLibrary(): Promise<void> {
+    await this.workspaceLibrary.show()
+  }
+
+  /** Cria um documento acadêmico com estrutura ABNT inicial. */
+  createAbntDocument(): void {
+    this.newDocument()
+    this.documentName = 'Trabalho-ABNT.prosa'
+    this.frontmatter = {
+      title: 'Trabalho acadêmico',
+      author: 'Seu nome',
+      tags: 'ABNT, acadêmico',
+      collections: 'Trabalhos'
+    }
+    this.setPersistenceState({
+      currentPath: null,
+      currentFormat: 'prosa',
+      documentName: this.documentName,
+      headerHTML: '',
+      footerHTML: '',
+      frontmatter: this.frontmatter,
+      notes: {}
+    })
+    this.statusBar.setDocumentName(this.documentName)
+    this.editor.commands.setContent(
+      `
+        <h1>Trabalho acadêmico</h1>
+        <p><strong>Autor:</strong> Seu nome</p>
+        <p><strong>Instituição:</strong> Sua instituição</p>
+        <p><strong>Curso:</strong> Seu curso</p>
+        <h2>Resumo</h2>
+        <p></p>
+        <h2>Introdução</h2>
+        <p></p>
+        <h2>Desenvolvimento</h2>
+        <p></p>
+        <h2>Conclusão</h2>
+        <p></p>
+        <h2>Referências</h2>
+        <p></p>
+      `.trim(),
+      false
+    )
+    this.setDirty(true)
+    this.refresh()
+    this.editor.commands.focus()
+  }
+
+  /** Insere uma bibliografia formatada no documento atual. */
+  async insertBibliography(style?: BibliographyStyle, keys: string[] = []): Promise<void> {
+    const library = await window.prosa.getWorkspaceLibrary()
+    const bibliographyStyle = style ?? library.bibliography.style
+    const sourceKeys = keys.length > 0 ? keys : library.bibliography.entries.map((entry) => entry.key)
+    const map = new Map(library.bibliography.entries.map((entry) => [entry.key, entry]))
+    const ordered = [...new Set(sourceKeys)].filter((key) => map.has(key))
+    const items =
+      ordered.length > 0
+        ? ordered
+            .map((key, index) => `<li>${escapeHtml(formatBibliographyEntry(map.get(key)!, bibliographyStyle, index + 1))}</li>`)
+            .join('')
+        : '<li>Sem citações importadas.</li>'
+
+    this.editor.chain().focus().insertContent(`<h2>Referências</h2><ol>${items}</ol>`).run()
+    this.setDirty(true)
   }
 
   /** Alterna o workspace do projeto. */

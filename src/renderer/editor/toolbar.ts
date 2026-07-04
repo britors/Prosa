@@ -69,6 +69,8 @@ export async function createToolbar(
     onPrint: () => void
     onInsertImage: () => void
     onInsertLink: () => void
+    onInsertFootnote: () => void
+    onInsertEndnote: () => void
   }
 ): Promise<ToolbarController> {
   container.setAttribute('role', 'toolbar')
@@ -278,6 +280,16 @@ export async function createToolbar(
       icon: 'image',
       title: 'Inserir imagem (arquivo)',
       command: () => handlers.onInsertImage()
+    },
+    {
+      icon: 'sticky-note-plus',
+      title: 'Inserir nota de rodapé',
+      command: () => handlers.onInsertFootnote()
+    },
+    {
+      icon: 'sticky-note-check',
+      title: 'Inserir nota final',
+      command: () => handlers.onInsertEndnote()
     },
     {
       icon: 'table',

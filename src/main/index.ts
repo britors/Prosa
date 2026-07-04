@@ -14,6 +14,7 @@ import {
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exportPdf } from './export-service.js'
+import { exportHtmlDocument } from './html-export-service.js'
 import { openDocument } from './open-service.js'
 import { saveDocument } from './save-service.js'
 import { listVersions, getVersionText } from './version-history.js'
@@ -35,7 +36,8 @@ import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
-import type { AppInfo, FontProfile, RecentFile, SavePayload } from '../shared/types.js'
+import { getWorkspaceLibrary, getWorkspaceRelations, importBibTeX, setBibliographyStyle } from './workspace.js'
+import type { AppInfo, FontProfile, HtmlExportOptions, NoteEntry, RecentFile, SavePayload, TipTapJSON } from '../shared/types.js'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
@@ -385,6 +387,10 @@ function buildMenu(): void {
           click: () => sendMenuAction('file:new')
         },
         {
+          label: 'Novo trabalho ABNT',
+          click: () => sendMenuAction('file:newAbnt')
+        },
+        {
           label: 'Abrir...',
           accelerator: 'CmdOrCtrl+O',
           click: () => void handleOpen()
@@ -495,6 +501,10 @@ function buildMenu(): void {
           label: 'Exportar PDF',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => sendMenuAction('file:exportPdf')
+        },
+        {
+          label: 'Exportar HTML limpo',
+          click: () => sendMenuAction('file:exportHtml')
         },
         {
           label: 'Configurações de PDF',
@@ -642,6 +652,10 @@ function buildMenu(): void {
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
+          label: 'Biblioteca do Workspace',
+          click: () => sendMenuAction('workspace:library')
+        },
+        {
           label: 'Meta de Palavras',
           submenu: WORD_GOAL_OPTIONS.map((goal) => ({
             label: goal === 0 ? 'Nenhuma' : `${goal} palavras`,
@@ -752,6 +766,11 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle('file:exportHtml', async (_event, defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => {
+    if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
+    return exportHtmlDocument(mainWindow, defaultName, doc, options, notes)
+  })
+
   ipcMain.handle('file:print', () => {
     handlePrint()
     return { ok: true }
@@ -779,6 +798,22 @@ function registerIpc(): void {
     return await searchInFiles(settings.workspacePath, term)
   })
   ipcMain.handle('plugins:list', () => getAvailablePlugins())
+  ipcMain.handle('workspace:getLibrary', () => getWorkspaceLibrary())
+  ipcMain.handle('workspace:getRelations', (_event, path: string) => getWorkspaceRelations(path))
+  ipcMain.handle('workspace:importBibTeX', (_event, content: string) => {
+    const settings = getSettings()
+    if (!settings.workspacePath) {
+      return Promise.resolve({ style: 'ABNT', importedAt: null, entries: [] })
+    }
+    return importBibTeX(settings.workspacePath, content)
+  })
+  ipcMain.handle('workspace:setBibliographyStyle', (_event, style) => {
+    const settings = getSettings()
+    if (!settings.workspacePath) {
+      return Promise.resolve({ style: 'ABNT', importedAt: null, entries: [] })
+    }
+    return setBibliographyStyle(settings.workspacePath, style)
+  })
 
   ipcMain.handle('versions:list', (_event, path: string) => listVersions(path))
   ipcMain.handle('versions:text', (_event, path: string, file: string) => getVersionText(path, file))

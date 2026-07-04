@@ -41,6 +41,7 @@ async function bootstrap(): Promise<void> {
     editorHost: el('editor'),
     outline: el('outline'),
     styles: el('styles'),
+    notes: el('notes'),
     statusBar: el('status-bar')
   }
 
@@ -69,7 +70,12 @@ async function bootstrap(): Promise<void> {
       view.newDocument()
       showEditor()
     },
+    onNewAbnt: () => {
+      view.createAbntDocument()
+      showEditor()
+    },
     onOpen: () => void openViaDialog(),
+    onLibrary: () => void view.showWorkspaceLibrary(),
     onOpenRecent: (path) => void openPath(path),
     onPin: async (file) => {
         await window.prosa.pinFile(file)
@@ -128,6 +134,10 @@ function registerMenuActions(
         view.newDocument()
         showEditor()
         break
+      case 'file:newAbnt':
+        view.createAbntDocument()
+        showEditor()
+        break
       case 'file:open':
         void openViaDialog()
         break
@@ -146,6 +156,9 @@ function registerMenuActions(
       case 'file:exportPdf':
         void view.exportPdf()
         break
+      case 'file:exportHtml':
+        void view.exportHtml()
+        break
       case 'edit:find':
         view.openFind(false)
         break
@@ -163,6 +176,9 @@ function registerMenuActions(
         break
       case 'workspace:switch':
         void view.switchWorkspace()
+        break
+      case 'workspace:library':
+        void view.showWorkspaceLibrary()
         break
       case 'sync:choose':
         void view.chooseSyncFolder()

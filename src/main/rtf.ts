@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { TipTapJSON } from '../shared/types.js'
+import { indexNotes } from '../shared/document-utils.js'
+import type { NoteEntry, TipTapJSON } from '../shared/types.js'
 
 /**
  * Suporte a Rich Text Format (.rtf) — formato lido e gravado tanto pelo
@@ -36,7 +37,7 @@ function escapeRtf(text: string): string {
 }
 
 /** Converte os nós inline de um bloco em RTF, aplicando as marcas. */
-function inlineToRtf(node: TipTapJSON): string {
+function inlineToRtf(node: TipTapJSON, noteNumbers?: Map<string, number>): string {
   const out: string[] = []
 
   const visit = (child: TipTapJSON): void => {
@@ -63,6 +64,9 @@ function inlineToRtf(node: TipTapJSON): string {
       }
       const text = escapeRtf(child.text ?? '')
       out.push(`${on.join('')}${on.length ? ' ' : ''}${text}${off.join('')}`)
+    } else if (child.type === 'noteReference') {
+      const number = noteNumbers?.get(String(child.attrs?.noteId ?? ''))
+      if (number) out.push(`[${number}]`)
     } else if (child.type === 'hardBreak') {
       out.push('\\line ')
     } else {
@@ -75,28 +79,28 @@ function inlineToRtf(node: TipTapJSON): string {
 }
 
 /** Converte um nó de bloco TipTap em um parágrafo RTF. */
-function blockToRtf(node: TipTapJSON, listPrefix = ''): string {
+function blockToRtf(node: TipTapJSON, listPrefix = '', noteNumbers?: Map<string, number>): string {
   switch (node.type) {
     case 'paragraph':
-      return `\\pard\\sa180 ${listPrefix}${inlineToRtf(node)}\\par\n`
+      return `\\pard\\sa180 ${listPrefix}${inlineToRtf(node, noteNumbers)}\\par\n`
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1)
       const size = (20 - level * 2) * 2 // meio-pontos
-      return `\\pard\\sa180\\sb120\\b\\fs${size} ${inlineToRtf(node)}\\b0\\fs24\\par\n`
+      return `\\pard\\sa180\\sb120\\b\\fs${size} ${inlineToRtf(node, noteNumbers)}\\b0\\fs24\\par\n`
     }
     case 'blockquote':
       return (node.content ?? [])
-        .map((child) => `\\pard\\li720\\sa180\\i ${inlineToRtf(child)}\\i0\\par\n`)
+        .map((child) => `\\pard\\li720\\sa180\\i ${inlineToRtf(child, noteNumbers)}\\i0\\par\n`)
         .join('')
     case 'codeBlock':
-      return `\\pard\\sa180\\f1 ${inlineToRtf(node)}\\f0\\par\n`
+      return `\\pard\\sa180\\f1 ${inlineToRtf(node, noteNumbers)}\\f0\\par\n`
     case 'mathBlock':
       return `\\pard\\qc\\sa180\\f1 ${escapeRtf(String(node.attrs?.latex ?? ''))}\\f0\\par\n`
     case 'bulletList':
       return (node.content ?? [])
         .map((item) =>
           (item.content ?? [])
-            .map((child) => blockToRtf(child, '\\bullet\\tab '))
+            .map((child) => blockToRtf(child, '\\bullet\\tab ', noteNumbers))
             .join('')
         )
         .join('')
@@ -104,21 +108,21 @@ function blockToRtf(node: TipTapJSON, listPrefix = ''): string {
       return (node.content ?? [])
         .map((item, idx) =>
           (item.content ?? [])
-            .map((child) => blockToRtf(child, `${idx + 1}.\\tab `))
+            .map((child) => blockToRtf(child, `${idx + 1}.\\tab `, noteNumbers))
             .join('')
         )
         .join('')
     case 'table':
-      return tableToRtf(node)
+      return tableToRtf(node, noteNumbers)
     case 'horizontalRule':
       return '\\pard\\brdrb\\brdrs\\brdrw10\\par\n'
     default:
-      return `\\pard\\sa180 ${inlineToRtf(node)}\\par\n`
+      return `\\pard\\sa180 ${inlineToRtf(node, noteNumbers)}\\par\n`
   }
 }
 
 /** Converte uma tabela TipTap em linhas RTF simples. */
-function tableToRtf(node: TipTapJSON): string {
+function tableToRtf(node: TipTapJSON, noteNumbers?: Map<string, number>): string {
   const rows = node.content ?? []
   let out = ''
   for (const row of rows) {
@@ -131,7 +135,7 @@ function tableToRtf(node: TipTapJSON): string {
     }
     let body = ''
     for (const cell of cells) {
-      const text = (cell.content ?? []).map((c) => inlineToRtf(c)).join(' ')
+      const text = (cell.content ?? []).map((c) => inlineToRtf(c, noteNumbers)).join(' ')
       body += `\\pard\\intbl ${text}\\cell `
     }
     out += `${header}\n${body}\\row\n`
@@ -140,13 +144,20 @@ function tableToRtf(node: TipTapJSON): string {
 }
 
 /** Converte um documento TipTap completo em uma string .rtf. */
-export function exportRtf(doc: TipTapJSON): string {
-  const body = (doc.content ?? []).map((node) => blockToRtf(node)).join('')
+export function exportRtf(doc: TipTapJSON, notes: Record<string, NoteEntry> = {}): string {
+  const { footnotes, endnotes, numbers } = indexNotes(doc, notes)
+  const body = (doc.content ?? []).map((node) => blockToRtf(node, '', numbers)).join('')
+  const noteText =
+    (footnotes.length > 0 ? '\\pard\\b Notas de rodapé\\b0\\par\n' : '') +
+    footnotes.map((note) => `\\pard [${note.number}] ${escapeRtf(note.text)}\\par\n`).join('') +
+    (endnotes.length > 0 ? '\\pard\\b Notas finais\\b0\\par\n' : '') +
+    endnotes.map((note) => `\\pard [${note.number}] ${escapeRtf(note.text)}\\par\n`).join('')
   return (
     '{\\rtf1\\ansi\\ansicpg1252\\deff0' +
     '{\\fonttbl{\\f0\\froman Times New Roman;}{\\f1\\fmodern Courier New;}}' +
     '\\fs24\n' +
     body +
+    noteText +
     '}'
   )
 }
