@@ -213,6 +213,8 @@ export interface ProsaSettings {
   activeFontProfileId: string
   showWordCount: boolean
   showOutline: boolean
+  showNotes: boolean
+  showRelations: boolean
   distractionFree: boolean
   recentFiles: RecentFile[]
   pinnedFiles: RecentFile[]

@@ -30,6 +30,8 @@ const defaults: ProsaSettings = {
   activeFontProfileId: 'serif',
   showWordCount: true,
   showOutline: true,
+  showNotes: false,
+  showRelations: false,
   distractionFree: false,
   recentFiles: [],
   pinnedFiles: [],

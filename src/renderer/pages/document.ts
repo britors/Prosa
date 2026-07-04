@@ -679,6 +679,8 @@ export class DocumentView {
     this.setZoom(this.zoom)
     this.els.toolbar.removeAttribute('hidden')
     this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)
+    this.els.notes.parentElement?.toggleAttribute('hidden', !this.settings.showNotes)
+    this.els.relations.parentElement?.toggleAttribute('hidden', !this.settings.showRelations)
     this.els.styles.parentElement?.setAttribute('hidden', '')
     this.els.statusBar.toggleAttribute('hidden', !this.settings.showWordCount)
     this.distractionFreeController.setEnabled(this.settings.distractionFree, false)
@@ -726,6 +728,14 @@ export class DocumentView {
 
     if (partial.showOutline !== undefined && !this.distractionFreeController.isEnabled()) {
       this.els.outline.parentElement?.toggleAttribute('hidden', !partial.showOutline)
+    }
+
+    if (partial.showNotes !== undefined) {
+      this.els.notes.parentElement?.toggleAttribute('hidden', !partial.showNotes)
+    }
+
+    if (partial.showRelations !== undefined) {
+      this.els.relations.parentElement?.toggleAttribute('hidden', !partial.showRelations)
     }
 
     if (partial.showWordCount !== undefined && !this.distractionFreeController.isEnabled()) {
@@ -1044,6 +1054,24 @@ export class DocumentView {
   toggleStyles(): void {
     const panel = this.els.styles.parentElement
     panel?.toggleAttribute('hidden')
+  }
+
+  /** Alterna a visibilidade do painel de notas. */
+  toggleNotes(): void {
+    const panel = this.els.notes.parentElement
+    panel?.toggleAttribute('hidden')
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    this.settings.showNotes = !isHidden
+    void window.prosa.setSettings({ showNotes: this.settings.showNotes })
+  }
+
+  /** Alterna a visibilidade do painel de relações do workspace. */
+  toggleRelations(): void {
+    const panel = this.els.relations.parentElement
+    panel?.toggleAttribute('hidden')
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    this.settings.showRelations = !isHidden
+    void window.prosa.setSettings({ showRelations: this.settings.showRelations })
   }
 
   /** Alterna a visibilidade da barra de contagem de palavras. */

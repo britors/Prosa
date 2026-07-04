@@ -247,6 +247,12 @@ function registerMenuActions(
       case 'view:toggleStyles':
         view.toggleStyles()
         break
+      case 'view:toggleNotes':
+        view.toggleNotes()
+        break
+      case 'view:toggleRelations':
+        view.toggleRelations()
+        break
       case 'view:toggleWordCount':
         view.toggleWordCount()
         break

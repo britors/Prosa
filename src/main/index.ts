@@ -655,6 +655,18 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Alternar tópicos', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('view:toggleOutline') },
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
+        {
+          label: 'Notas',
+          type: 'checkbox',
+          checked: settings.showNotes,
+          click: () => sendMenuAction('view:toggleNotes')
+        },
+        {
+          label: 'Relações do workspace',
+          type: 'checkbox',
+          checked: settings.showRelations,
+          click: () => sendMenuAction('view:toggleRelations')
+        },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
           label: 'Biblioteca do Workspace',
