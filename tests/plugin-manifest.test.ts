@@ -151,3 +151,14 @@ test('o plugin de exemplo oficial tem manifesto válido', () => {
     assert.deepEqual(result.manifest.permissions, ['storage'])
   }
 })
+
+test('o plugin oficial de Zotero tem manifesto válido', () => {
+  const pluginDir = resolve('examples/plugins/zotero-sync')
+  const raw = JSON.parse(readFileSync(join(pluginDir, 'manifest.json'), 'utf-8'))
+  const result = validatePluginManifest(raw, pluginDir, 'zotero-sync')
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.equal(result.manifest.id, 'zotero-sync')
+    assert.deepEqual(result.manifest.permissions, ['dialog', 'storage', 'workspace'])
+  }
+})

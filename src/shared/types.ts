@@ -160,6 +160,8 @@ export interface FontProfile {
 
 /** Permissões que um plugin pode declarar (conjunto v1, deliberadamente mínimo). */
 export type PluginPermission = 'storage'
+  | 'dialog'
+  | 'workspace'
 
 /** Manifesto declarado por um plugin em manifest.json. */
 export interface PluginManifest {

@@ -58,7 +58,11 @@ Mensagens conhecidas na v1:
 - `{ type: 'log', level?: 'info' | 'warn' | 'error', message: string }`
 - `{ type: 'storage:get', requestId: string, key: string }`
 - `{ type: 'storage:set', requestId: string, key: string, value: unknown }`
+- `{ type: 'dialog:openFile', requestId: string, title?: string, extensions?: string[] }`
+- `{ type: 'workspace:importBibTeX', requestId: string, content: string }`
 - `{ type: 'storage:result', requestId: string, value: unknown }`
+- `{ type: 'dialog:result', requestId: string, value: string | null }`
+- `{ type: 'workspace:result', requestId: string, value: unknown }`
 - `{ type: 'error', requestId?: string, message: string }`
 
 Para reduzir boilerplate e padronizar o handshake, o repositório inclui um helper
@@ -82,6 +86,8 @@ código no processo principal que a aplica de verdade.
 | Permissão | Concede |
 | --- | --- |
 | `storage` | Acesso a um armazenamento chave-valor próprio do plugin (`storage:get`/`storage:set`), persistido em `<userData>/plugins-data/<id>/store.json`. Sem essa permissão, toda requisição de `storage` é recusada e registrada como tentativa negada. |
+| `dialog` | Permite pedir ao processo principal que abra um seletor de arquivo (`dialog:openFile`). Útil para importar arquivos locais sem acoplar o plugin ao DOM do renderer. |
+| `workspace` | Permite importar BibTeX para a bibliografia do workspace atual (`workspace:importBibTeX`). Sem essa permissão, o plugin não consegue atualizar a base bibliográfica do editor. |
 
 Novas permissões só serão adicionadas junto com a funcionalidade que elas de fato
 protegem — nunca de forma especulativa.
@@ -106,6 +112,8 @@ protegem — nunca de forma especulativa.
 
 O exemplo funcional de referência fica em `examples/plugins/hello-storage/`. Copie a
 pasta inteira para `<userData>/plugins/hello-storage/` para carregá-la no Prosa.
+O plugin oficial de integração com Zotero fica em `examples/plugins/zotero-sync/` e
+mostra o fluxo de importação local de um `BibTeX` exportado.
 
 `manifest.json`:
 

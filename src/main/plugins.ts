@@ -2,12 +2,14 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { app, utilityProcess } from 'electron'
+import { app, dialog, utilityProcess } from 'electron'
 import type { UtilityProcess } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { validatePluginManifest } from './plugin-manifest.js'
+import { getSettings } from './settings.js'
+import { importBibTeX } from './workspace.js'
 import type { PluginInfo, PluginManifest } from '../shared/types.js'
 
 const pluginsPath = join(app.getPath('userData'), 'plugins')
@@ -27,10 +29,19 @@ type PluginToMainMessage =
   | { type: 'log'; level?: 'info' | 'warn' | 'error'; message: string }
   | { type: 'storage:get'; requestId: string; key: string }
   | { type: 'storage:set'; requestId: string; key: string; value: unknown }
+  | {
+      type: 'dialog:openFile'
+      requestId: string
+      title?: string
+      extensions?: string[]
+    }
+  | { type: 'workspace:importBibTeX'; requestId: string; content: string }
 
 /** Mensagens que o processo principal pode enviar de volta a um plugin. */
 type MainToPluginMessage =
   | { type: 'storage:result'; requestId: string; value: unknown }
+  | { type: 'dialog:result'; requestId: string; value: string | null }
+  | { type: 'workspace:result'; requestId: string; value: unknown }
   | { type: 'error'; requestId?: string; message: string }
 
 const plugins = new Map<string, RunningPlugin>()
@@ -38,7 +49,13 @@ const plugins = new Map<string, RunningPlugin>()
 function isPluginToMainMessage(value: unknown): value is PluginToMainMessage {
   if (typeof value !== 'object' || value === null) return false
   const type = (value as { type?: unknown }).type
-  return type === 'log' || type === 'storage:get' || type === 'storage:set'
+  return (
+    type === 'log' ||
+    type === 'storage:get' ||
+    type === 'storage:set' ||
+    type === 'dialog:openFile' ||
+    type === 'workspace:importBibTeX'
+  )
 }
 
 function storeFilePath(id: string): string {
@@ -76,12 +93,36 @@ async function handlePluginMessage(entry: RunningPlugin, message: unknown): Prom
 
   const manifest = entry.manifest
   const hasStorage = manifest?.permissions.includes('storage') ?? false
+  const hasDialog = manifest?.permissions.includes('dialog') ?? false
+  const hasWorkspace = manifest?.permissions.includes('workspace') ?? false
   if (!hasStorage) {
-    console.warn(`[plugins] ${entry.id}: tentativa de usar "storage" sem permissão declarada.`)
+    if (message.type === 'storage:get' || message.type === 'storage:set') {
+      console.warn(`[plugins] ${entry.id}: tentativa de usar "storage" sem permissão declarada.`)
+      const reply: MainToPluginMessage = {
+        type: 'error',
+        requestId: message.requestId,
+        message: "Permissão 'storage' não concedida."
+      }
+      entry.process?.postMessage(reply)
+      return
+    }
+  }
+  if (!hasDialog && message.type === 'dialog:openFile') {
+    console.warn(`[plugins] ${entry.id}: tentativa de usar "dialog" sem permissão declarada.`)
     const reply: MainToPluginMessage = {
       type: 'error',
       requestId: message.requestId,
-      message: "Permissão 'storage' não concedida."
+      message: "Permissão 'dialog' não concedida."
+    }
+    entry.process?.postMessage(reply)
+    return
+  }
+  if (!hasWorkspace && message.type === 'workspace:importBibTeX') {
+    console.warn(`[plugins] ${entry.id}: tentativa de usar "workspace" sem permissão declarada.`)
+    const reply: MainToPluginMessage = {
+      type: 'error',
+      requestId: message.requestId,
+      message: "Permissão 'workspace' não concedida."
     }
     entry.process?.postMessage(reply)
     return
@@ -97,6 +138,37 @@ async function handlePluginMessage(entry: RunningPlugin, message: unknown): Prom
       store[message.key] = message.value
       await writeStore(entry.id, store)
       const reply: MainToPluginMessage = { type: 'storage:result', requestId: message.requestId, value: message.value }
+      entry.process?.postMessage(reply)
+    } else if (message.type === 'dialog:openFile') {
+      const result = await dialog.showOpenDialog({
+        title: message.title ?? 'Abrir arquivo',
+        properties: ['openFile'],
+        filters: [
+          {
+            name: 'Bibliografia BibTeX',
+            extensions: message.extensions?.length ? message.extensions : ['bib', 'txt']
+          }
+        ]
+      })
+      const reply: MainToPluginMessage = {
+        type: 'dialog:result',
+        requestId: message.requestId,
+        value: result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+      }
+      entry.process?.postMessage(reply)
+    } else if (message.type === 'workspace:importBibTeX') {
+      const settings = getSettings()
+      if (!settings.workspacePath) {
+        const reply: MainToPluginMessage = {
+          type: 'error',
+          requestId: message.requestId,
+          message: 'Defina uma pasta de workspace para importar referências do Zotero.'
+        }
+        entry.process?.postMessage(reply)
+        return
+      }
+      const value = await importBibTeX(settings.workspacePath, message.content)
+      const reply: MainToPluginMessage = { type: 'workspace:result', requestId: message.requestId, value }
       entry.process?.postMessage(reply)
     }
   } catch (err) {
