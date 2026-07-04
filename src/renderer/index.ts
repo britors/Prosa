@@ -42,6 +42,7 @@ async function bootstrap(): Promise<void> {
     outline: el('outline'),
     styles: el('styles'),
     notes: el('notes'),
+    relations: el('relations'),
     statusBar: el('status-bar')
   }
 

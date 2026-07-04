@@ -28,6 +28,7 @@ import { applyFontProfile, resolveFontProfile } from '../components/font-profile
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
+import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
 import { SearchModal } from '../components/search-modal.js'
 import { WorkspaceLibraryDialog } from '../components/workspace-library.js'
 import {
@@ -77,6 +78,7 @@ export interface DocumentViewElements {
   styles: HTMLElement
   statusBar: HTMLElement
   notes: HTMLElement
+  relations: HTMLElement
 }
 
 /**
@@ -104,6 +106,7 @@ export class DocumentView {
   private readonly frontmatterDialog: FrontmatterDialog
   private readonly htmlExportDialog: HtmlExportDialog
   private readonly notePanel: NotePanel
+  private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
   private readonly workspaceLibrary: WorkspaceLibraryDialog
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
@@ -220,6 +223,13 @@ export class DocumentView {
     this.statusBar = new WordCountBar(els.statusBar, this.editor, this.focusTimer.el)
     this.statusBar.setGoal(settings.wordGoal)
     this.notePanel = new NotePanel(els.notes, (id) => this.editNote(id), (id) => this.removeNote(id))
+    this.workspaceRelationsPanel = new WorkspaceRelationsPanel(els.relations, {
+      onOpenDocument: (path) => {
+        void window.prosa.openDocument(path).then((res) => {
+          if (res.ok && res.document) this.load(res.document)
+        })
+      }
+    })
 
     this.dirtyState = new DirtyStateController(
       (dirty) => this.statusBar.setDirty(dirty),
@@ -592,6 +602,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     if (this.updateToolbar) this.updateToolbar()
     this.statusBar.update()
     this.notePanel.update(this.editor.getJSON() as TipTapJSON, this.notes)
+    void this.workspaceRelationsPanel.update(this.currentPath)
   }
 
   /** Define o estado de alterações não salvas e notifica o main. */
