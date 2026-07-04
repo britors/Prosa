@@ -33,7 +33,7 @@ import {
   deleteFontProfile
 } from './settings.js'
 import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
-import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
+import { loadPlugins, unloadPlugins, getAvailablePlugins, enablePlugin, disablePlugin, removePlugin } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
@@ -808,6 +808,9 @@ function registerIpc(): void {
     return await searchInFiles(settings.workspacePath, term)
   })
   ipcMain.handle('plugins:list', () => getAvailablePlugins())
+  ipcMain.handle('plugins:enable', async (_event, id: string) => enablePlugin(id))
+  ipcMain.handle('plugins:disable', async (_event, id: string) => disablePlugin(id))
+  ipcMain.handle('plugins:remove', async (_event, id: string) => removePlugin(id))
   ipcMain.handle('workspace:getLibrary', () => getWorkspaceLibrary())
   ipcMain.handle('workspace:updateCollections', async (_event, path: string, collections: string[]) => {
     return updateWorkspaceCollections(path, collections)

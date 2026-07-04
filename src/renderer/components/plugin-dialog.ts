@@ -37,6 +37,27 @@ export class PluginDialog {
             .map((p) => {
               const loaded = p.status === 'loaded'
               const permissions = p.permissions.length > 0 ? p.permissions.join(', ') : 'nenhuma'
+              const actionButtons =
+                p.status === 'loaded'
+                  ? `
+                    <button class="btn btn-secondary btn-sm plugin-action" data-action="disable" data-plugin="${escapeHtml(p.id)}">
+                      <i class="ti ti-player-pause"></i> Desativar
+                    </button>
+                    <button class="btn btn-ghost btn-sm plugin-action" data-action="remove" data-plugin="${escapeHtml(p.id)}">
+                      <i class="ti ti-trash"></i> Remover
+                    </button>`
+                  : p.status === 'disabled'
+                    ? `
+                    <button class="btn btn-secondary btn-sm plugin-action" data-action="enable" data-plugin="${escapeHtml(p.id)}">
+                      <i class="ti ti-player-play"></i> Ativar
+                    </button>
+                    <button class="btn btn-ghost btn-sm plugin-action" data-action="remove" data-plugin="${escapeHtml(p.id)}">
+                      <i class="ti ti-trash"></i> Remover
+                    </button>`
+                    : `
+                    <button class="btn btn-ghost btn-sm plugin-action" data-action="remove" data-plugin="${escapeHtml(p.id)}">
+                      <i class="ti ti-trash"></i> Remover
+                    </button>`
               return `
             <div class="format-card" data-current="${loaded}">
               <i class="ti ti-plug"></i>
@@ -44,13 +65,17 @@ export class PluginDialog {
                 <span class="format-card-title">
                   ${escapeHtml(p.name)}
                   <span class="format-card-ext">v${escapeHtml(p.version)}</span>
-                  <span class="plugin-status plugin-status-${loaded ? 'loaded' : 'error'}">
-                    ${loaded ? 'Carregado' : 'Falha'}
+                  <span class="plugin-status plugin-status-${p.status}">
+                    ${p.status === 'loaded' ? 'Ativo' : p.status === 'disabled' ? 'Desativado' : 'Falha'}
                   </span>
                 </span>
                 <span class="format-card-desc">Permissões: ${escapeHtml(permissions)}</span>
                 ${p.description ? `<span class="format-card-desc">${escapeHtml(p.description)}</span>` : ''}
+                ${p.status === 'error' ? '<span class="format-card-desc plugin-error-text">Verifique o manifesto e o entrypoint. O plugin pode ser removido e reinstalado.</span>' : ''}
                 ${p.error ? `<span class="format-card-desc plugin-error-text">${escapeHtml(p.error)}</span>` : ''}
+                <div class="plugin-actions">
+                  ${actionButtons}
+                </div>
               </div>
             </div>`
             })
@@ -68,5 +93,26 @@ export class PluginDialog {
       </div>
     `
     this.overlay.querySelector('.modal-close')?.addEventListener('click', () => (this.overlay.hidden = true))
+    this.overlay.querySelectorAll<HTMLElement>('.plugin-action').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const id = button.dataset.plugin
+        const action = button.dataset.action
+        if (!id || !action) return
+
+        try {
+          const plugins =
+            action === 'enable'
+              ? await window.prosa.enablePlugin(id)
+              : action === 'disable'
+                ? await window.prosa.disablePlugin(id)
+                : await window.prosa.removePlugin(id)
+          this.render(plugins)
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : String(error))
+        }
+      })
+    })
   }
 }

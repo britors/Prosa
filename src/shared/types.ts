@@ -180,7 +180,7 @@ export interface PluginInfo {
   permissions: PluginPermission[]
   description?: string
   author?: string
-  status: 'loaded' | 'error'
+  status: 'loaded' | 'disabled' | 'error'
   error?: string
 }
 
@@ -297,6 +297,9 @@ export interface ProsaApi {
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
   getPlugins: () => Promise<PluginInfo[]>
+  enablePlugin: (id: string) => Promise<PluginInfo[]>
+  disablePlugin: (id: string) => Promise<PluginInfo[]>
+  removePlugin: (id: string) => Promise<PluginInfo[]>
   getWorkspaceLibrary: () => Promise<WorkspaceLibraryData>
   getWorkspaceRelations: (path: string) => Promise<WorkspaceRelations>
   updateWorkspaceCollections: (path: string, collections: string[]) => Promise<WorkspaceLibraryData>

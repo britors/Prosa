@@ -4,20 +4,21 @@
 
 import { app, utilityProcess } from 'electron'
 import type { UtilityProcess } from 'electron'
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { validatePluginManifest } from './plugin-manifest.js'
 import type { PluginInfo, PluginManifest } from '../shared/types.js'
 
 const pluginsPath = join(app.getPath('userData'), 'plugins')
+const disabledPluginsPath = join(app.getPath('userData'), 'plugins-disabled')
 const pluginsDataPath = join(app.getPath('userData'), 'plugins-data')
 
 interface RunningPlugin {
   id: string
   manifest: PluginManifest | null
   process: UtilityProcess | null
-  status: 'loaded' | 'error'
+  status: 'loaded' | 'disabled' | 'error'
   error?: string
 }
 
@@ -108,35 +109,38 @@ async function handlePluginMessage(entry: RunningPlugin, message: unknown): Prom
   }
 }
 
-/** Carrega um plugin isolado a partir de sua pasta. Nunca lança — falhas viram status 'error'. */
-function loadPlugin(folderId: string): void {
-  const pluginDir = join(pluginsPath, folderId)
+function pluginPath(folderId: string, enabled: boolean): string {
+  return join(enabled ? pluginsPath : disabledPluginsPath, folderId)
+}
+
+function readPluginEntry(folderId: string, enabled: boolean): RunningPlugin {
+  const dir = pluginPath(folderId, enabled)
   try {
-    const raw = readFileSync(join(pluginDir, 'manifest.json'), 'utf-8')
+    const raw = readFileSync(join(dir, 'manifest.json'), 'utf-8')
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
     } catch (err) {
       const error = `manifest.json inválido (${err instanceof Error ? err.message : 'JSON malformado'})`
-      plugins.set(folderId, { id: folderId, manifest: null, process: null, status: 'error', error })
       console.error(`[plugins] ${folderId}: ${error}`)
-      return
+      return { id: folderId, manifest: null, process: null, status: 'error', error }
     }
 
-    const result = validatePluginManifest(parsed, pluginDir, folderId)
+    const result = validatePluginManifest(parsed, dir, folderId)
     if (!result.ok) {
       const error = result.errors.join('; ')
-      plugins.set(folderId, { id: folderId, manifest: null, process: null, status: 'error', error })
       console.error(`[plugins] ${folderId}: manifesto inválido — ${error}`)
-      return
+      return { id: folderId, manifest: null, process: null, status: 'error', error }
     }
 
     const manifest = result.manifest
-    const entryPath = resolve(join(pluginDir, manifest.entrypoint))
+    if (!enabled) {
+      return { id: folderId, manifest, process: null, status: 'disabled' }
+    }
+    const entryPath = resolve(join(dir, manifest.entrypoint))
     const child = utilityProcess.fork(entryPath, [], { serviceName: manifest.id, stdio: 'pipe' })
 
     const entry: RunningPlugin = { id: folderId, manifest, process: child, status: 'loaded' }
-    plugins.set(folderId, entry)
 
     child.stdout?.on('data', (chunk: Buffer) => console.log(`[plugin:${manifest.id}]`, chunk.toString().trimEnd()))
     child.stderr?.on('data', (chunk: Buffer) => console.error(`[plugin:${manifest.id}]`, chunk.toString().trimEnd()))
@@ -152,26 +156,31 @@ function loadPlugin(folderId: string): void {
 
     const permList = manifest.permissions.length > 0 ? manifest.permissions.join(', ') : 'nenhuma'
     console.log(`[plugins] ${manifest.id}: carregado (v${manifest.version}, permissões: ${permList})`)
+    return entry
   } catch (err) {
     const error = err instanceof Error ? err.message : 'erro desconhecido ao carregar o plugin'
-    plugins.set(folderId, { id: folderId, manifest: null, process: null, status: 'error', error })
     console.error(`[plugins] ${folderId}: ${error}`)
+    return { id: folderId, manifest: null, process: null, status: 'error', error }
   }
 }
 
 /** Escaneia userData/plugins e carrega cada plugin isoladamente. */
 export async function loadPlugins(): Promise<void> {
+  unloadPlugins()
   try {
     mkdirSync(pluginsPath, { recursive: true })
+    mkdirSync(disabledPluginsPath, { recursive: true })
     mkdirSync(pluginsDataPath, { recursive: true })
   } catch (err) {
     console.error('[plugins] Erro ao preparar diretórios de plugins:', err)
     return
   }
 
-  let entries: string[]
+  plugins.clear()
+
+  let activeEntries: string[]
   try {
-    entries = readdirSync(pluginsPath, { withFileTypes: true })
+    activeEntries = readdirSync(pluginsPath, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
   } catch (err) {
@@ -179,23 +188,99 @@ export async function loadPlugins(): Promise<void> {
     return
   }
 
-  for (const folderId of entries) {
-    loadPlugin(folderId)
+  for (const folderId of activeEntries) {
+    plugins.set(folderId, readPluginEntry(folderId, true))
+  }
+
+  try {
+    const disabledEntries = readdirSync(disabledPluginsPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+    for (const folderId of disabledEntries) {
+      if (plugins.has(folderId)) continue
+      plugins.set(folderId, readPluginEntry(folderId, false))
+    }
+  } catch (err) {
+    console.error('[plugins] Erro ao listar plugins desativados:', err)
   }
 }
 
 /** Retorna o estado atual de todos os plugins conhecidos, para exibição na UI. */
 export function getAvailablePlugins(): PluginInfo[] {
-  return [...plugins.values()].map((entry) => ({
-    id: entry.manifest?.id ?? entry.id,
-    name: entry.manifest?.name ?? entry.id,
-    version: entry.manifest?.version ?? '—',
-    permissions: entry.manifest?.permissions ?? [],
-    description: entry.manifest?.description,
-    author: entry.manifest?.author,
-    status: entry.status,
-    error: entry.error
-  }))
+  return [...plugins.values()]
+    .sort((a, b) => {
+      const statusOrder = { loaded: 0, disabled: 1, error: 2 } as const
+      return statusOrder[a.status] - statusOrder[b.status] || (a.manifest?.name ?? a.id).localeCompare(b.manifest?.name ?? b.id)
+    })
+    .map((entry) => ({
+      id: entry.manifest?.id ?? entry.id,
+      name: entry.manifest?.name ?? entry.id,
+      version: entry.manifest?.version ?? '—',
+      permissions: entry.manifest?.permissions ?? [],
+      description: entry.manifest?.description,
+      author: entry.manifest?.author,
+      status: entry.status,
+      error: entry.error
+    }))
+}
+
+async function movePlugin(folderId: string, enable: boolean): Promise<void> {
+  const from = pluginPath(folderId, !enable)
+  const to = pluginPath(folderId, enable)
+  if (!existsSync(from)) {
+    throw new Error(`O plugin "${folderId}" não foi encontrado para ${enable ? 'ativação' : 'desativação'}.`)
+  }
+  await mkdir(join(to, '..'), { recursive: true })
+  if (existsSync(to)) {
+    throw new Error(`Já existe um plugin com id "${folderId}" na pasta de destino.`)
+  }
+  await rename(from, to)
+}
+
+/** Ativa um plugin previamente desativado. */
+export async function enablePlugin(id: string): Promise<PluginInfo[]> {
+  await movePlugin(id, true)
+  await loadPlugins()
+  return getAvailablePlugins()
+}
+
+/** Desativa um plugin carregado. */
+export async function disablePlugin(id: string): Promise<PluginInfo[]> {
+  const entry = plugins.get(id)
+  if (entry?.process) {
+    try {
+      entry.process.kill()
+    } catch {
+      // Ignora falhas ao encerrar antes da mudança de pasta.
+    }
+  }
+  await movePlugin(id, false)
+  await loadPlugins()
+  return getAvailablePlugins()
+}
+
+/** Remove um plugin da instalação local. */
+export async function removePlugin(id: string): Promise<PluginInfo[]> {
+  const entry = plugins.get(id)
+  if (entry?.process) {
+    try {
+      entry.process.kill()
+    } catch {
+      // Ignora falhas ao encerrar antes de remover.
+    }
+  }
+  const active = pluginPath(id, true)
+  const disabled = pluginPath(id, false)
+  if (existsSync(active)) {
+    await rm(active, { recursive: true, force: true })
+  } else if (existsSync(disabled)) {
+    await rm(disabled, { recursive: true, force: true })
+  } else {
+    throw new Error(`O plugin "${id}" não foi encontrado para remoção.`)
+  }
+  await rm(join(pluginsDataPath, id), { recursive: true, force: true }).catch(() => {})
+  await loadPlugins()
+  return getAvailablePlugins()
 }
 
 /** Encerra todos os processos de plugin em execução (chamado ao fechar o app). */
