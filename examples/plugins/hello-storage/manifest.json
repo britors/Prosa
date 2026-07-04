@@ -1,0 +1,9 @@
+{
+  "id": "hello-storage",
+  "name": "Hello Storage",
+  "version": "1.0.0",
+  "entrypoint": "index.js",
+  "permissions": ["storage"],
+  "description": "Exemplo mínimo de plugin com storage persistente.",
+  "author": "Prosa"
+}

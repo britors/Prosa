@@ -44,6 +44,36 @@ erro específica, o plugin aparece como "Falha" no diálogo de plugins, e **o re
 aplicativo continua funcionando normalmente** — um plugin quebrado nunca impede o Prosa
 de iniciar.
 
+## SDK oficial
+
+O contrato mínimo recomendado para plugins fica em torno de uma única porta de
+mensagens, exposta pelo processo isolado:
+
+- `process.parentPort.postMessage(message)` para enviar mensagens ao Prosa.
+- `process.parentPort.on('message', handler)` para receber respostas do processo
+  principal.
+
+Mensagens conhecidas na v1:
+
+- `{ type: 'log', level?: 'info' | 'warn' | 'error', message: string }`
+- `{ type: 'storage:get', requestId: string, key: string }`
+- `{ type: 'storage:set', requestId: string, key: string, value: unknown }`
+- `{ type: 'storage:result', requestId: string, value: unknown }`
+- `{ type: 'error', requestId?: string, message: string }`
+
+Para reduzir boilerplate e padronizar o handshake, o repositório inclui um helper
+copiável em `examples/plugins/hello-storage/sdk.js`. Ele embrulha o canal bruto e
+oferece:
+
+- `log(message, level?)`
+- `storage.get(key)`
+- `storage.set(key, value)`
+- `onMessage(listener)`
+- `send(message)`
+
+Esse helper é a referência oficial do contrato mínimo. APIs além dessas mensagens
+devem ser consideradas instáveis até aparecerem nesta documentação.
+
 ## Permissões (v1)
 
 O conjunto de permissões é deliberadamente mínimo: cada uma só existe quando já há
@@ -74,6 +104,9 @@ protegem — nunca de forma especulativa.
 
 ## Escrevendo um plugin — exemplo mínimo
 
+O exemplo funcional de referência fica em `examples/plugins/hello-storage/`. Copie a
+pasta inteira para `<userData>/plugins/hello-storage/` para carregá-la no Prosa.
+
 `manifest.json`:
 
 ```json
@@ -86,23 +119,77 @@ protegem — nunca de forma especulativa.
 }
 ```
 
+`sdk.js`:
+
+```js
+function createPlugin() {
+  const port = process.parentPort
+  if (!port) throw new Error('process.parentPort indisponível.')
+
+  let nextRequestId = 1
+  const pending = new Map()
+
+  port.on('message', (message) => {
+    if (message && typeof message === 'object' && typeof message.requestId === 'string') {
+      const entry = pending.get(message.requestId)
+      if (!entry) return
+      pending.delete(message.requestId)
+      if (message.type === 'error') {
+        entry.reject(new Error(message.message))
+      } else {
+        entry.resolve(message.value)
+      }
+    }
+  })
+
+  function request(type, payload) {
+    const requestId = String(nextRequestId++)
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject })
+      port.postMessage({ type, requestId, ...payload })
+    })
+  }
+
+  return {
+    log(message, level = 'info') {
+      port.postMessage({ type: 'log', level, message })
+    },
+    storage: {
+      get: (key) => request('storage:get', { key }),
+      set: (key, value) => request('storage:set', { key, value })
+    },
+    onMessage(listener) {
+      port.on('message', listener)
+      return () => port.off?.('message', listener)
+    },
+    send(message) {
+      port.postMessage(message)
+    }
+  }
+}
+
+module.exports = { createPlugin }
+```
+
 `index.js`:
 
 ```js
-process.parentPort.postMessage({ type: 'log', message: 'olá do plugin!' })
+const { createPlugin } = require('./sdk')
 
-process.parentPort.postMessage({
-  type: 'storage:set',
-  requestId: '1',
-  key: 'saudacao',
-  value: 'oi'
+const plugin = createPlugin()
+
+async function main() {
+  plugin.log('olá do plugin!')
+  const current = await plugin.storage.get('saudacao')
+  if (!current) {
+    await plugin.storage.set('saudacao', 'oi')
+  }
+  plugin.send({ type: 'log', message: `valor atual: ${current ?? 'vazio'}` })
+}
+
+main().catch((error) => {
+  plugin.log(error.message, 'error')
 })
-
-process.parentPort.on('message', (event) => {
-  console.log('resposta do processo principal:', event.data)
-})
-
-process.parentPort.postMessage({ type: 'storage:get', requestId: '2', key: 'saudacao' })
 ```
 
 ## Diagnóstico

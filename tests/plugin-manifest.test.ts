@@ -4,9 +4,9 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { validatePluginManifest } from '../src/main/plugin-manifest.ts'
 
 function makePluginDir(id: string): string {
@@ -139,4 +139,15 @@ test('rejeita id do manifesto diferente do nome da pasta', () => {
   )
   assert.equal(result.ok, false)
   if (!result.ok) assert.ok(result.errors.some((e) => e.includes('outro-id') && e.includes('pasta-real')))
+})
+
+test('o plugin de exemplo oficial tem manifesto válido', () => {
+  const pluginDir = resolve('examples/plugins/hello-storage')
+  const raw = JSON.parse(readFileSync(join(pluginDir, 'manifest.json'), 'utf-8'))
+  const result = validatePluginManifest(raw, pluginDir, 'hello-storage')
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.equal(result.manifest.id, 'hello-storage')
+    assert.deepEqual(result.manifest.permissions, ['storage'])
+  }
 })
