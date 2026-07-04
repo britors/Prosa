@@ -4,7 +4,7 @@
 
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
-import type { AutoSavePolicy, FontProfile, ProsaSettings, RecentFile } from '../shared/types.js'
+import type { AutoSavePolicy, FontProfile, PdfPreset, ProsaSettings, RecentFile } from '../shared/types.js'
 
 /** Valores padrão das configurações do Prosa. */
 const defaults: ProsaSettings = {
@@ -22,6 +22,7 @@ const defaults: ProsaSettings = {
   pdfPageSize: 'A4',
   pdfLandscape: false,
   pdfPrintBackground: true,
+  pdfPreset: 'academic',
   focusWorkMinutes: 25,
   focusBreakMinutes: 5,
   wordGoal: 0,
@@ -29,6 +30,8 @@ const defaults: ProsaSettings = {
   activeFontProfileId: 'serif',
   showWordCount: true,
   showOutline: true,
+  showNotes: false,
+  showRelations: false,
   distractionFree: false,
   recentFiles: [],
   pinnedFiles: [],
@@ -56,6 +59,11 @@ function normalizePositiveInt(value: unknown, fallback: number): number {
 function normalizePdfPageSize(value: unknown): ProsaSettings['pdfPageSize'] {
   if (value === 'A4' || value === 'Letter' || value === 'Legal') return value
   return defaults.pdfPageSize
+}
+
+function normalizePdfPreset(value: unknown): PdfPreset {
+  if (value === 'academic' || value === 'report' || value === 'contract' || value === 'book') return value
+  return defaults.pdfPreset
 }
 
 function isFontProfile(value: unknown): value is FontProfile {
@@ -100,6 +108,7 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
   const pdfLandscape = typeof raw.pdfLandscape === 'boolean' ? raw.pdfLandscape : defaults.pdfLandscape
   const pdfPrintBackground =
     typeof raw.pdfPrintBackground === 'boolean' ? raw.pdfPrintBackground : defaults.pdfPrintBackground
+  const pdfPreset = normalizePdfPreset(raw.pdfPreset)
   const backupOnSave = typeof raw.backupOnSave === 'boolean' ? raw.backupOnSave : defaults.backupOnSave
   const focusWorkMinutes = normalizePositiveInt(raw.focusWorkMinutes, defaults.focusWorkMinutes)
   const focusBreakMinutes = normalizePositiveInt(raw.focusBreakMinutes, defaults.focusBreakMinutes)
@@ -122,6 +131,7 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
     pdfPageSize,
     pdfLandscape,
     pdfPrintBackground,
+    pdfPreset,
     focusWorkMinutes,
     focusBreakMinutes,
     wordGoal,

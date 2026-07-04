@@ -14,6 +14,7 @@ import {
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exportPdf } from './export-service.js'
+import { exportEpubDocument } from './epub-export-service.js'
 import { exportHtmlDocument } from './html-export-service.js'
 import { openDocument } from './open-service.js'
 import { saveDocument } from './save-service.js'
@@ -32,7 +33,7 @@ import {
   deleteFontProfile
 } from './settings.js'
 import { getAvailableTemplates, getTemplateContent, saveTemplate, deleteTemplate } from './templates.js'
-import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
+import { loadPlugins, unloadPlugins, getAvailablePlugins, enablePlugin, disablePlugin, removePlugin } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
@@ -507,6 +508,10 @@ function buildMenu(): void {
           click: () => sendMenuAction('file:exportHtml')
         },
         {
+          label: 'Exportar EPUB',
+          click: () => sendMenuAction('file:exportEpub')
+        },
+        {
           label: 'Configurações de PDF',
           submenu: [
             {
@@ -650,6 +655,18 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Alternar tópicos', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('view:toggleOutline') },
         { label: 'Alternar painel de estilos', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('view:toggleStyles') },
+        {
+          label: 'Notas',
+          type: 'checkbox',
+          checked: settings.showNotes,
+          click: () => sendMenuAction('view:toggleNotes')
+        },
+        {
+          label: 'Relações do workspace',
+          type: 'checkbox',
+          checked: settings.showRelations,
+          click: () => sendMenuAction('view:toggleRelations')
+        },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
           label: 'Biblioteca do Workspace',
@@ -756,10 +773,11 @@ function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle('file:exportPdf', async (_event, defaultName: string) => {
+  ipcMain.handle('file:exportPdf', async (_event, defaultName: string, preset?: 'academic' | 'report' | 'contract' | 'book') => {
     if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
     const settings = getSettings()
     return exportPdf(mainWindow, defaultName, {
+      preset: preset ?? settings.pdfPreset,
       pageSize: settings.pdfPageSize,
       landscape: settings.pdfLandscape,
       printBackground: settings.pdfPrintBackground
@@ -769,6 +787,11 @@ function registerIpc(): void {
   ipcMain.handle('file:exportHtml', async (_event, defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => {
     if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
     return exportHtmlDocument(mainWindow, defaultName, doc, options, notes)
+  })
+
+  ipcMain.handle('file:exportEpub', async (_event, defaultName: string, payload: SavePayload) => {
+    if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
+    return exportEpubDocument(mainWindow, defaultName, payload)
   })
 
   ipcMain.handle('file:print', () => {
@@ -798,6 +821,9 @@ function registerIpc(): void {
     return await searchInFiles(settings.workspacePath, term)
   })
   ipcMain.handle('plugins:list', () => getAvailablePlugins())
+  ipcMain.handle('plugins:enable', async (_event, id: string) => enablePlugin(id))
+  ipcMain.handle('plugins:disable', async (_event, id: string) => disablePlugin(id))
+  ipcMain.handle('plugins:remove', async (_event, id: string) => removePlugin(id))
   ipcMain.handle('workspace:getLibrary', () => getWorkspaceLibrary())
   ipcMain.handle('workspace:updateCollections', async (_event, path: string, collections: string[]) => {
     return updateWorkspaceCollections(path, collections)

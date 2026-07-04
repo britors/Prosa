@@ -21,6 +21,7 @@ export type FileFormat =
   | 'docx'
   | 'odt'
   | 'rtf'
+  | 'epub'
   | 'doc'
   | 'md'
   | 'txt'
@@ -148,6 +149,9 @@ export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 /** Tamanhos de página suportados na exportação PDF. */
 export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 
+/** Presets profissionais de exportação PDF. */
+export type PdfPreset = 'academic' | 'report' | 'contract' | 'book'
+
 /** Perfil de fonte nomeado, aplicável ao editor. */
 export interface FontProfile {
   id: string
@@ -159,6 +163,8 @@ export interface FontProfile {
 
 /** Permissões que um plugin pode declarar (conjunto v1, deliberadamente mínimo). */
 export type PluginPermission = 'storage'
+  | 'dialog'
+  | 'workspace'
 
 /** Manifesto declarado por um plugin em manifest.json. */
 export interface PluginManifest {
@@ -179,7 +185,7 @@ export interface PluginInfo {
   permissions: PluginPermission[]
   description?: string
   author?: string
-  status: 'loaded' | 'error'
+  status: 'loaded' | 'disabled' | 'error'
   error?: string
 }
 
@@ -199,6 +205,7 @@ export interface ProsaSettings {
   pdfPageSize: PdfPageSize
   pdfLandscape: boolean
   pdfPrintBackground: boolean
+  pdfPreset: PdfPreset
   focusWorkMinutes: number
   focusBreakMinutes: number
   wordGoal: number
@@ -206,6 +213,8 @@ export interface ProsaSettings {
   activeFontProfileId: string
   showWordCount: boolean
   showOutline: boolean
+  showNotes: boolean
+  showRelations: boolean
   distractionFree: boolean
   recentFiles: RecentFile[]
   pinnedFiles: RecentFile[]
@@ -282,8 +291,9 @@ export interface ProsaApi {
   openDocument: (path?: string) => Promise<FileResult>
   saveDocument: (payload: SavePayload) => Promise<FileResult>
   saveDocumentAs: (payload: SavePayload) => Promise<FileResult>
-  exportPdf: (defaultName: string) => Promise<FileResult>
+  exportPdf: (defaultName: string, preset?: PdfPreset) => Promise<FileResult>
   exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => Promise<FileResult>
+  exportEpub: (defaultName: string, payload: SavePayload) => Promise<FileResult>
   print: () => Promise<FileResult>
   getRecentFiles: () => Promise<RecentFile[]>
   clearRecentFiles: () => Promise<RecentFile[]>
@@ -295,6 +305,9 @@ export interface ProsaApi {
   getSystemFonts: () => Promise<string[]>
   selectDirectory: () => Promise<string | null>
   getPlugins: () => Promise<PluginInfo[]>
+  enablePlugin: (id: string) => Promise<PluginInfo[]>
+  disablePlugin: (id: string) => Promise<PluginInfo[]>
+  removePlugin: (id: string) => Promise<PluginInfo[]>
   getWorkspaceLibrary: () => Promise<WorkspaceLibraryData>
   getWorkspaceRelations: (path: string) => Promise<WorkspaceRelations>
   updateWorkspaceCollections: (path: string, collections: string[]) => Promise<WorkspaceLibraryData>

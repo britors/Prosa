@@ -34,10 +34,12 @@ const api: ProsaApi = {
     ipcRenderer.invoke('file:save', payload) as Promise<FileResult>,
   saveDocumentAs: (payload: SavePayload) =>
     ipcRenderer.invoke('file:saveAs', payload) as Promise<FileResult>,
-  exportPdf: (defaultName: string) =>
-    ipcRenderer.invoke('file:exportPdf', defaultName) as Promise<FileResult>,
+  exportPdf: (defaultName: string, preset?: 'academic' | 'report' | 'contract' | 'book') =>
+    ipcRenderer.invoke('file:exportPdf', defaultName, preset) as Promise<FileResult>,
   exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) =>
     ipcRenderer.invoke('file:exportHtml', defaultName, doc, options, notes ?? {}) as Promise<FileResult>,
+  exportEpub: (defaultName: string, payload: SavePayload) =>
+    ipcRenderer.invoke('file:exportEpub', defaultName, payload) as Promise<FileResult>,
   print: () => ipcRenderer.invoke('file:print') as Promise<FileResult>,
   getRecentFiles: () =>
     ipcRenderer.invoke('file:recent') as Promise<RecentFile[]>,
@@ -59,6 +61,9 @@ const api: ProsaApi = {
   getSystemFonts: () => ipcRenderer.invoke('fonts:list') as Promise<string[]>,
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
   getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<PluginInfo[]>,
+  enablePlugin: (id: string) => ipcRenderer.invoke('plugins:enable', id) as Promise<PluginInfo[]>,
+  disablePlugin: (id: string) => ipcRenderer.invoke('plugins:disable', id) as Promise<PluginInfo[]>,
+  removePlugin: (id: string) => ipcRenderer.invoke('plugins:remove', id) as Promise<PluginInfo[]>,
   getWorkspaceLibrary: () => ipcRenderer.invoke('workspace:getLibrary') as Promise<WorkspaceLibraryData>,
   updateWorkspaceCollections: (path: string, collections: string[]) =>
     ipcRenderer.invoke('workspace:updateCollections', path, collections) as Promise<WorkspaceLibraryData>,

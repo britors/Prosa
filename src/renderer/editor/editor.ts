@@ -26,6 +26,7 @@ import { PageBreak } from './extensions/page-break'
 import { Wikilink } from './extensions/wikilink'
 import { Tag } from './extensions/tag'
 import { Citation } from './extensions/citation'
+import { TableOfContents } from './extensions/table-of-contents'
 import { NoteReference } from './extensions/note-reference'
 import { FontSize } from './extensions/font-size'
 import { FindReplace } from './extensions/find-replace'
@@ -81,6 +82,7 @@ export function createEditor(
       Wikilink,
       Tag,
       Citation,
+      TableOfContents,
       NoteReference,
       FindReplace.configure({ onMatchesUpdate: callbacks.onMatchesUpdate }),
       PaginationPlus.configure({

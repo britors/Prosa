@@ -68,11 +68,11 @@ async function bootstrap(): Promise<void> {
 
   const welcome = new WelcomeScreen(welcomeRoot, {
     onNew: () => {
-      view.newDocument()
+      void view.newDocument()
       showEditor()
     },
     onNewAbnt: () => {
-      view.createAbntDocument()
+      void view.createAbntDocument()
       showEditor()
     },
     onOpen: () => void openViaDialog(),
@@ -132,11 +132,11 @@ function registerMenuActions(
         showEditor()
         break
       case 'file:new':
-        view.newDocument()
+        void view.newDocument()
         showEditor()
         break
       case 'file:newAbnt':
-        view.createAbntDocument()
+        void view.createAbntDocument()
         showEditor()
         break
       case 'file:open':
@@ -159,6 +159,9 @@ function registerMenuActions(
         break
       case 'file:exportHtml':
         void view.exportHtml()
+        break
+      case 'file:exportEpub':
+        void view.exportEpub()
         break
       case 'edit:find':
         view.openFind(false)
@@ -243,6 +246,12 @@ function registerMenuActions(
         break
       case 'view:toggleStyles':
         view.toggleStyles()
+        break
+      case 'view:toggleNotes':
+        view.toggleNotes()
+        break
+      case 'view:toggleRelations':
+        view.toggleRelations()
         break
       case 'view:toggleWordCount':
         view.toggleWordCount()

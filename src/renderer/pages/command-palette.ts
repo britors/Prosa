@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Editor } from '@tiptap/core'
+import type { DocumentVariableName } from '../../shared/document-variables.js'
 
 export class CommandPalette {
   private readonly editor: Editor
@@ -22,6 +23,8 @@ export class CommandPalette {
   private onFontProfiles?: () => void
   private onFrontmatter?: () => void
   private onInsertMath?: () => void
+  private onInsertVariable?: (name: DocumentVariableName) => void
+  private onInsertToc?: () => void
   private onWorkspaceLibrary?: () => void
   private onNewAcademicWork?: () => void
   private onInsertBibliography?: () => void
@@ -29,7 +32,7 @@ export class CommandPalette {
   private onInsertEndnote?: () => void
   private onExportHtml?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void, onWorkspaceLibrary?: () => void, onNewAcademicWork?: () => void, onInsertBibliography?: () => void, onInsertFootnote?: () => void, onInsertEndnote?: () => void, onExportHtml?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void, onInsertVariable?: (name: DocumentVariableName) => void, onInsertToc?: () => void, onWorkspaceLibrary?: () => void, onNewAcademicWork?: () => void, onInsertBibliography?: () => void, onInsertFootnote?: () => void, onInsertEndnote?: () => void, onExportHtml?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -45,6 +48,8 @@ export class CommandPalette {
     this.onFontProfiles = onFontProfiles
     this.onFrontmatter = onFrontmatter
     this.onInsertMath = onInsertMath
+    this.onInsertVariable = onInsertVariable
+    this.onInsertToc = onInsertToc
     this.onWorkspaceLibrary = onWorkspaceLibrary
     this.onNewAcademicWork = onNewAcademicWork
     this.onInsertBibliography = onInsertBibliography
@@ -82,6 +87,11 @@ export class CommandPalette {
         { label: 'Perfis de Fonte', action: () => this.onFontProfiles?.() },
         { label: 'Editar Frontmatter', action: () => this.onFrontmatter?.() },
         { label: 'Inserir Fórmula', action: () => this.onInsertMath?.() },
+        { label: 'Inserir Sumário', action: () => this.onInsertToc?.() },
+        { label: 'Variável: título', action: () => this.onInsertVariable?.('title') },
+        { label: 'Variável: autor', action: () => this.onInsertVariable?.('author') },
+        { label: 'Variável: data', action: () => this.onInsertVariable?.('date') },
+        { label: 'Variável: arquivo', action: () => this.onInsertVariable?.('path') },
         { label: 'Biblioteca do Workspace', action: () => this.onWorkspaceLibrary?.() },
         { label: 'Novo Trabalho ABNT', action: () => this.onNewAcademicWork?.() },
         { label: 'Inserir Bibliografia', action: () => this.onInsertBibliography?.() },

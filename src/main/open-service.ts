@@ -24,6 +24,12 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
         'use o aplicativo correspondente da suíte.'
     )
   }
+  if (ext === 'epub') {
+    throw new Error(
+      'O formato .epub é suportado apenas para exportação no Prosa. ' +
+        'Abra o arquivo original no editor para editar o conteúdo.'
+    )
+  }
 
   const format = detectFormat(path)
   let html: string

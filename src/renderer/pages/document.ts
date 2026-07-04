@@ -27,6 +27,9 @@ import { applyFontProfile, resolveFontProfile } from '../components/font-profile
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { BibliographyDialog } from '../components/bibliography-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
+import { PdfPresetDialog } from '../components/pdf-preset-dialog.js'
+import { DocumentTemplateDialog } from '../components/document-template-dialog.js'
+import { TocDialog } from '../components/toc-dialog.js'
 import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
 import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
@@ -40,6 +43,7 @@ import {
 } from './document-controllers.js'
 import { formatBibliographyEntry } from '../../shared/bibliography.js'
 import { extractCitations } from '../../shared/document-utils.js'
+import { documentVariableToken, resolveDocumentVariables, type DocumentVariableName } from '../../shared/document-variables.js'
 import type {
   BibliographyStyle,
   FileFormat,
@@ -56,7 +60,7 @@ const ZOOM_MAX = 200
 const ZOOM_STEP = 10
 
 /** Formatos em que o Prosa consegue gravar. */
-const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'md', 'txt'])
+const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'epub', 'md', 'txt'])
 
 function escapeHtml(value: string): string {
   return value
@@ -108,6 +112,9 @@ export class DocumentView {
   private readonly frontmatterDialog: FrontmatterDialog
   private readonly abntDialog: AbntDialog
   private readonly htmlExportDialog: HtmlExportDialog
+  private readonly pdfPresetDialog: PdfPresetDialog
+  private readonly documentTemplateDialog: DocumentTemplateDialog
+  private readonly tocDialog: TocDialog
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
   private readonly workspaceLibrary: WorkspaceLibraryDialog
@@ -160,6 +167,9 @@ export class DocumentView {
       onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
     }, els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
+    this.pdfPresetDialog = new PdfPresetDialog(els.root)
+    this.documentTemplateDialog = new DocumentTemplateDialog(els.root)
+    this.tocDialog = new TocDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
         void window.prosa.openDocument(path).then((res) => {
@@ -168,7 +178,7 @@ export class DocumentView {
       },
       onCreateAbnt: () => this.createAbntDocument(),
       onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
-    }, els.root)
+    }, document.body)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(
@@ -200,6 +210,8 @@ export class DocumentView {
           this.setDirty(true)
         }),
       () => this.insertMathBlock(),
+      (name) => this.insertDocumentVariable(name),
+      () => void this.insertTableOfContents(),
       () => void this.showWorkspaceLibrary(),
       () => void this.createAbntDocument(),
       () => this.insertBibliography(),
@@ -275,9 +287,11 @@ export class DocumentView {
         getState: () => this.getPersistenceState(),
         setState: (state) => this.setPersistenceState(state),
         chooseFormat: async (preset) => this.formatDialog.choose(preset),
+        choosePdfPreset: async (current) => this.pdfPresetDialog.choose(current),
         saveDocument: async (payload) => window.prosa.saveDocument(payload),
         saveDocumentAs: async (payload) => window.prosa.saveDocumentAs(payload),
-        exportPdf: async (name) => window.prosa.exportPdf(name),
+        exportPdf: async (name, preset) => window.prosa.exportPdf(name, preset),
+        exportEpub: async (name, payload) => window.prosa.exportEpub(name, payload),
         setDirty: (dirty) => this.setDirty(dirty),
         setDocumentName: (name) => this.statusBar.setDocumentName(name),
         setEditorContent: (html) => this.editor.commands.setContent(html, false),
@@ -345,7 +359,7 @@ export class DocumentView {
     void window.prosa.openDocument(name).then(res => {
         if (res.ok && res.document) this.load(res.document)
         else {
-            this.newDocument()
+            this.createBlankDocument()
             this.setPersistenceState({ ...this.getPersistenceState(), documentName: name })
             this.statusBar.setDocumentName(name)
         }
@@ -394,8 +408,41 @@ export class DocumentView {
   /** Atualiza o conteúdo repetido das bandas de paginação. */
   private updatePaginationBands(): void {
     // Sincroniza o conteúdo com o plugin de paginação para repetição em todas as páginas.
-    this.editor.commands.updateHeaderContent(this.headerHTML, '')
-    this.editor.commands.updateFooterContent(this.footerHTML, 'Página {page}')
+    const context = this.documentVariableContext()
+    this.editor.commands.updateHeaderContent(
+      resolveDocumentVariables(this.headerHTML, context, { preservePaginationTokens: true }),
+      ''
+    )
+    this.editor.commands.updateFooterContent(
+      resolveDocumentVariables(this.footerHTML, context, { preservePaginationTokens: true }),
+      'Página {page} de {total}'
+    )
+  }
+
+  /** Contexto atual usado para resolver variáveis documentais. */
+  private documentVariableContext(): { metadata: { title: string; author: string; createdAt: string; modifiedAt: string }; currentPath: string | null } {
+    const now = new Date().toISOString()
+    return {
+      metadata: {
+        title: this.documentName.replace(/\.[^.]+$/, '') || 'Documento',
+        author: this.frontmatter.author ?? '',
+        createdAt: now,
+        modifiedAt: now
+      },
+      currentPath: this.currentPath
+    }
+  }
+
+  /** Insere uma variável documental no documento atual como texto literal. */
+  insertDocumentVariable(name: DocumentVariableName): void {
+    this.editor.chain().focus().insertContent(documentVariableToken(name)).run()
+  }
+
+  /** Insere um bloco de sumário configurável no documento atual. */
+  async insertTableOfContents(): Promise<void> {
+    const toc = await this.tocDialog.choose()
+    if (!toc) return
+    this.editor.chain().focus().setTableOfContents(toc).run()
   }
   /** Abre um prompt para inserir link. */
   private promptLink(): void {
@@ -474,7 +521,7 @@ export class DocumentView {
       this.headerHTML = val
       this.updatePaginationBands()
       this.setDirty(true)
-    }, true)
+    }, true, true)
   }
 
   /** Abre um prompt para editar o rodapé. */
@@ -484,22 +531,41 @@ export class DocumentView {
       this.footerHTML = val
       this.updatePaginationBands()
       this.setDirty(true)
-    }, true)
+    }, true, true)
   }
 
-/** 
- * Implementação de um prompt customizado inline.
- */
-private customPrompt(title: string, defaultValue: string, event: MouseEvent, callback: (val: string) => void, richText: boolean = false): void {
-  const editorDom = this.editor.view.dom
-  editorDom.classList.add('is-editing')
+  /**
+   * Implementação de um prompt customizado inline.
+   */
+  private customPrompt(
+    title: string,
+    defaultValue: string,
+    event: MouseEvent,
+    callback: (val: string) => void,
+    richText = false,
+    allowVariables = false
+  ): void {
+    const editorDom = this.editor.view.dom
+    editorDom.classList.add('is-editing')
 
-  const menu = document.createElement('div')
-  menu.className = 'floating-editor'
+    const menu = document.createElement('div')
+    menu.className = 'floating-editor'
+    menu.style.position = 'fixed'
+    menu.style.visibility = 'hidden'
+    menu.style.left = '12px'
+    menu.style.top = '12px'
 
-  // Posiciona perto do clique
-  menu.style.top = `${event.clientY + 10}px`
-  menu.style.left = `${event.clientX}px`
+    const variableToolbar = allowVariables
+      ? `
+      <div class="mini-toolbar mini-variables">
+        <button class="btn-tool" data-variable="title" title="Título"><code>{{title}}</code></button>
+        <button class="btn-tool" data-variable="author" title="Autor"><code>{{author}}</code></button>
+        <button class="btn-tool" data-variable="date" title="Data"><code>{{date}}</code></button>
+        <button class="btn-tool" data-variable="path" title="Arquivo"><code>{{path}}</code></button>
+        <button class="btn-tool" data-variable="page" title="Página"><code>{{page}}</code></button>
+        <button class="btn-tool" data-variable="total" title="Total"><code>{{total}}</code></button>
+      </div>`
+      : ''
 
     menu.innerHTML = `
       <div class="prompt-title">${title}</div>
@@ -511,6 +577,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
         <input type="number" id="size" title="Tamanho (px)" min="8" max="72" value="12">
         <button class="btn-tool" id="image" title="Imagem">🖼️</button>
       </div>` : ''}
+      ${variableToolbar}
       <div class="mini-editor-container"></div>
       <div class="prompt-actions">
         <button class="btn btn-cancel">Cancelar</button>
@@ -524,60 +591,114 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
     let miniEditor: Editor | null = null
 
-    if (richText) {
-        miniEditor = new Editor({
-            element: container,
-            extensions: [StarterKit, Image, Color, FontFamily, FontSize],
-            content: defaultValue
-        })
-
-        menu.querySelector('#bold')?.addEventListener('click', () => miniEditor?.chain().focus().toggleBold().run())
-        menu.querySelector('#italic')?.addEventListener('click', () => miniEditor?.chain().focus().toggleItalic().run())
-        menu.querySelector('#color')?.addEventListener('input', (e) => miniEditor?.chain().focus().setColor((e.target as HTMLInputElement).value).run())
-        menu.querySelector('#size')?.addEventListener('input', (e) => miniEditor?.chain().focus().setFontSize((e.target as HTMLInputElement).value + 'px').run())
-        menu.querySelector('#image')?.addEventListener('click', () => {
-             const input = document.createElement('input')
-             input.type = 'file'
-             input.accept = 'image/*'
-             input.onchange = () => {
-                 if (input.files?.[0]) {
-                     const reader = new FileReader()
-                     reader.onload = (e) => miniEditor?.chain().focus().setImage({ src: e.target?.result as string }).run()
-                     reader.readAsDataURL(input.files[0])
-                 }
-             }
-             input.click()
-        })
-    } else {
-        container.innerHTML = `<input type="text" class="floating-input" value="${defaultValue.replace(/"/g, '&quot;')}" spellcheck="false">`
+    const insertTokenIntoInput = (token: string): void => {
+      const input = menu.querySelector<HTMLInputElement>('.floating-input')
+      if (!input) return
+      const start = input.selectionStart ?? input.value.length
+      const end = input.selectionEnd ?? start
+      input.value = `${input.value.slice(0, start)}${token}${input.value.slice(end)}`
+      const next = start + token.length
+      input.focus()
+      input.setSelectionRange(next, next)
     }
 
-    const close = () => {
-        try {
-            miniEditor?.destroy()
-            menu.remove()
-        } finally {
-            editorDom.classList.remove('is-editing')
+    if (richText) {
+      miniEditor = new Editor({
+        element: container,
+        extensions: [StarterKit, Image, Color, FontFamily, FontSize],
+        content: defaultValue
+      })
+
+      menu.querySelector('#bold')?.addEventListener('click', () => miniEditor?.chain().focus().toggleBold().run())
+      menu.querySelector('#italic')?.addEventListener('click', () => miniEditor?.chain().focus().toggleItalic().run())
+      menu.querySelector('#color')?.addEventListener('input', (e) => miniEditor?.chain().focus().setColor((e.target as HTMLInputElement).value).run())
+      menu.querySelector('#size')?.addEventListener('input', (e) => miniEditor?.chain().focus().setFontSize((e.target as HTMLInputElement).value + 'px').run())
+      menu.querySelector('#image')?.addEventListener('click', () => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*'
+        input.onchange = () => {
+          if (input.files?.[0]) {
+            const reader = new FileReader()
+            reader.onload = (e) => miniEditor?.chain().focus().setImage({ src: e.target?.result as string }).run()
+            reader.readAsDataURL(input.files[0])
+          }
         }
+        input.click()
+      })
+      if (allowVariables) {
+        menu.querySelectorAll<HTMLElement>('[data-variable]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const token = documentVariableToken(button.dataset.variable as DocumentVariableName)
+            miniEditor?.chain().focus().insertContent(token).run()
+          })
+        })
+      }
+    } else {
+      container.innerHTML = `<input type="text" class="floating-input" value="${defaultValue.replace(/"/g, '&quot;')}" spellcheck="false">`
+      if (allowVariables) {
+        menu.querySelectorAll<HTMLElement>('[data-variable]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const token = documentVariableToken(button.dataset.variable as DocumentVariableName)
+            insertTokenIntoInput(token)
+          })
+        })
+      }
+    }
+
+    const close = (): void => {
+      try {
+        miniEditor?.destroy()
+        menu.remove()
+      } finally {
+        editorDom.classList.remove('is-editing')
+      }
     }
 
     btnSave.onclick = () => {
-        const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('.floating-input') as HTMLInputElement).value
-        callback(val)
-        close()
+      const val = richText ? miniEditor?.getHTML() ?? '' : (menu.querySelector('.floating-input') as HTMLInputElement).value
+      callback(val)
+      close()
     }
     btnCancel.onclick = close
 
-  menu.onclick = (e) => {
-    if (e.target === menu) close()
-  }
+    menu.onclick = (e) => {
+      if (e.target === menu) close()
+    }
 
-  document.body.appendChild(menu)
-  setTimeout(() => {
+    document.body.appendChild(menu)
+    const margin = 12
+    const offset = 16
+    const rect = menu.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    const prefersBelow = event.clientY + offset + rect.height <= viewportHeight - margin
+    let top = prefersBelow ? event.clientY + offset : event.clientY - rect.height - offset
+    let left = event.clientX
+
+    if (left + rect.width > viewportWidth - margin) {
+      left = viewportWidth - rect.width - margin
+    }
+    if (left < margin) {
+      left = margin
+    }
+    if (top + rect.height > viewportHeight - margin) {
+      top = viewportHeight - rect.height - margin
+    }
+    if (top < margin) {
+      top = margin
+    }
+
+    menu.style.left = `${left}px`
+    menu.style.top = `${top}px`
+    menu.style.visibility = 'visible'
+
+    setTimeout(() => {
       if (richText) miniEditor?.commands.focus()
       else (menu.querySelector('.floating-input') as HTMLInputElement)?.focus()
-  }, 10)
-}
+    }, 10)
+  }
 
   /** Aplica configurações iniciais (zoom, fonte, tema, visibilidade). */
   private applySettings(): void {
@@ -585,6 +706,8 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     this.setZoom(this.zoom)
     this.els.toolbar.removeAttribute('hidden')
     this.els.outline.parentElement?.toggleAttribute('hidden', !this.settings.showOutline)
+    this.els.notes.parentElement?.toggleAttribute('hidden', !this.settings.showNotes)
+    this.els.relations.parentElement?.toggleAttribute('hidden', !this.settings.showRelations)
     this.els.styles.parentElement?.setAttribute('hidden', '')
     this.els.statusBar.toggleAttribute('hidden', !this.settings.showWordCount)
     this.distractionFreeController.setEnabled(this.settings.distractionFree, false)
@@ -634,6 +757,14 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
       this.els.outline.parentElement?.toggleAttribute('hidden', !partial.showOutline)
     }
 
+    if (partial.showNotes !== undefined) {
+      this.els.notes.parentElement?.toggleAttribute('hidden', !partial.showNotes)
+    }
+
+    if (partial.showRelations !== undefined) {
+      this.els.relations.parentElement?.toggleAttribute('hidden', !partial.showRelations)
+    }
+
     if (partial.showWordCount !== undefined && !this.distractionFreeController.isEnabled()) {
       this.els.statusBar.toggleAttribute('hidden', !partial.showWordCount)
     }
@@ -652,9 +783,23 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   }
 
   /** Cria um documento em branco. */
-  newDocument(): void {
+  async newDocument(): Promise<void> {
+    const choice = await this.documentTemplateDialog.choose()
+    if (!choice) return
+
+    if (choice.kind === 'blank') {
+      this.createBlankDocument()
+      return
+    }
+
+    const template = choice.template
+    if (!template) return
     this.setAcademicMode(false)
-    this.persistenceController.newDocument()
+    this.persistenceController.newDocument({
+      html: template.content,
+      documentName: template.documentName,
+      currentFormat: template.preferredFormat
+    })
   }
 
   /** Carrega um documento aberto no editor. */
@@ -675,7 +820,11 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Exporta o documento atual para PDF. */
   async exportPdf(): Promise<void> {
-    await this.persistenceController.exportPdf()
+    const preset = await this.pdfPresetDialog.choose(this.settings.pdfPreset)
+    if (!preset) return
+    this.settings.pdfPreset = preset
+    await window.prosa.setSettings({ pdfPreset: preset })
+    await this.persistenceController.exportPdf(preset)
   }
 
   /** Exporta o documento atual para HTML limpo. */
@@ -690,6 +839,11 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     if (!result.ok && result.error) {
       window.alert(result.error)
     }
+  }
+
+  /** Exporta o documento atual para EPUB. */
+  async exportEpub(): Promise<void> {
+    await this.persistenceController.exportEpub()
   }
 
   /** Abre o seletor de arquivos para inserir uma imagem no documento. */
@@ -733,7 +887,7 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     })
     if (!config) return
 
-    this.newDocument()
+    this.createBlankDocument()
     this.setAcademicMode(true)
     this.documentName = 'Trabalho-ABNT.prosa'
     this.frontmatter = {
@@ -763,6 +917,12 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     this.setDirty(true)
     this.refresh()
     this.editor.commands.focus()
+  }
+
+  /** Cria um documento em branco sem abrir o seletor de modelos. */
+  private createBlankDocument(): void {
+    this.setAcademicMode(false)
+    this.persistenceController.newDocument()
   }
 
   private setAcademicMode(enabled: boolean): void {
@@ -921,6 +1081,24 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   toggleStyles(): void {
     const panel = this.els.styles.parentElement
     panel?.toggleAttribute('hidden')
+  }
+
+  /** Alterna a visibilidade do painel de notas. */
+  toggleNotes(): void {
+    const panel = this.els.notes.parentElement
+    panel?.toggleAttribute('hidden')
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    this.settings.showNotes = !isHidden
+    void window.prosa.setSettings({ showNotes: this.settings.showNotes })
+  }
+
+  /** Alterna a visibilidade do painel de relações do workspace. */
+  toggleRelations(): void {
+    const panel = this.els.relations.parentElement
+    panel?.toggleAttribute('hidden')
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    this.settings.showRelations = !isHidden
+    void window.prosa.setSettings({ showRelations: this.settings.showRelations })
   }
 
   /** Alterna a visibilidade da barra de contagem de palavras. */

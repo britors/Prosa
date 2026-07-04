@@ -6,6 +6,7 @@ import { documentText } from '../../shared/document-utils.js'
 import type {
   NoteEntry,
   FileFormat,
+  PdfPreset,
   OpenedDocument,
   ProsaSettings,
   SavePayload,
@@ -162,6 +163,16 @@ interface PersistencePayloadData {
   json: TipTapJSON
 }
 
+interface NewDocumentPayload {
+  html?: string
+  documentName?: string
+  currentFormat?: FileFormat | null
+  frontmatter?: Record<string, string>
+  headerHTML?: string
+  footerHTML?: string
+  notes?: Record<string, NoteEntry>
+}
+
 interface SaveResult {
   ok: boolean
   path?: string
@@ -172,9 +183,11 @@ interface PersistenceDeps {
   getState: () => PersistenceState
   setState: (state: PersistenceState) => void
   chooseFormat: (preset: FileFormat) => Promise<FileFormat | null>
+  choosePdfPreset: (current: PdfPreset) => Promise<PdfPreset | null>
   saveDocument: (payload: SavePayload) => Promise<SaveResult>
   saveDocumentAs: (payload: SavePayload) => Promise<SaveResult>
-  exportPdf: (name: string) => Promise<{ error?: string }>
+  exportPdf: (name: string, preset?: PdfPreset) => Promise<{ error?: string }>
+  exportEpub: (name: string, payload: SavePayload) => Promise<{ error?: string }>
   setDirty: (dirty: boolean) => void
   setDocumentName: (name: string) => void
   setEditorContent: (html: string) => void
@@ -192,16 +205,20 @@ export class DocumentPersistenceController {
     private readonly writableFormats: ReadonlySet<FileFormat>
   ) {}
 
-  newDocument(): void {
-    this.deps.clearEditorContent()
+  newDocument(initial: NewDocumentPayload = {}): void {
+    if (initial.html) {
+      this.deps.setEditorContent(initial.html)
+    } else {
+      this.deps.clearEditorContent()
+    }
     const next: PersistenceState = {
       currentPath: null,
-      currentFormat: null,
-      documentName: 'Sem título',
-      headerHTML: '',
-      footerHTML: '',
-      frontmatter: {},
-      notes: {}
+      currentFormat: initial.currentFormat ?? null,
+      documentName: initial.documentName ?? 'Sem título',
+      headerHTML: initial.headerHTML ?? '',
+      footerHTML: initial.footerHTML ?? '',
+      frontmatter: initial.frontmatter ?? {},
+      notes: initial.notes ?? {}
     }
     this.deps.setState(next)
     this.deps.setDocumentName(next.documentName)
@@ -271,12 +288,22 @@ export class DocumentPersistenceController {
     }
   }
 
-  async exportPdf(): Promise<void> {
+  async exportPdf(preset?: PdfPreset): Promise<void> {
     const state = this.deps.getState()
     const name = state.documentName.replace(/\.[^.]+$/, '')
-    const result = await this.deps.exportPdf(name)
+    const result = await this.deps.exportPdf(name, preset)
     if (result.error) {
       this.deps.alertError(`Erro ao exportar PDF: ${result.error}`)
+    }
+  }
+
+  async exportEpub(): Promise<void> {
+    const state = this.deps.getState()
+    const name = state.documentName.replace(/\.[^.]+$/, '')
+    const payload = this.buildPayload(state)
+    const result = await this.deps.exportEpub(name, payload)
+    if (result.error) {
+      this.deps.alertError(`Erro ao exportar EPUB: ${result.error}`)
     }
   }
 
@@ -292,12 +319,12 @@ export class DocumentPersistenceController {
       footer: state.footerHTML,
       frontmatter: state.frontmatter,
       notes: state.notes,
-      metadata: {
-        title: state.documentName.replace(/\.[^.]+$/, ''),
-        author: '',
-        createdAt: now,
-        modifiedAt: now
-      }
+        metadata: {
+          title: state.documentName.replace(/\.[^.]+$/, ''),
+          author: state.frontmatter.author ?? '',
+          createdAt: now,
+          modifiedAt: now
+        }
     }
   }
 }

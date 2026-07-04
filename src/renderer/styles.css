@@ -632,7 +632,7 @@ body {
 /* Dica #31: Estilo do Menu Flutuante */
 /* Edição Inline: Removemos bordas e fundo para parecer que é o próprio cabeçalho */
 .floating-editor {
-  position: absolute;
+  position: fixed;
   z-index: 1001;
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -642,6 +642,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow: auto;
 }
 
 .prompt-title {
@@ -664,6 +667,11 @@ body {
   margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.mini-variables {
+  gap: 6px;
 }
 
 .mini-editor-container {
@@ -686,6 +694,11 @@ body {
 
 .btn-tool:hover {
   background: var(--accent);
+}
+
+.btn-tool code {
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .mini-editor-container .ProseMirror {
@@ -1164,6 +1177,18 @@ body.is-resizing-image {
 .plugin-status-error {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.plugin-status-disabled {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 16%, transparent);
+}
+
+.plugin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .plugin-error-text {

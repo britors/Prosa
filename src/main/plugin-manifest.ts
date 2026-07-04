@@ -7,7 +7,7 @@ import { join, resolve, sep } from 'node:path'
 import type { PluginManifest, PluginPermission } from '../shared/types.js'
 
 /** Conjunto de permissões reconhecidas em v1 — cada uma precisa de enforcement real. */
-export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = ['storage']
+export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = ['storage', 'dialog', 'workspace']
 
 const ID_PATTERN = /^[a-z0-9-]+$/
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/

@@ -23,6 +23,11 @@ export interface OutlineItem {
   index: number
 }
 
+/** Item do sumário com numeração hierárquica. */
+export interface NumberedOutlineItem extends OutlineItem {
+  number: string
+}
+
 /** Conta as palavras de um texto, ignorando espaços extras. */
 export function countWords(text: string): number {
   const trimmed = text.trim()
@@ -194,4 +199,18 @@ export function extractOutline(doc: TipTapJSON, maxLevel = 4): OutlineItem[] {
 
   walk(doc)
   return outline
+}
+
+/** Extrai os títulos com numeração hierárquica, útil para sumários. */
+export function extractNumberedOutline(doc: TipTapJSON, maxLevel = 4): NumberedOutlineItem[] {
+  const outline = extractOutline(doc, maxLevel)
+  const counters = [0, 0, 0, 0, 0, 0]
+  return outline.map((item) => {
+    counters[item.level - 1] += 1
+    for (let i = item.level; i < counters.length; i += 1) counters[i] = 0
+    return {
+      ...item,
+      number: counters.slice(0, item.level).filter((n) => n > 0).join('.')
+    }
+  })
 }

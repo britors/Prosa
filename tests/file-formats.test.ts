@@ -11,6 +11,7 @@ test('detectFormat reconhece cada extensão suportada', () => {
   assert.equal(detectFormat('doc.docx'), 'docx')
   assert.equal(detectFormat('doc.odt'), 'odt')
   assert.equal(detectFormat('doc.rtf'), 'rtf')
+  assert.equal(detectFormat('doc.epub'), 'epub')
   assert.equal(detectFormat('doc.doc'), 'doc')
   assert.equal(detectFormat('doc.md'), 'md')
   assert.equal(detectFormat('doc.markdown'), 'md')
@@ -28,6 +29,10 @@ test('detectFormat ignora a caixa da extensão', () => {
 
 test('ensureExtension adiciona a extensão quando ausente', () => {
   assert.equal(ensureExtension('/tmp/relatorio', 'docx'), '/tmp/relatorio.docx')
+})
+
+test('ensureExtension adiciona a extensão EPUB quando ausente', () => {
+  assert.equal(ensureExtension('/tmp/livro', 'epub'), '/tmp/livro.epub')
 })
 
 test('ensureExtension não duplica quando a extensão já está presente', () => {
