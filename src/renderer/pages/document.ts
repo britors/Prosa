@@ -178,7 +178,7 @@ export class DocumentView {
       },
       onCreateAbnt: () => this.createAbntDocument(),
       onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
-    }, els.root)
+    }, document.body)
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(
@@ -550,10 +550,10 @@ export class DocumentView {
 
     const menu = document.createElement('div')
     menu.className = 'floating-editor'
-
-    // Posiciona perto do clique
-    menu.style.top = `${event.clientY + 10}px`
-    menu.style.left = `${event.clientX}px`
+    menu.style.position = 'fixed'
+    menu.style.visibility = 'hidden'
+    menu.style.left = '12px'
+    menu.style.top = '12px'
 
     const variableToolbar = allowVariables
       ? `
@@ -667,6 +667,33 @@ export class DocumentView {
     }
 
     document.body.appendChild(menu)
+    const margin = 12
+    const offset = 16
+    const rect = menu.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    const prefersBelow = event.clientY + offset + rect.height <= viewportHeight - margin
+    let top = prefersBelow ? event.clientY + offset : event.clientY - rect.height - offset
+    let left = event.clientX
+
+    if (left + rect.width > viewportWidth - margin) {
+      left = viewportWidth - rect.width - margin
+    }
+    if (left < margin) {
+      left = margin
+    }
+    if (top + rect.height > viewportHeight - margin) {
+      top = viewportHeight - rect.height - margin
+    }
+    if (top < margin) {
+      top = margin
+    }
+
+    menu.style.left = `${left}px`
+    menu.style.top = `${top}px`
+    menu.style.visibility = 'visible'
+
     setTimeout(() => {
       if (richText) miniEditor?.commands.focus()
       else (menu.querySelector('.floating-input') as HTMLInputElement)?.focus()

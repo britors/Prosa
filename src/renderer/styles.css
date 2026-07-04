@@ -632,7 +632,7 @@ body {
 /* Dica #31: Estilo do Menu Flutuante */
 /* Edição Inline: Removemos bordas e fundo para parecer que é o próprio cabeçalho */
 .floating-editor {
-  position: absolute;
+  position: fixed;
   z-index: 1001;
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -642,6 +642,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow: auto;
 }
 
 .prompt-title {
