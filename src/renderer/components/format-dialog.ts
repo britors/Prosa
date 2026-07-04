@@ -44,6 +44,13 @@ const SAVE_FORMATS: FormatOption[] = [
     description: 'Texto formatado — lido por Word e LibreOffice.'
   },
   {
+    format: 'epub',
+    icon: 'book-open-text',
+    label: 'EPUB',
+    ext: '.epub',
+    description: 'Livro digital — leitura em apps e leitores EPUB.'
+  },
+  {
     format: 'md',
     icon: 'markdown',
     label: 'Markdown',

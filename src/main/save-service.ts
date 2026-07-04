@@ -6,6 +6,7 @@ import { BrowserWindow, dialog } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { exportDocx, exportMarkdown } from './converters.js'
+import { exportEpub } from './epub.js'
 import { exportOdt } from './odt.js'
 import { exportRtf } from './rtf.js'
 import { addRecentFile, getSettings } from './settings.js'
@@ -57,6 +58,11 @@ async function writeDocument(
     }
     case 'rtf': {
       await writeFile(path, exportRtf(payload.json, payload.notes ?? {}), 'utf-8')
+      break
+    }
+    case 'epub': {
+      const buffer = await exportEpub(payload)
+      await writeFile(path, buffer)
       break
     }
     case 'doc': {

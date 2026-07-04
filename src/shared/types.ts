@@ -21,6 +21,7 @@ export type FileFormat =
   | 'docx'
   | 'odt'
   | 'rtf'
+  | 'epub'
   | 'doc'
   | 'md'
   | 'txt'
@@ -284,6 +285,7 @@ export interface ProsaApi {
   saveDocumentAs: (payload: SavePayload) => Promise<FileResult>
   exportPdf: (defaultName: string) => Promise<FileResult>
   exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => Promise<FileResult>
+  exportEpub: (defaultName: string, payload: SavePayload) => Promise<FileResult>
   print: () => Promise<FileResult>
   getRecentFiles: () => Promise<RecentFile[]>
   clearRecentFiles: () => Promise<RecentFile[]>

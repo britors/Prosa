@@ -15,6 +15,7 @@ export const OPEN_FILTERS = [
   { name: 'Word (.docx)', extensions: ['docx'] },
   { name: 'OpenDocument (.odt)', extensions: ['odt'] },
   { name: 'Rich Text (.rtf)', extensions: ['rtf'] },
+  { name: 'EPUB (.epub)', extensions: ['epub'] },
   { name: 'Word 97-2003 (.doc)', extensions: ['doc'] },
   { name: 'Markdown', extensions: ['md', 'markdown'] },
   { name: 'Texto', extensions: ['txt'] }
@@ -44,6 +45,8 @@ export function detectFormat(path: string): FileFormat {
       return 'odt'
     case 'rtf':
       return 'rtf'
+    case 'epub':
+      return 'epub'
     case 'doc':
       return 'doc'
     case 'md':
@@ -60,6 +63,7 @@ export const SAVE_FORMATS: Record<string, { name: string; ext: string }> = {
   docx: { name: 'Word (.docx)', ext: 'docx' },
   odt: { name: 'OpenDocument (.odt)', ext: 'odt' },
   rtf: { name: 'Rich Text (.rtf)', ext: 'rtf' },
+  epub: { name: 'EPUB (.epub)', ext: 'epub' },
   md: { name: 'Markdown', ext: 'md' },
   txt: { name: 'Texto', ext: 'txt' }
 }

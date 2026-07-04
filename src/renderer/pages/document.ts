@@ -56,7 +56,7 @@ const ZOOM_MAX = 200
 const ZOOM_STEP = 10
 
 /** Formatos em que o Prosa consegue gravar. */
-const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'md', 'txt'])
+const WRITABLE_FORMATS = new Set<FileFormat>(['prosa', 'docx', 'odt', 'rtf', 'epub', 'md', 'txt'])
 
 function escapeHtml(value: string): string {
   return value
@@ -278,6 +278,7 @@ export class DocumentView {
         saveDocument: async (payload) => window.prosa.saveDocument(payload),
         saveDocumentAs: async (payload) => window.prosa.saveDocumentAs(payload),
         exportPdf: async (name) => window.prosa.exportPdf(name),
+        exportEpub: async (name, payload) => window.prosa.exportEpub(name, payload),
         setDirty: (dirty) => this.setDirty(dirty),
         setDocumentName: (name) => this.statusBar.setDocumentName(name),
         setEditorContent: (html) => this.editor.commands.setContent(html, false),
@@ -690,6 +691,11 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
     if (!result.ok && result.error) {
       window.alert(result.error)
     }
+  }
+
+  /** Exporta o documento atual para EPUB. */
+  async exportEpub(): Promise<void> {
+    await this.persistenceController.exportEpub()
   }
 
   /** Abre o seletor de arquivos para inserir uma imagem no documento. */

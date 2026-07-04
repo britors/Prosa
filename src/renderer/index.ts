@@ -160,6 +160,9 @@ function registerMenuActions(
       case 'file:exportHtml':
         void view.exportHtml()
         break
+      case 'file:exportEpub':
+        void view.exportEpub()
+        break
       case 'edit:find':
         view.openFind(false)
         break

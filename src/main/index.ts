@@ -14,6 +14,7 @@ import {
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exportPdf } from './export-service.js'
+import { exportEpubDocument } from './epub-export-service.js'
 import { exportHtmlDocument } from './html-export-service.js'
 import { openDocument } from './open-service.js'
 import { saveDocument } from './save-service.js'
@@ -507,6 +508,10 @@ function buildMenu(): void {
           click: () => sendMenuAction('file:exportHtml')
         },
         {
+          label: 'Exportar EPUB',
+          click: () => sendMenuAction('file:exportEpub')
+        },
+        {
           label: 'Configurações de PDF',
           submenu: [
             {
@@ -769,6 +774,11 @@ function registerIpc(): void {
   ipcMain.handle('file:exportHtml', async (_event, defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => {
     if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
     return exportHtmlDocument(mainWindow, defaultName, doc, options, notes)
+  })
+
+  ipcMain.handle('file:exportEpub', async (_event, defaultName: string, payload: SavePayload) => {
+    if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
+    return exportEpubDocument(mainWindow, defaultName, payload)
   })
 
   ipcMain.handle('file:print', () => {

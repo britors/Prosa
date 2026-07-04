@@ -175,6 +175,7 @@ interface PersistenceDeps {
   saveDocument: (payload: SavePayload) => Promise<SaveResult>
   saveDocumentAs: (payload: SavePayload) => Promise<SaveResult>
   exportPdf: (name: string) => Promise<{ error?: string }>
+  exportEpub: (name: string, payload: SavePayload) => Promise<{ error?: string }>
   setDirty: (dirty: boolean) => void
   setDocumentName: (name: string) => void
   setEditorContent: (html: string) => void
@@ -280,6 +281,16 @@ export class DocumentPersistenceController {
     }
   }
 
+  async exportEpub(): Promise<void> {
+    const state = this.deps.getState()
+    const name = state.documentName.replace(/\.[^.]+$/, '')
+    const payload = this.buildPayload(state)
+    const result = await this.deps.exportEpub(name, payload)
+    if (result.error) {
+      this.deps.alertError(`Erro ao exportar EPUB: ${result.error}`)
+    }
+  }
+
   private buildPayload(state: PersistenceState): SavePayload {
     const payloadData = this.deps.getPayloadData()
     const now = new Date().toISOString()
@@ -292,12 +303,12 @@ export class DocumentPersistenceController {
       footer: state.footerHTML,
       frontmatter: state.frontmatter,
       notes: state.notes,
-      metadata: {
-        title: state.documentName.replace(/\.[^.]+$/, ''),
-        author: '',
-        createdAt: now,
-        modifiedAt: now
-      }
+        metadata: {
+          title: state.documentName.replace(/\.[^.]+$/, ''),
+          author: state.frontmatter.author ?? '',
+          createdAt: now,
+          modifiedAt: now
+        }
     }
   }
 }
