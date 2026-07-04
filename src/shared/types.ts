@@ -78,9 +78,18 @@ export interface BibliographyEntry {
   type: string
   title: string
   author: string
+  editor?: string
   year: string
   journal?: string
+  booktitle?: string
   publisher?: string
+  institution?: string
+  school?: string
+  volume?: string
+  number?: string
+  pages?: string
+  doi?: string
+  url?: string
   raw: string
 }
 

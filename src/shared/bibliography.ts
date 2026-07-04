@@ -27,9 +27,18 @@ export function parseBibTeX(raw: string): BibliographyEntry[] {
       type: type.trim().toLowerCase(),
       title: fields.get('title') ?? key.trim(),
       author: fields.get('author') ?? '',
+      editor: fields.get('editor'),
       year: fields.get('year') ?? '',
       journal: fields.get('journal'),
+      booktitle: fields.get('booktitle'),
       publisher: fields.get('publisher'),
+      institution: fields.get('institution'),
+      school: fields.get('school'),
+      volume: fields.get('volume'),
+      number: fields.get('number'),
+      pages: fields.get('pages'),
+      doi: fields.get('doi'),
+      url: fields.get('url'),
       raw: block.trim()
     })
   }
@@ -62,6 +71,16 @@ function formatAuthorList(author: string, style: BibliographyStyle): string {
   }
 }
 
+function formatSource(entry: BibliographyEntry): string {
+  return entry.journal || entry.booktitle || entry.publisher || entry.institution || entry.school || ''
+}
+
+function formatLocation(entry: BibliographyEntry): string {
+  const parts = [entry.volume, entry.number ? `n. ${entry.number}` : '', entry.pages ? `p. ${entry.pages}` : '']
+    .filter(Boolean)
+  return parts.join(', ')
+}
+
 /** Formata uma entrada bibliográfica em um estilo simples. */
 export function formatBibliographyEntry(
   entry: BibliographyEntry,
@@ -71,14 +90,19 @@ export function formatBibliographyEntry(
   const author = formatAuthorList(entry.author, style)
   const title = entry.title || entry.key
   const year = entry.year || 's.d.'
-  const source = entry.journal || entry.publisher || ''
+  const source = formatSource(entry)
+  const location = formatLocation(entry)
+  const doi = entry.doi ? `https://doi.org/${entry.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')}` : ''
+  const url = entry.url || ''
+  const sourceLine = [source, location].filter(Boolean).join(', ')
+  const access = doi || url
 
   switch (style) {
     case 'ABNT':
-      return `${author ? `${author}. ` : ''}${title}. ${source ? `${source}. ` : ''}${year}.`
+      return `${author ? `${author}. ` : ''}${title}. ${sourceLine ? `${sourceLine}. ` : ''}${year}.${access ? ` Disponível em: ${access}.` : ''}`
     case 'APA':
-      return `${author ? `${author} ` : ''}(${year}). ${title}.${source ? ` ${source}.` : ''}`
+      return `${author ? `${author} ` : ''}(${year}). ${title}.${sourceLine ? ` ${sourceLine}.` : ''}${access ? ` ${access}.` : ''}`
     case 'IEEE':
-      return `[${index}] ${author ? `${author}, ` : ''}"${title}"${source ? `, ${source}` : ''}, ${year}.`
+      return `[${index}] ${author ? `${author}, ` : ''}"${title}"${sourceLine ? `, ${sourceLine}` : ''}${access ? `, ${access}` : ''}, ${year}.`
   }
 }

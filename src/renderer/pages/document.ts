@@ -11,7 +11,6 @@ import StarterKit from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
 import { createToolbar } from '../editor/toolbar.js'
 import { CommandPalette } from './command-palette.js'
-import { CitationManager } from '../components/citation-manager.js'
 import { GraphView } from '../components/graph-view.js'
 import { SidebarOutline } from '../components/sidebar-outline.js'
 import { StylesPanel } from '../components/styles-panel.js'
@@ -26,6 +25,7 @@ import { FocusTimer } from '../components/focus-timer.js'
 import { FontProfileDialog } from '../components/font-profile-dialog.js'
 import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
+import { BibliographyDialog } from '../components/bibliography-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
 import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
@@ -39,6 +39,7 @@ import {
   DistractionFreeController
 } from './document-controllers.js'
 import { formatBibliographyEntry } from '../../shared/bibliography.js'
+import { extractCitations } from '../../shared/document-utils.js'
 import type {
   BibliographyStyle,
   FileFormat,
@@ -94,7 +95,7 @@ export class DocumentView {
   private readonly styles: StylesPanel
   private readonly findReplace: FindReplacePanel
   private readonly commandPalette: CommandPalette
-  private readonly citationManager: CitationManager
+  private readonly bibliographyDialog: BibliographyDialog
   private readonly graphView: GraphView
   private readonly statusBar: WordCountBar
   private readonly formatDialog: FormatDialog
@@ -152,6 +153,12 @@ export class DocumentView {
     this.fontProfileDialog = new FontProfileDialog(els.root)
     this.frontmatterDialog = new FrontmatterDialog(els.root)
     this.abntDialog = new AbntDialog(els.root)
+    this.bibliographyDialog = new BibliographyDialog({
+      onInsertCitation: (citeKey) => {
+        this.editor.chain().focus().setCitation({ citeKey }).run()
+      },
+      onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
+    }, els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
@@ -175,7 +182,7 @@ export class DocumentView {
       () => this.toggleTypewriterMode(),
       () => this.toggleDistractionFree(),
       () => this.dailyNote(),
-      () => this.citationManager.show(),
+      () => void this.bibliographyDialog.show(),
       () => this.graphView.show(),
       () => void this.templateDialog.choose(),
       () => searchModal.show(),
@@ -203,7 +210,6 @@ export class DocumentView {
 
 
     
-    this.citationManager = new CitationManager(els.root, this.editor)
     this.graphView = new GraphView(els.root)
     
     // Agora createToolbar é assíncrono
@@ -827,7 +833,8 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   async insertBibliography(style?: BibliographyStyle, keys: string[] = []): Promise<void> {
     const library = await window.prosa.getWorkspaceLibrary()
     const bibliographyStyle = style ?? library.bibliography.style
-    const sourceKeys = keys.length > 0 ? keys : library.bibliography.entries.map((entry) => entry.key)
+    const sourceKeys =
+      keys.length > 0 ? keys : extractCitations(this.editor.getJSON() as TipTapJSON)
     const map = new Map(library.bibliography.entries.map((entry) => [entry.key, entry]))
     const ordered = [...new Set(sourceKeys)].filter((key) => map.has(key))
     const items =

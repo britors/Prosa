@@ -8,7 +8,11 @@ test('parseBibTeX extrai entradas básicas', () => {
   author = {Silva, Maria and Souza, Ana},
   title = {Estudo do texto},
   year = {2024},
-  journal = {Revista Exemplo}
+  journal = {Revista Exemplo},
+  volume = {12},
+  number = {3},
+  pages = {10-18},
+  doi = {10.1234/exemplo}
 }
   `)
 
@@ -16,6 +20,10 @@ test('parseBibTeX extrai entradas básicas', () => {
   assert.equal(entries[0].key, 'silva2024')
   assert.equal(entries[0].title, 'Estudo do texto')
   assert.equal(entries[0].author, 'Silva, Maria and Souza, Ana')
+  assert.equal(entries[0].volume, '12')
+  assert.equal(entries[0].number, '3')
+  assert.equal(entries[0].pages, '10-18')
+  assert.equal(entries[0].doi, '10.1234/exemplo')
 })
 
 test('formatBibliographyEntry gera saída legível', () => {
@@ -26,6 +34,10 @@ test('formatBibliographyEntry gera saída legível', () => {
     author: 'Silva, Maria',
     year: '2024',
     journal: 'Revista Exemplo',
+    volume: '12',
+    number: '3',
+    pages: '10-18',
+    doi: '10.1234/exemplo',
     raw: ''
   }
 
@@ -36,5 +48,6 @@ test('formatBibliographyEntry gera saída legível', () => {
   assert.match(abnt, /Estudo do texto/)
   assert.match(apa, /\(2024\)/)
   assert.match(ieee, /\[1\]/)
+  assert.match(abnt, /Revista Exemplo/)
+  assert.match(abnt, /Disponível em:/)
 })
-

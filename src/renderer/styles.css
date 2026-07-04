@@ -1205,6 +1205,13 @@ body.is-resizing-image {
   min-height: 0;
 }
 
+.bibliography-dialog-body {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(320px, 1.05fr);
+  gap: 14px;
+  min-height: 0;
+}
+
 .workspace-library-list,
 .workspace-library-details {
   min-height: 0;
@@ -1286,6 +1293,28 @@ body.is-resizing-image {
 .library-chip-action {
   gap: 6px;
   cursor: pointer;
+}
+
+.abnt-dialog {
+  max-width: 760px;
+}
+
+.abnt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.abnt-textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-component);
+  background: var(--bg);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font: inherit;
 }
 
 .workspace-details-head {
