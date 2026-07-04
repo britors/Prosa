@@ -163,6 +163,16 @@ interface PersistencePayloadData {
   json: TipTapJSON
 }
 
+interface NewDocumentPayload {
+  html?: string
+  documentName?: string
+  currentFormat?: FileFormat | null
+  frontmatter?: Record<string, string>
+  headerHTML?: string
+  footerHTML?: string
+  notes?: Record<string, NoteEntry>
+}
+
 interface SaveResult {
   ok: boolean
   path?: string
@@ -195,16 +205,20 @@ export class DocumentPersistenceController {
     private readonly writableFormats: ReadonlySet<FileFormat>
   ) {}
 
-  newDocument(): void {
-    this.deps.clearEditorContent()
+  newDocument(initial: NewDocumentPayload = {}): void {
+    if (initial.html) {
+      this.deps.setEditorContent(initial.html)
+    } else {
+      this.deps.clearEditorContent()
+    }
     const next: PersistenceState = {
       currentPath: null,
-      currentFormat: null,
-      documentName: 'Sem título',
-      headerHTML: '',
-      footerHTML: '',
-      frontmatter: {},
-      notes: {}
+      currentFormat: initial.currentFormat ?? null,
+      documentName: initial.documentName ?? 'Sem título',
+      headerHTML: initial.headerHTML ?? '',
+      footerHTML: initial.footerHTML ?? '',
+      frontmatter: initial.frontmatter ?? {},
+      notes: initial.notes ?? {}
     }
     this.deps.setState(next)
     this.deps.setDocumentName(next.documentName)

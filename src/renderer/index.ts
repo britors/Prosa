@@ -68,11 +68,11 @@ async function bootstrap(): Promise<void> {
 
   const welcome = new WelcomeScreen(welcomeRoot, {
     onNew: () => {
-      view.newDocument()
+      void view.newDocument()
       showEditor()
     },
     onNewAbnt: () => {
-      view.createAbntDocument()
+      void view.createAbntDocument()
       showEditor()
     },
     onOpen: () => void openViaDialog(),
@@ -132,11 +132,11 @@ function registerMenuActions(
         showEditor()
         break
       case 'file:new':
-        view.newDocument()
+        void view.newDocument()
         showEditor()
         break
       case 'file:newAbnt':
-        view.createAbntDocument()
+        void view.createAbntDocument()
         showEditor()
         break
       case 'file:open':

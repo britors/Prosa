@@ -28,6 +28,7 @@ import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { BibliographyDialog } from '../components/bibliography-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
 import { PdfPresetDialog } from '../components/pdf-preset-dialog.js'
+import { DocumentTemplateDialog } from '../components/document-template-dialog.js'
 import { TocDialog } from '../components/toc-dialog.js'
 import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
@@ -112,6 +113,7 @@ export class DocumentView {
   private readonly abntDialog: AbntDialog
   private readonly htmlExportDialog: HtmlExportDialog
   private readonly pdfPresetDialog: PdfPresetDialog
+  private readonly documentTemplateDialog: DocumentTemplateDialog
   private readonly tocDialog: TocDialog
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
@@ -166,6 +168,7 @@ export class DocumentView {
     }, els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
     this.pdfPresetDialog = new PdfPresetDialog(els.root)
+    this.documentTemplateDialog = new DocumentTemplateDialog(els.root)
     this.tocDialog = new TocDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
@@ -356,7 +359,7 @@ export class DocumentView {
     void window.prosa.openDocument(name).then(res => {
         if (res.ok && res.document) this.load(res.document)
         else {
-            this.newDocument()
+            this.createBlankDocument()
             this.setPersistenceState({ ...this.getPersistenceState(), documentName: name })
             this.statusBar.setDocumentName(name)
         }
@@ -743,9 +746,23 @@ export class DocumentView {
   }
 
   /** Cria um documento em branco. */
-  newDocument(): void {
+  async newDocument(): Promise<void> {
+    const choice = await this.documentTemplateDialog.choose()
+    if (!choice) return
+
+    if (choice.kind === 'blank') {
+      this.createBlankDocument()
+      return
+    }
+
+    const template = choice.template
+    if (!template) return
     this.setAcademicMode(false)
-    this.persistenceController.newDocument()
+    this.persistenceController.newDocument({
+      html: template.content,
+      documentName: template.documentName,
+      currentFormat: template.preferredFormat
+    })
   }
 
   /** Carrega um documento aberto no editor. */
@@ -833,7 +850,7 @@ export class DocumentView {
     })
     if (!config) return
 
-    this.newDocument()
+    this.createBlankDocument()
     this.setAcademicMode(true)
     this.documentName = 'Trabalho-ABNT.prosa'
     this.frontmatter = {
@@ -863,6 +880,12 @@ export class DocumentView {
     this.setDirty(true)
     this.refresh()
     this.editor.commands.focus()
+  }
+
+  /** Cria um documento em branco sem abrir o seletor de modelos. */
+  private createBlankDocument(): void {
+    this.setAcademicMode(false)
+    this.persistenceController.newDocument()
   }
 
   private setAcademicMode(enabled: boolean): void {
