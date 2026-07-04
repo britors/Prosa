@@ -149,6 +149,9 @@ export type AutoSavePolicy = 'off' | 'onBlur' | 'debounce' | 'interval'
 /** Tamanhos de página suportados na exportação PDF. */
 export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 
+/** Presets profissionais de exportação PDF. */
+export type PdfPreset = 'academic' | 'report' | 'contract' | 'book'
+
 /** Perfil de fonte nomeado, aplicável ao editor. */
 export interface FontProfile {
   id: string
@@ -202,6 +205,7 @@ export interface ProsaSettings {
   pdfPageSize: PdfPageSize
   pdfLandscape: boolean
   pdfPrintBackground: boolean
+  pdfPreset: PdfPreset
   focusWorkMinutes: number
   focusBreakMinutes: number
   wordGoal: number
@@ -285,7 +289,7 @@ export interface ProsaApi {
   openDocument: (path?: string) => Promise<FileResult>
   saveDocument: (payload: SavePayload) => Promise<FileResult>
   saveDocumentAs: (payload: SavePayload) => Promise<FileResult>
-  exportPdf: (defaultName: string) => Promise<FileResult>
+  exportPdf: (defaultName: string, preset?: PdfPreset) => Promise<FileResult>
   exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) => Promise<FileResult>
   exportEpub: (defaultName: string, payload: SavePayload) => Promise<FileResult>
   print: () => Promise<FileResult>

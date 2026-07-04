@@ -34,8 +34,8 @@ const api: ProsaApi = {
     ipcRenderer.invoke('file:save', payload) as Promise<FileResult>,
   saveDocumentAs: (payload: SavePayload) =>
     ipcRenderer.invoke('file:saveAs', payload) as Promise<FileResult>,
-  exportPdf: (defaultName: string) =>
-    ipcRenderer.invoke('file:exportPdf', defaultName) as Promise<FileResult>,
+  exportPdf: (defaultName: string, preset?: 'academic' | 'report' | 'contract' | 'book') =>
+    ipcRenderer.invoke('file:exportPdf', defaultName, preset) as Promise<FileResult>,
   exportHtml: (defaultName: string, doc: TipTapJSON, options: HtmlExportOptions, notes?: Record<string, NoteEntry>) =>
     ipcRenderer.invoke('file:exportHtml', defaultName, doc, options, notes ?? {}) as Promise<FileResult>,
   exportEpub: (defaultName: string, payload: SavePayload) =>

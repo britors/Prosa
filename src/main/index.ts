@@ -761,10 +761,11 @@ function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle('file:exportPdf', async (_event, defaultName: string) => {
+  ipcMain.handle('file:exportPdf', async (_event, defaultName: string, preset?: 'academic' | 'report' | 'contract' | 'book') => {
     if (!mainWindow) return { ok: false, error: 'Janela indisponível' }
     const settings = getSettings()
     return exportPdf(mainWindow, defaultName, {
+      preset: preset ?? settings.pdfPreset,
       pageSize: settings.pdfPageSize,
       landscape: settings.pdfLandscape,
       printBackground: settings.pdfPrintBackground

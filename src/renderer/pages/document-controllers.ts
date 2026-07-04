@@ -6,6 +6,7 @@ import { documentText } from '../../shared/document-utils.js'
 import type {
   NoteEntry,
   FileFormat,
+  PdfPreset,
   OpenedDocument,
   ProsaSettings,
   SavePayload,
@@ -172,9 +173,10 @@ interface PersistenceDeps {
   getState: () => PersistenceState
   setState: (state: PersistenceState) => void
   chooseFormat: (preset: FileFormat) => Promise<FileFormat | null>
+  choosePdfPreset: (current: PdfPreset) => Promise<PdfPreset | null>
   saveDocument: (payload: SavePayload) => Promise<SaveResult>
   saveDocumentAs: (payload: SavePayload) => Promise<SaveResult>
-  exportPdf: (name: string) => Promise<{ error?: string }>
+  exportPdf: (name: string, preset?: PdfPreset) => Promise<{ error?: string }>
   exportEpub: (name: string, payload: SavePayload) => Promise<{ error?: string }>
   setDirty: (dirty: boolean) => void
   setDocumentName: (name: string) => void
@@ -272,10 +274,10 @@ export class DocumentPersistenceController {
     }
   }
 
-  async exportPdf(): Promise<void> {
+  async exportPdf(preset?: PdfPreset): Promise<void> {
     const state = this.deps.getState()
     const name = state.documentName.replace(/\.[^.]+$/, '')
-    const result = await this.deps.exportPdf(name)
+    const result = await this.deps.exportPdf(name, preset)
     if (result.error) {
       this.deps.alertError(`Erro ao exportar PDF: ${result.error}`)
     }

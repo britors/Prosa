@@ -27,6 +27,7 @@ import { applyFontProfile, resolveFontProfile } from '../components/font-profile
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { BibliographyDialog } from '../components/bibliography-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
+import { PdfPresetDialog } from '../components/pdf-preset-dialog.js'
 import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
 import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
@@ -109,6 +110,7 @@ export class DocumentView {
   private readonly frontmatterDialog: FrontmatterDialog
   private readonly abntDialog: AbntDialog
   private readonly htmlExportDialog: HtmlExportDialog
+  private readonly pdfPresetDialog: PdfPresetDialog
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
   private readonly workspaceLibrary: WorkspaceLibraryDialog
@@ -161,6 +163,7 @@ export class DocumentView {
       onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
     }, els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
+    this.pdfPresetDialog = new PdfPresetDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
         void window.prosa.openDocument(path).then((res) => {
@@ -277,9 +280,10 @@ export class DocumentView {
         getState: () => this.getPersistenceState(),
         setState: (state) => this.setPersistenceState(state),
         chooseFormat: async (preset) => this.formatDialog.choose(preset),
+        choosePdfPreset: async (current) => this.pdfPresetDialog.choose(current),
         saveDocument: async (payload) => window.prosa.saveDocument(payload),
         saveDocumentAs: async (payload) => window.prosa.saveDocumentAs(payload),
-        exportPdf: async (name) => window.prosa.exportPdf(name),
+        exportPdf: async (name, preset) => window.prosa.exportPdf(name, preset),
         exportEpub: async (name, payload) => window.prosa.exportEpub(name, payload),
         setDirty: (dirty) => this.setDirty(dirty),
         setDocumentName: (name) => this.statusBar.setDocumentName(name),
@@ -751,7 +755,11 @@ export class DocumentView {
 
   /** Exporta o documento atual para PDF. */
   async exportPdf(): Promise<void> {
-    await this.persistenceController.exportPdf()
+    const preset = await this.pdfPresetDialog.choose(this.settings.pdfPreset)
+    if (!preset) return
+    this.settings.pdfPreset = preset
+    await window.prosa.setSettings({ pdfPreset: preset })
+    await this.persistenceController.exportPdf(preset)
   }
 
   /** Exporta o documento atual para HTML limpo. */
