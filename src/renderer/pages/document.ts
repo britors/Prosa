@@ -28,6 +28,7 @@ import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { BibliographyDialog } from '../components/bibliography-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
 import { PdfPresetDialog } from '../components/pdf-preset-dialog.js'
+import { TocDialog } from '../components/toc-dialog.js'
 import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
 import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
@@ -111,6 +112,7 @@ export class DocumentView {
   private readonly abntDialog: AbntDialog
   private readonly htmlExportDialog: HtmlExportDialog
   private readonly pdfPresetDialog: PdfPresetDialog
+  private readonly tocDialog: TocDialog
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
   private readonly workspaceLibrary: WorkspaceLibraryDialog
@@ -164,6 +166,7 @@ export class DocumentView {
     }, els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
     this.pdfPresetDialog = new PdfPresetDialog(els.root)
+    this.tocDialog = new TocDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
         void window.prosa.openDocument(path).then((res) => {
@@ -205,6 +208,7 @@ export class DocumentView {
         }),
       () => this.insertMathBlock(),
       (name) => this.insertDocumentVariable(name),
+      () => void this.insertTableOfContents(),
       () => void this.showWorkspaceLibrary(),
       () => void this.createAbntDocument(),
       () => this.insertBibliography(),
@@ -429,6 +433,13 @@ export class DocumentView {
   /** Insere uma variável documental no documento atual como texto literal. */
   insertDocumentVariable(name: DocumentVariableName): void {
     this.editor.chain().focus().insertContent(documentVariableToken(name)).run()
+  }
+
+  /** Insere um bloco de sumário configurável no documento atual. */
+  async insertTableOfContents(): Promise<void> {
+    const toc = await this.tocDialog.choose()
+    if (!toc) return
+    this.editor.chain().focus().setTableOfContents(toc).run()
   }
   /** Abre um prompt para inserir link. */
   private promptLink(): void {

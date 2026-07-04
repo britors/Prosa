@@ -14,6 +14,7 @@ import { createBackup } from './backup-service.js'
 import { ensureExtension, SAVE_FILTERS, SAVE_FORMATS, detectFormat } from './file-formats.js'
 import { serializeFrontmatter } from './frontmatter.js'
 import { resolveDocumentVariables, resolveDocumentVariablesInTipTap } from '../shared/document-variables.js'
+import { expandTableOfContents } from '../shared/table-of-contents.js'
 import { documentText } from '../shared/document-utils.js'
 import type { FileFormat, FileResult, SavePayload } from '../shared/types.js'
 
@@ -32,6 +33,7 @@ async function writeDocument(
     currentPath: payload.path
   }
   const resolvedJson = resolveDocumentVariablesInTipTap(payload.json, variableContext, { preservePaginationTokens: true })
+  const resolvedJsonWithToc = expandTableOfContents(resolvedJson)
   const resolvedHeader = resolveDocumentVariables(payload.header ?? '', variableContext, { preservePaginationTokens: true })
   const resolvedFooter = resolveDocumentVariables(payload.footer ?? '', variableContext, { preservePaginationTokens: true })
   switch (format) {
@@ -50,7 +52,7 @@ async function writeDocument(
       break
     }
     case 'docx': {
-      const buffer = await exportDocx(resolvedJson, {
+      const buffer = await exportDocx(resolvedJsonWithToc, {
         header: resolvedHeader,
         footer: resolvedFooter
       }, payload.notes ?? {})
@@ -58,7 +60,7 @@ async function writeDocument(
       break
     }
     case 'odt': {
-      const buffer = await exportOdt(resolvedJson, {
+      const buffer = await exportOdt(resolvedJsonWithToc, {
         header: resolvedHeader,
         footer: resolvedFooter
       }, payload.notes ?? {})
@@ -66,15 +68,15 @@ async function writeDocument(
       break
     }
     case 'rtf': {
-      await writeFile(path, exportRtf(resolvedJson, payload.notes ?? {}), 'utf-8')
+      await writeFile(path, exportRtf(resolvedJsonWithToc, payload.notes ?? {}), 'utf-8')
       break
     }
     case 'epub': {
       const buffer = await exportEpub({
         ...payload,
-        json: resolvedJson,
+        json: resolvedJsonWithToc,
         html: payload.html,
-        text: documentText(resolvedJson),
+        text: documentText(resolvedJsonWithToc),
         header: resolvedHeader,
         footer: resolvedFooter
       })
@@ -90,11 +92,11 @@ async function writeDocument(
       )
     }
     case 'md': {
-      await writeFile(path, serializeFrontmatter(payload.frontmatter) + exportMarkdown(resolvedJson, payload.notes ?? {}), 'utf-8')
+      await writeFile(path, serializeFrontmatter(payload.frontmatter) + exportMarkdown(resolvedJsonWithToc, payload.notes ?? {}), 'utf-8')
       break
     }
     default: {
-      await writeFile(path, documentText(resolvedJson), 'utf-8')
+      await writeFile(path, documentText(resolvedJsonWithToc), 'utf-8')
       break
     }
   }

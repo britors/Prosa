@@ -6,6 +6,7 @@ import { BrowserWindow, dialog } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { exportEpub } from './epub.js'
 import { resolveDocumentVariables, resolveDocumentVariablesInTipTap } from '../shared/document-variables.js'
+import { expandTableOfContents } from '../shared/table-of-contents.js'
 import type { FileResult, SavePayload } from '../shared/types.js'
 
 /** Exporta o documento atual para EPUB. */
@@ -19,6 +20,7 @@ export async function exportEpubDocument(
       metadata: payload.metadata,
       currentPath: payload.path
     }, { preservePaginationTokens: true })
+    const resolvedJsonWithToc = expandTableOfContents(resolvedJson)
     const result = await dialog.showSaveDialog(window, {
       title: 'Exportar EPUB',
       defaultPath: `${defaultName || 'documento'}.epub`,
@@ -29,7 +31,7 @@ export async function exportEpubDocument(
     }
     const buffer = await exportEpub({
       ...payload,
-      json: resolvedJson,
+      json: resolvedJsonWithToc,
       header: resolveDocumentVariables(payload.header ?? '', { metadata: payload.metadata, currentPath: payload.path }, { preservePaginationTokens: true }),
       footer: resolveDocumentVariables(payload.footer ?? '', { metadata: payload.metadata, currentPath: payload.path }, { preservePaginationTokens: true })
     })

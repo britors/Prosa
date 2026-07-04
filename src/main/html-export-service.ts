@@ -6,6 +6,7 @@ import { BrowserWindow, dialog } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { exportHtml } from './html-export.js'
 import { resolveDocumentVariablesInTipTap } from '../shared/document-variables.js'
+import { expandTableOfContents } from '../shared/table-of-contents.js'
 import type { FileResult, HtmlExportOptions, NoteEntry, TipTapJSON } from '../shared/types.js'
 
 /** Exporta o documento atual para HTML limpo. */
@@ -21,6 +22,7 @@ export async function exportHtmlDocument(
       metadata: { title: options.title ?? defaultName, author: '', createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
       currentPath: null
     }, { preservePaginationTokens: true })
+    const resolvedDocWithToc = expandTableOfContents(resolvedDoc)
     const result = await dialog.showSaveDialog(window, {
       title: 'Exportar HTML',
       defaultPath: `${defaultName || 'documento'}.html`,
@@ -29,7 +31,7 @@ export async function exportHtmlDocument(
     if (result.canceled || !result.filePath) {
       return { ok: false, canceled: true }
     }
-    const html = exportHtml(resolvedDoc, options, notes)
+    const html = exportHtml(resolvedDocWithToc, options, notes)
     await writeFile(result.filePath, html, 'utf-8')
     return { ok: true, path: result.filePath }
   } catch (error) {
