@@ -589,6 +589,40 @@ body {
   transition: opacity 0.2s, filter 0.2s;
 }
 
+.academic-mode .prosa-document {
+  padding: 24mm 30mm 24mm;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12pt;
+  line-height: 2;
+  text-align: justify;
+}
+
+.academic-mode .prosa-document h1 {
+  font-size: 14pt;
+  text-transform: uppercase;
+  text-align: left;
+  margin-top: 24pt;
+}
+
+.academic-mode .prosa-document h2 {
+  font-size: 12pt;
+  text-align: left;
+  margin-top: 18pt;
+}
+
+.academic-mode .prosa-document p {
+  text-indent: 1.25cm;
+  margin-bottom: 12pt;
+}
+
+.academic-mode .prosa-document .page-break {
+  margin: 0;
+}
+
+.academic-mode .prosa-document .page-break::before {
+  content: 'PÁGINA' !important;
+}
+
 /* Dica #30: Modo de Foco */
 .prosa-document.is-editing {
   opacity: 0.4;

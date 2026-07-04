@@ -27,6 +27,7 @@ import { FontProfileDialog } from '../components/font-profile-dialog.js'
 import { applyFontProfile, resolveFontProfile } from '../components/font-profiles.js'
 import { FrontmatterDialog } from '../components/frontmatter-dialog.js'
 import { HtmlExportDialog } from '../components/html-export-dialog.js'
+import { AbntDialog, type AbntTemplateData } from '../components/abnt-dialog.js'
 import { NotePanel } from '../components/note-panel.js'
 import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
 import { SearchModal } from '../components/search-modal.js'
@@ -104,6 +105,7 @@ export class DocumentView {
   private readonly focusTimer: FocusTimer
   private readonly fontProfileDialog: FontProfileDialog
   private readonly frontmatterDialog: FrontmatterDialog
+  private readonly abntDialog: AbntDialog
   private readonly htmlExportDialog: HtmlExportDialog
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
@@ -149,6 +151,7 @@ export class DocumentView {
     this.syncNotification = new SyncNotification(els.root)
     this.fontProfileDialog = new FontProfileDialog(els.root)
     this.frontmatterDialog = new FrontmatterDialog(els.root)
+    this.abntDialog = new AbntDialog(els.root)
     this.htmlExportDialog = new HtmlExportDialog(els.root)
     this.workspaceLibrary = new WorkspaceLibraryDialog({
       onOpenDocument: (path) => {
@@ -191,7 +194,7 @@ export class DocumentView {
         }),
       () => this.insertMathBlock(),
       () => void this.showWorkspaceLibrary(),
-      () => this.createAbntDocument(),
+      () => void this.createAbntDocument(),
       () => this.insertBibliography(),
       () => this.insertNote('footnote'),
       () => this.insertNote('endnote'),
@@ -644,12 +647,14 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
 
   /** Cria um documento em branco. */
   newDocument(): void {
+    this.setAcademicMode(false)
     this.persistenceController.newDocument()
   }
 
   /** Carrega um documento aberto no editor. */
   load(doc: OpenedDocument): void {
     this.persistenceController.load(doc)
+    this.setAcademicMode(doc.frontmatter?.mode === 'abnt')
   }
 
   /**
@@ -712,12 +717,29 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
   }
 
   /** Cria um documento acadêmico com estrutura ABNT inicial. */
-  createAbntDocument(): void {
+  async createAbntDocument(): Promise<void> {
+    const config = await this.abntDialog.choose({
+      title: this.frontmatter.title ?? 'Trabalho acadêmico',
+      author: this.frontmatter.author ?? 'Seu nome',
+      institution: this.frontmatter.institution ?? 'Sua instituição',
+      course: this.frontmatter.course ?? 'Seu curso',
+      city: this.frontmatter.city ?? 'Sua cidade'
+    })
+    if (!config) return
+
     this.newDocument()
+    this.setAcademicMode(true)
     this.documentName = 'Trabalho-ABNT.prosa'
     this.frontmatter = {
-      title: 'Trabalho acadêmico',
-      author: 'Seu nome',
+      mode: 'abnt',
+      title: config.title,
+      subtitle: config.subtitle,
+      author: config.author,
+      institution: config.institution,
+      course: config.course,
+      advisor: config.advisor,
+      city: config.city,
+      year: config.year,
       tags: 'ABNT, acadêmico',
       collections: 'Trabalhos'
     }
@@ -731,28 +753,74 @@ private customPrompt(title: string, defaultValue: string, event: MouseEvent, cal
       notes: {}
     })
     this.statusBar.setDocumentName(this.documentName)
-    this.editor.commands.setContent(
-      `
-        <h1>Trabalho acadêmico</h1>
-        <p><strong>Autor:</strong> Seu nome</p>
-        <p><strong>Instituição:</strong> Sua instituição</p>
-        <p><strong>Curso:</strong> Seu curso</p>
-        <h2>Resumo</h2>
-        <p></p>
-        <h2>Introdução</h2>
-        <p></p>
-        <h2>Desenvolvimento</h2>
-        <p></p>
-        <h2>Conclusão</h2>
-        <p></p>
-        <h2>Referências</h2>
-        <p></p>
-      `.trim(),
-      false
-    )
+    this.editor.commands.setContent(this.buildAbntContent(config), false)
     this.setDirty(true)
     this.refresh()
     this.editor.commands.focus()
+  }
+
+  private setAcademicMode(enabled: boolean): void {
+    this.els.root.classList.toggle('academic-mode', enabled)
+    this.els.editorHost.classList.toggle('academic-mode', enabled)
+  }
+
+  private buildAbntContent(config: AbntTemplateData): string {
+    const keywords = config.keywords
+      .split(/[,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join('; ')
+
+    const cover = `
+      <p style="text-align:center; margin-top: 120px;"><strong>${escapeHtml(config.institution)}</strong></p>
+      <p style="text-align:center; margin-top: 120px;"><strong>${escapeHtml(config.author)}</strong></p>
+      <p style="text-align:center; margin-top: 140px;"><strong>${escapeHtml(config.title)}</strong></p>
+      ${config.subtitle ? `<p style="text-align:center;"><em>${escapeHtml(config.subtitle)}</em></p>` : ''}
+      <p style="text-align:center; margin-top: 140px;">${escapeHtml(config.city)}<br />${escapeHtml(config.year)}</p>
+      <div data-page-break></div>
+    `
+
+    const roster = `
+      <p style="text-align:right; margin-top: 80px; max-width: 55%; margin-left:auto;">
+        <strong>${escapeHtml(config.author)}</strong><br />
+        ${escapeHtml(config.title)}${config.subtitle ? `: ${escapeHtml(config.subtitle)}` : ''}<br />
+        ${escapeHtml(config.course)}<br />
+        ${escapeHtml(config.institution)}<br />
+        Orientador: ${escapeHtml(config.advisor)}
+      </p>
+      <p style="margin-top: 140px; text-align:justify;">
+        Texto de apresentação do trabalho.
+      </p>
+      <div data-page-break></div>
+    `
+
+    const abstract = `
+      <h2>Resumo</h2>
+      <p style="text-align:justify;">${escapeHtml(config.summary)}</p>
+      <p><strong>Palavras-chave:</strong> ${escapeHtml(keywords)}</p>
+      <div data-page-break></div>
+    `
+
+    const toc = `
+      <h2>Sumário</h2>
+      <p>1. Introdução .......................................................... 1</p>
+      <p>2. Desenvolvimento .................................................... 2</p>
+      <p>3. Conclusão .......................................................... 3</p>
+      <div data-page-break></div>
+    `
+
+    const body = `
+      <h1>Introdução</h1>
+      <p></p>
+      <h1>Desenvolvimento</h1>
+      <p></p>
+      <h1>Conclusão</h1>
+      <p></p>
+      <h1>Referências</h1>
+      <p></p>
+    `
+
+    return [cover, roster, abstract, toc, body].join('')
   }
 
   /** Insere uma bibliografia formatada no documento atual. */

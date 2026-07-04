@@ -15,6 +15,7 @@ export class FrontmatterDialog {
   private readonly overlay: HTMLElement
   private rows: { key: string; value: string }[] = []
   private tags: string[] = []
+  private preserved: Record<string, string> = {}
   private onSave: (frontmatter: Record<string, string>) => void = () => {}
 
   constructor(parent: HTMLElement = document.body) {
@@ -29,8 +30,12 @@ export class FrontmatterDialog {
       .split(/[,;]+/)
       .map((item) => item.trim())
       .filter(Boolean)
+    this.preserved = {}
+    if (typeof current.mode === 'string' && current.mode) {
+      this.preserved.mode = current.mode
+    }
     this.rows = Object.entries(current)
-      .filter(([key]) => key !== 'tags')
+      .filter(([key]) => key !== 'tags' && key !== 'mode')
       .map(([key, value]) => ({ key, value }))
     this.onSave = onSave
     this.render()
@@ -136,6 +141,9 @@ export class FrontmatterDialog {
       const frontmatter: Record<string, string> = {}
       if (this.tags.length > 0) {
         frontmatter.tags = this.tags.join(', ')
+      }
+      if (this.preserved.mode) {
+        frontmatter.mode = this.preserved.mode
       }
       for (const row of this.rows) {
         if (row.key.trim()) frontmatter[row.key.trim()] = row.value
