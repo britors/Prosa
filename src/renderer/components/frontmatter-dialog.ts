@@ -14,6 +14,8 @@ function escapeHtml(value: string): string {
 export class FrontmatterDialog {
   private readonly overlay: HTMLElement
   private rows: { key: string; value: string }[] = []
+  private tags: string[] = []
+  private preserved: Record<string, string> = {}
   private onSave: (frontmatter: Record<string, string>) => void = () => {}
 
   constructor(parent: HTMLElement = document.body) {
@@ -24,7 +26,17 @@ export class FrontmatterDialog {
   }
 
   show(current: Record<string, string>, onSave: (frontmatter: Record<string, string>) => void): void {
-    this.rows = Object.entries(current).map(([key, value]) => ({ key, value }))
+    this.tags = (current.tags ?? '')
+      .split(/[,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    this.preserved = {}
+    if (typeof current.mode === 'string' && current.mode) {
+      this.preserved.mode = current.mode
+    }
+    this.rows = Object.entries(current)
+      .filter(([key]) => key !== 'tags' && key !== 'mode')
+      .map(([key, value]) => ({ key, value }))
     this.onSave = onSave
     this.render()
     this.overlay.hidden = false
@@ -41,14 +53,29 @@ export class FrontmatterDialog {
         </div>`
       )
       .join('')
+    const tagsHtml = this.tags.length > 0
+      ? this.tags.map((tag, index) => `
+        <button type="button" class="library-chip library-chip-action" data-remove-tag="${index}">
+          ${escapeHtml(tag)} <i class="ti ti-x"></i>
+        </button>
+      `).join('')
+      : '<span class="panel-empty">Sem tags.</span>'
 
     this.overlay.innerHTML = `
       <div class="modal" role="dialog" aria-label="Editar Frontmatter">
         <div class="modal-header">
           <h2>Frontmatter</h2>
-          <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
+        <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
         </div>
         <p class="format-card-desc">Metadados YAML gravados no topo do arquivo .md (título, data, tags, etc).</p>
+        <div class="workspace-section">
+          <div class="panel-title">Tags</div>
+          <div class="workspace-chip-grid">${tagsHtml}</div>
+          <div class="workspace-bib-toolbar">
+            <input id="new-tag-input" class="palette-input" type="text" placeholder="Nova tag..." />
+            <button id="btn-add-tag" class="btn btn-secondary"><i class="ti ti-plus"></i> Adicionar</button>
+          </div>
+        </div>
         <div class="frontmatter-rows">${rowsHtml}</div>
         <div class="frontmatter-actions">
           <button id="btn-add-field" class="btn btn-ghost btn-sm">+ Adicionar campo</button>
@@ -58,6 +85,32 @@ export class FrontmatterDialog {
     `
 
     this.overlay.querySelector('.modal-close')?.addEventListener('click', () => (this.overlay.hidden = true))
+
+    this.overlay.querySelectorAll<HTMLElement>('[data-remove-tag]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.dataset.removeTag)
+        if (Number.isFinite(index)) {
+          this.tags.splice(index, 1)
+          this.render()
+        }
+      })
+    })
+
+    this.overlay.querySelector('#btn-add-tag')?.addEventListener('click', () => {
+      const input = this.overlay.querySelector<HTMLInputElement>('#new-tag-input')
+      const value = input?.value.trim()
+      if (!value) return
+      if (!this.tags.includes(value)) this.tags.push(value)
+      if (input) input.value = ''
+      this.render()
+    })
+
+    this.overlay.querySelector('#new-tag-input')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Enter') {
+        event.preventDefault()
+        this.overlay.querySelector<HTMLButtonElement>('#btn-add-tag')?.click()
+      }
+    })
 
     this.overlay.querySelectorAll<HTMLInputElement>('.fm-key').forEach((input) => {
       input.addEventListener('input', () => {
@@ -86,6 +139,12 @@ export class FrontmatterDialog {
 
     this.overlay.querySelector('#btn-save-frontmatter')?.addEventListener('click', () => {
       const frontmatter: Record<string, string> = {}
+      if (this.tags.length > 0) {
+        frontmatter.tags = this.tags.join(', ')
+      }
+      if (this.preserved.mode) {
+        frontmatter.mode = this.preserved.mode
+      }
       for (const row of this.rows) {
         if (row.key.trim()) frontmatter[row.key.trim()] = row.value
       }

@@ -12,7 +12,7 @@ import { importDoc } from './doc.js'
 import { addRecentFile, removeRecentFile } from './settings.js'
 import { detectFormat, OPEN_FILTERS, UNSUPPORTED_OFFICE } from './file-formats.js'
 import { parseFrontmatter } from './frontmatter.js'
-import type { FileResult, OpenedDocument } from '../shared/types.js'
+import type { FileResult, NoteEntry, OpenedDocument } from '../shared/types.js'
 
 /** Lê e converte um arquivo do disco para HTML carregável no editor. */
 export async function readDocument(path: string): Promise<OpenedDocument> {
@@ -30,6 +30,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
   let header: string | undefined
   let footer: string | undefined
   let frontmatter: Record<string, string> | undefined
+  let notes: Record<string, NoteEntry> | undefined
 
   switch (format) {
     case 'prosa': {
@@ -40,6 +41,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
       header = typeof parsed.header === 'string' ? parsed.header : ''
       footer = typeof parsed.footer === 'string' ? parsed.footer : ''
       frontmatter = typeof parsed.frontmatter === 'object' && parsed.frontmatter !== null ? parsed.frontmatter : {}
+      notes = typeof parsed.notes === 'object' && parsed.notes !== null ? (parsed.notes as Record<string, NoteEntry>) : {}
       break
     }
     case 'docx': {
@@ -83,7 +85,7 @@ export async function readDocument(path: string): Promise<OpenedDocument> {
   })
   void recorded
 
-  return { path, name: basename(path), format, html, header, footer, frontmatter }
+  return { path, name: basename(path), format, html, header, footer, frontmatter, notes }
 }
 
 /** Abre um arquivo via diálogo (ou caminho direto, ex.: drag-and-drop). */

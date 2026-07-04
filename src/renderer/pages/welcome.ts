@@ -20,7 +20,9 @@ function formatDate(iso: string): string {
 /** Callbacks acionados pela tela de boas-vindas. */
 export interface WelcomeCallbacks {
   onNew: () => void
+  onNewAbnt: () => void
   onOpen: () => void
+  onLibrary: () => void
   onOpenRecent: (path: string) => void
   onPin: (file: RecentFile) => void
   onUnpin: (path: string) => void
@@ -50,8 +52,14 @@ export class WelcomeScreen {
             <button class="btn btn-primary" id="welcome-new">
               <i class="ti ti-file-plus"></i> Novo documento
             </button>
+            <button class="btn btn-secondary" id="welcome-new-abnt">
+              <i class="ti ti-school"></i> Novo ABNT
+            </button>
             <button class="btn btn-secondary" id="welcome-open">
               <i class="ti ti-folder-open"></i> Abrir arquivo
+            </button>
+            <button class="btn btn-secondary" id="welcome-library">
+              <i class="ti ti-books"></i> Biblioteca
             </button>
           </div>
         </div>
@@ -70,8 +78,14 @@ export class WelcomeScreen {
     this.root.querySelector('#welcome-new')?.addEventListener('click', () =>
       this.callbacks.onNew()
     )
+    this.root.querySelector('#welcome-new-abnt')?.addEventListener('click', () =>
+      this.callbacks.onNewAbnt()
+    )
     this.root.querySelector('#welcome-open')?.addEventListener('click', () =>
       this.callbacks.onOpen()
+    )
+    this.root.querySelector('#welcome-library')?.addEventListener('click', () =>
+      this.callbacks.onLibrary()
     )
     this.root.querySelectorAll('.recent-item').forEach((item) => {
       item.addEventListener('click', (e) => {

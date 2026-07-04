@@ -4,6 +4,7 @@
 
 import { documentText } from '../../shared/document-utils.js'
 import type {
+  NoteEntry,
   FileFormat,
   OpenedDocument,
   ProsaSettings,
@@ -153,6 +154,7 @@ interface PersistenceState {
   headerHTML: string
   footerHTML: string
   frontmatter: Record<string, string>
+  notes: Record<string, NoteEntry>
 }
 
 interface PersistencePayloadData {
@@ -198,7 +200,8 @@ export class DocumentPersistenceController {
       documentName: 'Sem título',
       headerHTML: '',
       footerHTML: '',
-      frontmatter: {}
+      frontmatter: {},
+      notes: {}
     }
     this.deps.setState(next)
     this.deps.setDocumentName(next.documentName)
@@ -216,7 +219,8 @@ export class DocumentPersistenceController {
       documentName: doc.name,
       headerHTML: doc.header ?? '',
       footerHTML: doc.footer ?? '',
-      frontmatter: doc.frontmatter ?? {}
+      frontmatter: doc.frontmatter ?? {},
+      notes: doc.notes ?? {}
     })
     this.deps.setDocumentName(doc.name)
     this.deps.updatePaginationBands()
@@ -287,6 +291,7 @@ export class DocumentPersistenceController {
       header: state.headerHTML,
       footer: state.footerHTML,
       frontmatter: state.frontmatter,
+      notes: state.notes,
       metadata: {
         title: state.documentName.replace(/\.[^.]+$/, ''),
         author: '',

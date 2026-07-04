@@ -31,6 +31,7 @@ async function writeDocument(
         content: payload.json,
         html: payload.html,
         metadata: payload.metadata,
+        notes: payload.notes ?? {},
         header: payload.header ?? '',
         footer: payload.footer ?? '',
         frontmatter: payload.frontmatter ?? {}
@@ -42,7 +43,7 @@ async function writeDocument(
       const buffer = await exportDocx(payload.json, {
         header: payload.header,
         footer: payload.footer
-      })
+      }, payload.notes ?? {})
       await writeFile(path, buffer)
       break
     }
@@ -50,12 +51,12 @@ async function writeDocument(
       const buffer = await exportOdt(payload.json, {
         header: payload.header,
         footer: payload.footer
-      })
+      }, payload.notes ?? {})
       await writeFile(path, buffer)
       break
     }
     case 'rtf': {
-      await writeFile(path, exportRtf(payload.json), 'utf-8')
+      await writeFile(path, exportRtf(payload.json, payload.notes ?? {}), 'utf-8')
       break
     }
     case 'doc': {
@@ -67,7 +68,7 @@ async function writeDocument(
       )
     }
     case 'md': {
-      await writeFile(path, serializeFrontmatter(payload.frontmatter) + exportMarkdown(payload.json), 'utf-8')
+      await writeFile(path, serializeFrontmatter(payload.frontmatter) + exportMarkdown(payload.json, payload.notes ?? {}), 'utf-8')
       break
     }
     default: {

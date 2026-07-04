@@ -5,7 +5,8 @@
 import JSZip from 'jszip'
 import { DOMParser } from '@xmldom/xmldom'
 import { parseHeaderHtml } from './html-runs.js'
-import type { TipTapJSON } from '../shared/types.js'
+import { indexNotes } from '../shared/document-utils.js'
+import type { NoteEntry, TipTapJSON } from '../shared/types.js'
 
 /** Tipo MIME do OpenDocument Text. */
 const ODT_MIME = 'application/vnd.oasis.opendocument.text'
@@ -100,7 +101,7 @@ function readMarks(node: TipTapJSON): RunMarks {
 }
 
 /** Converte os nós inline de um bloco em XML ODT (text:span / text:a). */
-function inlineToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
+function inlineToOdt(node: TipTapJSON, styles: TextStyleRegistry, noteNumbers?: Map<string, number>): string {
   const out: string[] = []
 
   const visit = (child: TipTapJSON): void => {
@@ -114,6 +115,9 @@ function inlineToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
         piece = `<text:a xlink:href="${href}">${piece}</text:a>`
       }
       out.push(piece)
+    } else if (child.type === 'noteReference') {
+      const number = noteNumbers?.get(String(child.attrs?.noteId ?? ''))
+      if (number) out.push(`[${number}]`)
     } else if (child.type === 'hardBreak') {
       out.push('<text:line-break/>')
     } else {
@@ -126,15 +130,15 @@ function inlineToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
 }
 
 /** Converte um nó de lista em XML ODT (text:list aninhável). */
-function listToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
+function listToOdt(node: TipTapJSON, styles: TextStyleRegistry, noteNumbers?: Map<string, number>): string {
   const styleName = node.type === 'orderedList' ? 'Ln' : 'Lb'
   const items = (node.content ?? [])
     .map((item) => {
       const inner = (item.content ?? [])
         .map((child) =>
           child.type === 'bulletList' || child.type === 'orderedList'
-            ? listToOdt(child, styles)
-            : `<text:p>${inlineToOdt(child, styles)}</text:p>`
+            ? listToOdt(child, styles, noteNumbers)
+            : `<text:p>${inlineToOdt(child, styles, noteNumbers)}</text:p>`
         )
         .join('')
       return `<text:list-item>${inner}</text:list-item>`
@@ -144,7 +148,7 @@ function listToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
 }
 
 /** Converte uma tabela TipTap em XML ODT (table:table). */
-function tableToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
+function tableToOdt(node: TipTapJSON, styles: TextStyleRegistry, noteNumbers?: Map<string, number>): string {
   const rows = node.content ?? []
   const cols = rows[0]?.content?.length ?? 1
   const rowsXml = rows
@@ -152,7 +156,7 @@ function tableToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
       const cells = (row.content ?? [])
         .map((cell) => {
           const inner = (cell.content ?? [])
-            .map((child) => `<text:p>${inlineToOdt(child, styles)}</text:p>`)
+            .map((child) => `<text:p>${inlineToOdt(child, styles, noteNumbers)}</text:p>`)
             .join('')
           return `<table:table-cell office:value-type="string">${inner}</table:table-cell>`
         })
@@ -168,34 +172,34 @@ function tableToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
 }
 
 /** Converte um nó de bloco TipTap em XML ODT. */
-function blockToOdt(node: TipTapJSON, styles: TextStyleRegistry): string {
+function blockToOdt(node: TipTapJSON, styles: TextStyleRegistry, noteNumbers?: Map<string, number>): string {
   switch (node.type) {
     case 'paragraph':
-      return `<text:p>${inlineToOdt(node, styles)}</text:p>`
+      return `<text:p>${inlineToOdt(node, styles, noteNumbers)}</text:p>`
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1)
       return (
         `<text:h text:style-name="Heading_20_${level}" text:outline-level="${level}">` +
-        `${inlineToOdt(node, styles)}</text:h>`
+        `${inlineToOdt(node, styles, noteNumbers)}</text:h>`
       )
     }
     case 'blockquote':
       return (node.content ?? [])
-        .map((child) => `<text:p text:style-name="Quotations">${inlineToOdt(child, styles)}</text:p>`)
+        .map((child) => `<text:p text:style-name="Quotations">${inlineToOdt(child, styles, noteNumbers)}</text:p>`)
         .join('')
     case 'codeBlock':
-      return `<text:p text:style-name="Preformatted_20_Text">${inlineToOdt(node, styles)}</text:p>`
+      return `<text:p text:style-name="Preformatted_20_Text">${inlineToOdt(node, styles, noteNumbers)}</text:p>`
     case 'mathBlock':
       return `<text:p text:style-name="Preformatted_20_Text">${escapeXml(String(node.attrs?.latex ?? ''))}</text:p>`
     case 'bulletList':
     case 'orderedList':
-      return listToOdt(node, styles)
+      return listToOdt(node, styles, noteNumbers)
     case 'table':
-      return tableToOdt(node, styles)
+      return tableToOdt(node, styles, noteNumbers)
     case 'horizontalRule':
       return '<text:p text:style-name="Horizontal_20_Line"/>'
     default:
-      return `<text:p>${inlineToOdt(node, styles)}</text:p>`
+      return `<text:p>${inlineToOdt(node, styles, noteNumbers)}</text:p>`
   }
 }
 
@@ -301,10 +305,12 @@ const MANIFEST_XML =
 /** Converte um documento TipTap completo em um buffer .odt. */
 export async function exportOdt(
   doc: TipTapJSON,
-  options: { header?: string; footer?: string } = {}
+  options: { header?: string; footer?: string } = {},
+  notes: Record<string, NoteEntry> = {}
 ): Promise<Buffer> {
   const styles = new TextStyleRegistry()
-  const body = (doc.content ?? []).map((node) => blockToOdt(node, styles)).join('')
+  const { footnotes, endnotes, numbers } = indexNotes(doc, notes)
+  const body = (doc.content ?? []).map((node) => blockToOdt(node, styles, numbers)).join('')
 
   // Estilos de texto do cabeçalho/rodapé vivem no styles.xml (registro próprio).
   const hfStyles = new TextStyleRegistry()
@@ -315,7 +321,19 @@ export async function exportOdt(
     '<?xml version="1.0" encoding="UTF-8"?>' +
     `<office:document-content ${NS} office:version="1.2">` +
     `<office:automatic-styles>${LIST_STYLES}${styles.toXml()}</office:automatic-styles>` +
-    `<office:body><office:text>${body || '<text:p/>'}</office:text></office:body>` +
+    `<office:body><office:text>${body || '<text:p/>'}${
+      footnotes.length > 0
+        ? `<text:h text:outline-level="1">Notas de rodapé</text:h>${footnotes
+            .map((note) => `<text:p>[${note.number}] ${escapeXml(note.text)}</text:p>`)
+            .join('')}`
+        : ''
+    }${
+      endnotes.length > 0
+        ? `<text:h text:outline-level="1">Notas finais</text:h>${endnotes
+            .map((note) => `<text:p>[${note.number}] ${escapeXml(note.text)}</text:p>`)
+            .join('')}`
+        : ''
+    }</office:text></office:body>` +
     '</office:document-content>'
 
   const zip = new JSZip()

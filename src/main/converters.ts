@@ -18,7 +18,8 @@ import {
   WidthType
 } from 'docx'
 import { parseHeaderHtml } from './html-runs.js'
-import type { TipTapJSON } from '../shared/types.js'
+import { indexNotes } from '../shared/document-utils.js'
+import type { NoteEntry, TipTapJSON } from '../shared/types.js'
 
 /** Opções de cabeçalho/rodapé (HTML) para as exportações. */
 export interface HeaderFooterOptions {
@@ -65,7 +66,7 @@ export function importPlainText(text: string): string {
 /* -------------------------------------------------------------------------- */
 
 /** Aplica as marcas (negrito, itálico, código, link) ao texto em Markdown. */
-function applyMarkdownMarks(text: string, node: TipTapJSON): string {
+function applyMarkdownMarks(text: string, node: TipTapJSON, noteNumbers?: Map<string, number>): string {
   let result = text
   for (const mark of node.marks ?? []) {
     switch (mark.type) {
@@ -86,6 +87,12 @@ function applyMarkdownMarks(text: string, node: TipTapJSON): string {
         result = `[${result}](${href})`
         break
       }
+      case 'noteReference': {
+        const noteId = String(mark.attrs?.noteId ?? '')
+        const number = noteNumbers?.get(noteId)
+        result = number ? `[${number}]` : result
+        break
+      }
       default:
         break
     }
@@ -94,9 +101,9 @@ function applyMarkdownMarks(text: string, node: TipTapJSON): string {
 }
 
 /** Converte os filhos inline de um nó em uma string Markdown. */
-function inlineToMarkdown(node: TipTapJSON): string {
+function inlineToMarkdown(node: TipTapJSON, noteNumbers?: Map<string, number>): string {
   if (node.type === 'text') {
-    return applyMarkdownMarks(node.text ?? '', node)
+    return applyMarkdownMarks(node.text ?? '', node, noteNumbers)
   }
   if (node.type === 'hardBreak') {
     return '  \n'
@@ -106,18 +113,22 @@ function inlineToMarkdown(node: TipTapJSON): string {
     const src = String(node.attrs?.src ?? '')
     return `![${alt}](${src})`
   }
-  return (node.content ?? []).map(inlineToMarkdown).join('')
+  if (node.type === 'noteReference') {
+    const number = noteNumbers?.get(String(node.attrs?.noteId ?? ''))
+    return number ? `[${number}]` : ''
+  }
+  return (node.content ?? []).map((child) => inlineToMarkdown(child, noteNumbers)).join('')
 }
 
 /** Converte um nó de lista (bullet/ordered) em Markdown. */
-function listToMarkdown(node: TipTapJSON, ordered: boolean, depth: number): string {
+function listToMarkdown(node: TipTapJSON, ordered: boolean, depth: number, noteNumbers?: Map<string, number>): string {
   const indent = '  '.repeat(depth)
   const lines: string[] = []
   let counter = 1
   for (const item of node.content ?? []) {
     const marker = ordered ? `${counter}.` : '-'
     const inner = (item.content ?? [])
-      .map((child) => blockToMarkdown(child, depth + 1).trimEnd())
+      .map((child) => blockToMarkdown(child, depth + 1, noteNumbers).trimEnd())
       .filter((s) => s.length > 0)
     const first = inner.shift() ?? ''
     lines.push(`${indent}${marker} ${first}`)
@@ -130,58 +141,58 @@ function listToMarkdown(node: TipTapJSON, ordered: boolean, depth: number): stri
 }
 
 /** Converte um nó de bloco TipTap em Markdown. */
-function blockToMarkdown(node: TipTapJSON, depth = 0): string {
+function blockToMarkdown(node: TipTapJSON, depth = 0, noteNumbers?: Map<string, number>): string {
   switch (node.type) {
     case 'doc':
-      return (node.content ?? []).map((n) => blockToMarkdown(n, depth)).join('\n')
+      return (node.content ?? []).map((n) => blockToMarkdown(n, depth, noteNumbers)).join('\n')
     case 'paragraph': {
-      const text = inlineToMarkdown(node)
+      const text = inlineToMarkdown(node, noteNumbers)
       return text.length > 0 ? `${text}\n` : '\n'
     }
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1)
-      return `${'#'.repeat(level)} ${inlineToMarkdown(node)}\n`
+      return `${'#'.repeat(level)} ${inlineToMarkdown(node, noteNumbers)}\n`
     }
     case 'blockquote':
       return (node.content ?? [])
-        .map((n) => `> ${blockToMarkdown(n, depth).trimEnd()}`)
+        .map((n) => `> ${blockToMarkdown(n, depth, noteNumbers).trimEnd()}`)
         .join('\n') + '\n'
     case 'codeBlock': {
       const lang = String(node.attrs?.language ?? '')
-      return `\`\`\`${lang}\n${inlineToMarkdown(node)}\n\`\`\`\n`
+      return `\`\`\`${lang}\n${inlineToMarkdown(node, noteNumbers)}\n\`\`\`\n`
     }
     case 'bulletList':
-      return listToMarkdown(node, false, depth)
+      return listToMarkdown(node, false, depth, noteNumbers)
     case 'orderedList':
-      return listToMarkdown(node, true, depth)
+      return listToMarkdown(node, true, depth, noteNumbers)
     case 'taskList':
       return (node.content ?? [])
         .map((item) => {
           const checked = item.attrs?.checked ? 'x' : ' '
-          const text = (item.content ?? []).map((c) => inlineToMarkdown(c)).join('')
+          const text = (item.content ?? []).map((c) => inlineToMarkdown(c, noteNumbers)).join('')
           return `- [${checked}] ${text}`
         })
         .join('\n') + '\n'
     case 'horizontalRule':
       return '---\n'
     case 'image':
-      return inlineToMarkdown(node) + '\n'
+      return inlineToMarkdown(node, noteNumbers) + '\n'
     case 'table':
-      return tableToMarkdown(node)
+      return tableToMarkdown(node, noteNumbers)
     case 'mathBlock':
       return `$$\n${String(node.attrs?.latex ?? '')}\n$$\n`
     default:
-      return inlineToMarkdown(node)
+      return inlineToMarkdown(node, noteNumbers)
   }
 }
 
 /** Converte uma tabela TipTap em Markdown (GFM). */
-function tableToMarkdown(node: TipTapJSON): string {
+function tableToMarkdown(node: TipTapJSON, noteNumbers?: Map<string, number>): string {
   const rows = node.content ?? []
   if (rows.length === 0) return ''
   const cellsOf = (row: TipTapJSON): string[] =>
     (row.content ?? []).map((cell) =>
-      (cell.content ?? []).map((c) => inlineToMarkdown(c)).join(' ').trim()
+      (cell.content ?? []).map((c) => inlineToMarkdown(c, noteNumbers)).join(' ').trim()
     )
   const header = cellsOf(rows[0])
   const lines = [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`]
@@ -191,9 +202,27 @@ function tableToMarkdown(node: TipTapJSON): string {
   return lines.join('\n') + '\n'
 }
 
+function notesMarkdown(doc: TipTapJSON, notes: Record<string, NoteEntry>): string {
+  const { footnotes, endnotes } = indexNotes(doc, notes)
+  const sections: string[] = []
+  if (footnotes.length > 0) {
+    sections.push('## Notas de rodapé')
+    for (const note of footnotes) {
+      sections.push(`[${note.number}] ${note.text}`)
+    }
+  }
+  if (endnotes.length > 0) {
+    sections.push('## Notas finais')
+    for (const note of endnotes) {
+      sections.push(`[${note.number}] ${note.text}`)
+    }
+  }
+  return sections.length > 0 ? `\n\n${sections.join('\n')}\n` : ''
+}
+
 /** Converte o documento TipTap completo em uma string Markdown. */
-export function exportMarkdown(doc: TipTapJSON): string {
-  return blockToMarkdown(doc).replace(/\n{3,}/g, '\n\n').trim() + '\n'
+export function exportMarkdown(doc: TipTapJSON, notes: Record<string, NoteEntry> = {}): string {
+  return blockToMarkdown(doc, 0, indexNotes(doc, notes).numbers).replace(/\n{3,}/g, '\n\n').trim() + notesMarkdown(doc, notes)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -211,7 +240,7 @@ const headingMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel
 }
 
 /** Converte os nós inline de um parágrafo em TextRuns do docx. */
-function inlineToRuns(node: TipTapJSON): TextRun[] {
+function inlineToRuns(node: TipTapJSON, noteNumbers?: Map<string, number>): TextRun[] {
   const runs: TextRun[] = []
 
   function visit(child: TipTapJSON): void {
@@ -229,6 +258,11 @@ function inlineToRuns(node: TipTapJSON): TextRun[] {
           superScript: has('superscript')
         })
       )
+    } else if (child.type === 'noteReference') {
+      const number = noteNumbers?.get(String(child.attrs?.noteId ?? ''))
+      if (number) {
+        runs.push(new TextRun({ text: `[${number}]`, superScript: true }))
+      }
     } else if (child.type === 'hardBreak') {
       runs.push(new TextRun({ text: '', break: 1 }))
     } else {
@@ -244,24 +278,24 @@ function inlineToRuns(node: TipTapJSON): TextRun[] {
 }
 
 /** Converte um nó de bloco em um ou mais elementos do docx. */
-function blockToDocx(node: TipTapJSON): (Paragraph | DocxTable)[] {
+function blockToDocx(node: TipTapJSON, noteNumbers?: Map<string, number>): (Paragraph | DocxTable)[] {
   switch (node.type) {
     case 'paragraph':
-      return [new Paragraph({ children: inlineToRuns(node) })]
+      return [new Paragraph({ children: inlineToRuns(node, noteNumbers) })]
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1)
       return [
         new Paragraph({
           heading: headingMap[level] ?? HeadingLevel.HEADING_1,
-          children: inlineToRuns(node)
+          children: inlineToRuns(node, noteNumbers)
         })
       ]
     }
     case 'blockquote':
       return (node.content ?? []).flatMap((child) =>
-        blockToDocx(child).map((p) =>
+        blockToDocx(child, noteNumbers).map((p) =>
           p instanceof Paragraph
-            ? new Paragraph({ children: inlineToRuns(child), indent: { left: 720 } })
+            ? new Paragraph({ children: inlineToRuns(child, noteNumbers), indent: { left: 720 } })
             : p
         )
       )
@@ -277,7 +311,7 @@ function blockToDocx(node: TipTapJSON): (Paragraph | DocxTable)[] {
         (item.content ?? []).map(
           (child) =>
             new Paragraph({
-              children: inlineToRuns(child),
+              children: inlineToRuns(child, noteNumbers),
               bullet: node.type === 'bulletList' ? { level: 0 } : undefined,
               numbering:
                 node.type === 'orderedList'
@@ -287,7 +321,7 @@ function blockToDocx(node: TipTapJSON): (Paragraph | DocxTable)[] {
         )
       )
     case 'table':
-      return [tableToDocx(node)]
+      return [tableToDocx(node, noteNumbers)]
     case 'mathBlock':
       return [
         new Paragraph({
@@ -296,7 +330,7 @@ function blockToDocx(node: TipTapJSON): (Paragraph | DocxTable)[] {
         })
       ]
     default:
-      return [new Paragraph({ children: inlineToRuns(node) })]
+      return [new Paragraph({ children: inlineToRuns(node, noteNumbers) })]
   }
 }
 
@@ -307,7 +341,7 @@ function extractPlain(node: TipTapJSON): string {
 }
 
 /** Converte uma tabela TipTap em uma Table do docx. */
-function tableToDocx(node: TipTapJSON): DocxTable {
+function tableToDocx(node: TipTapJSON, noteNumbers?: Map<string, number>): DocxTable {
   const rows = (node.content ?? []).map(
     (row) =>
       new DocxTableRow({
@@ -315,7 +349,7 @@ function tableToDocx(node: TipTapJSON): DocxTable {
           (cell) =>
             new DocxTableCell({
               children: (cell.content ?? []).flatMap((child) =>
-                blockToDocx(child).filter((b): b is Paragraph => b instanceof Paragraph)
+                blockToDocx(child, noteNumbers).filter((b): b is Paragraph => b instanceof Paragraph)
               )
             })
         )
@@ -350,11 +384,36 @@ function bandToDocxParagraphs(html?: string): Paragraph[] | null {
 /** Converte o documento TipTap completo em um buffer .docx. */
 export async function exportDocx(
   doc: TipTapJSON,
-  options: HeaderFooterOptions = {}
+  options: HeaderFooterOptions = {},
+  notes: Record<string, NoteEntry> = {}
 ): Promise<Buffer> {
-  const children = (doc.content ?? []).flatMap(blockToDocx)
+  const { footnotes, endnotes, numbers } = indexNotes(doc, notes)
+  const children = (doc.content ?? []).flatMap((node) => blockToDocx(node, numbers))
   const headerParagraphs = bandToDocxParagraphs(options.header)
   const footerParagraphs = bandToDocxParagraphs(options.footer)
+  const noteSections: Paragraph[] = []
+  if (footnotes.length > 0) {
+    noteSections.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: 'Notas de rodapé' })]
+      })
+    )
+    for (const note of footnotes) {
+      noteSections.push(new Paragraph({ children: [new TextRun({ text: `[${note.number}] ${note.text}` })] }))
+    }
+  }
+  if (endnotes.length > 0) {
+    noteSections.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: 'Notas finais' })]
+      })
+    )
+    for (const note of endnotes) {
+      noteSections.push(new Paragraph({ children: [new TextRun({ text: `[${note.number}] ${note.text}` })] }))
+    }
+  }
 
   const document = new Document({
     creator: 'Prosa — Rodrigo Brito',
@@ -366,7 +425,7 @@ export async function exportDocx(
         footers: footerParagraphs
           ? { default: new Footer({ children: footerParagraphs }) }
           : undefined,
-        children: children.length > 0 ? children : [new Paragraph({})]
+        children: children.length > 0 ? [...children, ...noteSections] : [new Paragraph({}), ...noteSections]
       }
     ]
   })
