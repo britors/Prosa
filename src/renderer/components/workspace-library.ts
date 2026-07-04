@@ -82,16 +82,26 @@ export class WorkspaceLibraryDialog {
     this.render()
   }
 
+  private async updateCollections(path: string, collections: string[]): Promise<void> {
+    this.data = await window.prosa.updateWorkspaceCollections(path, collections)
+    this.relations = this.selectedPath ? await window.prosa.getWorkspaceRelations(this.selectedPath) : null
+    this.render()
+  }
+
   private render(): void {
     const data = this.data
     const selected = this.selectedDocument
     const docs = this.filteredDocuments()
     const recent = this.filteredQuickAccess(data?.recentFiles ?? [])
     const pinned = this.filteredQuickAccess(data?.pinnedFiles ?? [])
+    const tags = this.allTags()
+    const collections = this.allCollections()
     const bibliography = data?.bibliography ?? { style: 'ABNT', entries: [], importedAt: null }
     const style = bibliography.style
     const previousSearch = this.overlay.querySelector<HTMLInputElement>('#workspace-search')?.value ?? ''
     const previousFilter = this.overlay.querySelector<HTMLSelectElement>('#workspace-filter')?.value ?? 'all'
+    const previousTag = this.overlay.querySelector<HTMLSelectElement>('#workspace-tag')?.value ?? 'all'
+    const previousCollection = this.overlay.querySelector<HTMLSelectElement>('#workspace-collection')?.value ?? 'all'
     const previousDate = this.overlay.querySelector<HTMLInputElement>('#workspace-date')?.value ?? ''
     const bibliographyPreview = bibliography.entries
       .slice(0, 8)
@@ -121,6 +131,14 @@ export class WorkspaceLibraryDialog {
             <option value="odt">ODT</option>
             <option value="rtf">RTF</option>
             <option value="doc">DOC</option>
+          </select>
+          <select id="workspace-tag" class="palette-input">
+            <option value="all">Todas as tags</option>
+            ${tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('')}
+          </select>
+          <select id="workspace-collection" class="palette-input">
+            <option value="all">Todas as coleções</option>
+            ${collections.map((collection) => `<option value="${escapeHtml(collection)}">${escapeHtml(collection)}</option>`).join('')}
           </select>
           <input id="workspace-date" class="palette-input" type="date" aria-label="Filtrar por data" />
           <button class="btn btn-primary" id="workspace-abnt"><i class="ti ti-school"></i> Novo ABNT</button>
@@ -166,6 +184,16 @@ export class WorkspaceLibraryDialog {
     if (filter) {
       filter.value = previousFilter
       filter.addEventListener('change', () => this.render())
+    }
+    const tagFilter = this.overlay.querySelector<HTMLSelectElement>('#workspace-tag')
+    if (tagFilter) {
+      tagFilter.value = previousTag
+      tagFilter.addEventListener('change', () => this.render())
+    }
+    const collectionFilter = this.overlay.querySelector<HTMLSelectElement>('#workspace-collection')
+    if (collectionFilter) {
+      collectionFilter.value = previousCollection
+      collectionFilter.addEventListener('change', () => this.render())
     }
     const date = this.overlay.querySelector<HTMLInputElement>('#workspace-date')
     if (date) {
@@ -218,6 +246,32 @@ export class WorkspaceLibraryDialog {
       this.callbacks.onInsertBibliography(style, keys)
       this.hide()
     })
+
+    this.overlay.querySelectorAll<HTMLElement>('[data-remove-collection]').forEach((item) => {
+      item.addEventListener('click', () => {
+        const value = item.dataset.removeCollection
+        if (!value || !selected) return
+        const next = (selected.workspaceCollections ?? []).filter((collection) => collection !== value)
+        void this.updateCollections(selected.path, next)
+      })
+    })
+
+    this.overlay.querySelector('#workspace-collection-add')?.addEventListener('click', () => {
+      const input = this.overlay.querySelector<HTMLInputElement>('#workspace-collection-input')
+      if (!input || !selected) return
+      const value = input.value.trim()
+      if (!value) return
+      const next = [...new Set([...(selected.workspaceCollections ?? []), value])]
+      input.value = ''
+      void this.updateCollections(selected.path, next)
+    })
+
+    this.overlay.querySelector('#workspace-collection-input')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Enter') {
+        event.preventDefault()
+        this.overlay.querySelector<HTMLButtonElement>('#workspace-collection-add')?.click()
+      }
+    })
   }
 
   private filteredDocuments(): WorkspaceDocumentSummary[] {
@@ -225,13 +279,27 @@ export class WorkspaceLibraryDialog {
     if (!data) return []
     const search = this.overlay.querySelector<HTMLInputElement>('#workspace-search')?.value.trim().toLowerCase() ?? ''
     const filter = this.overlay.querySelector<HTMLSelectElement>('#workspace-filter')?.value ?? 'all'
+    const tag = this.overlay.querySelector<HTMLSelectElement>('#workspace-tag')?.value ?? 'all'
+    const collection = this.overlay.querySelector<HTMLSelectElement>('#workspace-collection')?.value ?? 'all'
     const date = this.overlay.querySelector<HTMLInputElement>('#workspace-date')?.value ?? ''
     return data.documents.filter((doc) => {
       const text = [doc.name, doc.title, doc.path, ...doc.tags, ...doc.collections, ...doc.citations].join(' ').toLowerCase()
       const typeMatches = filter === 'all' || doc.format === filter
+      const tagMatches = tag === 'all' || doc.tags.includes(tag)
+      const collectionMatches = collection === 'all' || doc.collections.includes(collection)
       const dateMatches = !date || doc.modifiedAt.startsWith(date)
-      return typeMatches && dateMatches && (!search || text.includes(search))
+      return typeMatches && tagMatches && collectionMatches && dateMatches && (!search || text.includes(search))
     })
+  }
+
+  private allTags(): string[] {
+    if (!this.data) return []
+    return [...new Set(this.data.documents.flatMap((doc) => doc.tags))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }
+
+  private allCollections(): string[] {
+    if (!this.data) return []
+    return [...new Set(this.data.documents.flatMap((doc) => doc.collections))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }
 
   private filteredQuickAccess(files: RecentFile[]): RecentFile[] {
@@ -274,6 +342,7 @@ export class WorkspaceLibraryDialog {
     const backlinks = relations?.backlinks ?? []
     const related = relations?.related ?? []
     const brokenLinks = relations?.brokenLinks ?? []
+    const workspaceCollections = doc.workspaceCollections ?? []
     return `
       <div class="workspace-details-head">
         <div>
@@ -283,12 +352,25 @@ export class WorkspaceLibraryDialog {
         <button class="btn btn-secondary" data-open-path="${escapeHtml(doc.path)}"><i class="ti ti-edit"></i> Abrir</button>
       </div>
       <div class="workspace-section">
-        <div class="panel-title">Tags e coleções</div>
+        <div class="panel-title">Tags</div>
         <div class="workspace-chip-grid">
           ${(doc.tags.length > 0 ? doc.tags : ['Sem tags']).map((item) => `<span class="library-chip">${escapeHtml(item)}</span>`).join('')}
-          ${(doc.collections.length > 0 ? doc.collections : ['Sem coleções']).map((item) => `<span class="library-chip">${escapeHtml(item)}</span>`).join('')}
         </div>
-        <p class="panel-empty">Edite esses metadados no painel de frontmatter do documento aberto.</p>
+        <p class="panel-empty">Edite as tags no painel de frontmatter do documento aberto.</p>
+      </div>
+      <div class="workspace-section">
+        <div class="panel-title">Coleções</div>
+        <div class="workspace-chip-grid">
+          ${(workspaceCollections.length > 0 ? workspaceCollections : ['Sem coleção manual']).map((item) => `
+            <button class="library-chip library-chip-action" type="button" data-remove-collection="${escapeHtml(item)}">
+              ${escapeHtml(item)} <i class="ti ti-x"></i>
+            </button>
+          `).join('')}
+        </div>
+        <div class="workspace-bib-toolbar">
+          <input id="workspace-collection-input" class="palette-input" type="text" placeholder="Nova coleção..." />
+          <button class="btn btn-secondary" id="workspace-collection-add"><i class="ti ti-plus"></i> Adicionar</button>
+        </div>
       </div>
       <div class="workspace-section">
         <div class="panel-title">Relações</div>

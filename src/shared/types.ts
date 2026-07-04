@@ -66,6 +66,7 @@ export interface WorkspaceDocumentSummary {
   modifiedAt: string
   tags: string[]
   collections: string[]
+  workspaceCollections?: string[]
   citations: string[]
   links: string[]
   excerpt: string
@@ -287,6 +288,7 @@ export interface ProsaApi {
   getPlugins: () => Promise<PluginInfo[]>
   getWorkspaceLibrary: () => Promise<WorkspaceLibraryData>
   getWorkspaceRelations: (path: string) => Promise<WorkspaceRelations>
+  updateWorkspaceCollections: (path: string, collections: string[]) => Promise<WorkspaceLibraryData>
   importBibTeX: (content: string) => Promise<WorkspaceBibliographyState>
   setBibliographyStyle: (style: BibliographyStyle) => Promise<WorkspaceBibliographyState>
   getTemplates: () => Promise<any[]>

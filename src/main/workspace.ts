@@ -21,12 +21,17 @@ import type {
 } from '../shared/types.js'
 
 const BIBLIOGRAPHY_FILE = '.prosa-bibliography.json'
+const WORKSPACE_FILE = '.prosa-workspace.json'
 const IGNORED_DIRS = new Set(['node_modules', '.git'])
 
 interface ParsedDocument {
   summary: WorkspaceDocumentSummary
   keys: string[]
   titleKeys: string[]
+}
+
+interface WorkspaceState {
+  collections: Record<string, string[]>
 }
 
 function normalizeKey(value: string): string {
@@ -49,6 +54,10 @@ function splitList(value: unknown): string[] {
     .split(/[,;]+/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function normalizeCollections(value: unknown): string[] {
+  return splitList(value).map((item) => item.trim()).filter(Boolean)
 }
 
 function normalizeLinkTarget(value: string): string {
@@ -131,6 +140,7 @@ async function readSummary(root: string, path: string): Promise<ParsedDocument |
       modifiedAt: stats.mtime.toISOString(),
       tags: [],
       collections: [],
+      workspaceCollections: [],
       citations: [],
       links: [],
       excerpt: ''
@@ -143,8 +153,10 @@ async function readSummary(root: string, path: string): Promise<ParsedDocument |
   try {
     const raw = await readFile(path, 'utf-8')
     const parsed = parseTextFormat(raw, format)
+    const workspaceState = await readWorkspaceState(root)
     const title = parsed.title || name.replace(/\.[^.]+$/, '')
     const rel = relative(root, path)
+    const workspaceCollections = workspaceState.collections[path] ?? []
     const summary: WorkspaceDocumentSummary = {
       path,
       name,
@@ -152,7 +164,8 @@ async function readSummary(root: string, path: string): Promise<ParsedDocument |
       format,
       modifiedAt: stats.mtime.toISOString(),
       tags: parsed.tags,
-      collections: parsed.collections,
+      collections: [...new Set([...parsed.collections, ...workspaceCollections])],
+      workspaceCollections,
       citations: parsed.citations,
       links: parsed.links,
       excerpt: parsed.excerpt || title
@@ -177,6 +190,7 @@ async function readSummary(root: string, path: string): Promise<ParsedDocument |
       modifiedAt: stats.mtime.toISOString(),
       tags: [],
       collections: [],
+      workspaceCollections: [],
       citations: [],
       links: [],
       excerpt: ''
@@ -210,6 +224,28 @@ async function readBibliography(root: string): Promise<WorkspaceBibliographyStat
   } catch {
     return defaultBibliography()
   }
+}
+
+async function readWorkspaceState(root: string): Promise<WorkspaceState> {
+  try {
+    const raw = await readFile(join(root, WORKSPACE_FILE), 'utf-8')
+    const parsed = JSON.parse(raw) as Partial<WorkspaceState>
+    const collections: Record<string, string[]> = {}
+    if (parsed.collections && typeof parsed.collections === 'object') {
+      for (const [path, values] of Object.entries(parsed.collections)) {
+        const list = normalizeCollections(values)
+        if (list.length > 0) collections[path] = list
+      }
+    }
+    return { collections }
+  } catch {
+    return { collections: {} }
+  }
+}
+
+async function writeWorkspaceState(root: string, state: WorkspaceState): Promise<void> {
+  await mkdir(root, { recursive: true })
+  await writeFile(join(root, WORKSPACE_FILE), JSON.stringify(state, null, 2), 'utf-8')
 }
 
 async function writeBibliography(root: string, state: WorkspaceBibliographyState): Promise<void> {
@@ -312,6 +348,28 @@ export async function getWorkspaceLibrary(): Promise<WorkspaceLibraryData> {
       error: (error as Error).message
     }
   }
+}
+
+/** Atualiza as coleções manuais de um documento do workspace. */
+export async function updateWorkspaceCollections(
+  path: string,
+  collections: string[]
+): Promise<WorkspaceLibraryData> {
+  const settings = getSettings()
+  const root = settings.workspacePath ?? null
+  if (!root) {
+    return getWorkspaceLibrary()
+  }
+
+  const state = await readWorkspaceState(root)
+  const normalized = [...new Set(normalizeCollections(collections))]
+  if (normalized.length > 0) {
+    state.collections[path] = normalized
+  } else {
+    delete state.collections[path]
+  }
+  await writeWorkspaceState(root, state)
+  return getWorkspaceLibrary()
 }
 
 /** Retorna backlinks, relações e links quebrados de um documento. */

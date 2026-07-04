@@ -36,7 +36,7 @@ import { loadPlugins, unloadPlugins, getAvailablePlugins } from './plugins.js'
 import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
-import { getWorkspaceLibrary, getWorkspaceRelations, importBibTeX, setBibliographyStyle } from './workspace.js'
+import { getWorkspaceLibrary, getWorkspaceRelations, importBibTeX, setBibliographyStyle, updateWorkspaceCollections } from './workspace.js'
 import type { AppInfo, FontProfile, HtmlExportOptions, NoteEntry, RecentFile, SavePayload, TipTapJSON } from '../shared/types.js'
 
 if (process.platform === 'win32') {
@@ -799,6 +799,9 @@ function registerIpc(): void {
   })
   ipcMain.handle('plugins:list', () => getAvailablePlugins())
   ipcMain.handle('workspace:getLibrary', () => getWorkspaceLibrary())
+  ipcMain.handle('workspace:updateCollections', async (_event, path: string, collections: string[]) => {
+    return updateWorkspaceCollections(path, collections)
+  })
   ipcMain.handle('workspace:getRelations', (_event, path: string) => getWorkspaceRelations(path))
   ipcMain.handle('workspace:importBibTeX', (_event, content: string) => {
     const settings = getSettings()

@@ -60,6 +60,8 @@ const api: ProsaApi = {
   selectDirectory: () => ipcRenderer.invoke('file:selectDirectory') as Promise<string | null>,
   getPlugins: () => ipcRenderer.invoke('plugins:list') as Promise<PluginInfo[]>,
   getWorkspaceLibrary: () => ipcRenderer.invoke('workspace:getLibrary') as Promise<WorkspaceLibraryData>,
+  updateWorkspaceCollections: (path: string, collections: string[]) =>
+    ipcRenderer.invoke('workspace:updateCollections', path, collections) as Promise<WorkspaceLibraryData>,
   getWorkspaceRelations: (path: string) =>
     ipcRenderer.invoke('workspace:getRelations', path) as Promise<WorkspaceRelations>,
   importBibTeX: (content: string) =>

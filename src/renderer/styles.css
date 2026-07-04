@@ -1149,10 +1149,19 @@ body.is-resizing-image {
 }
 
 .workspace-library-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) 180px 170px auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.workspace-library-toolbar > * {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+
+.workspace-library-toolbar > .btn {
+  flex: 0 0 auto;
 }
 
 .workspace-library-body {
@@ -1238,6 +1247,11 @@ body.is-resizing-image {
   background: var(--bg);
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.library-chip-action {
+  gap: 6px;
+  cursor: pointer;
 }
 
 .workspace-details-head {
