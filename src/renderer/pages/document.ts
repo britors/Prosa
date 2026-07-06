@@ -35,6 +35,9 @@ import { NotePanel } from '../components/note-panel.js'
 import { WorkspaceRelationsPanel } from '../components/workspace-relations.js'
 import { SearchModal } from '../components/search-modal.js'
 import { WorkspaceLibraryDialog } from '../components/workspace-library.js'
+import { AiSettingsDialog } from '../components/ai-settings-dialog.js'
+import { AiAssistantPanel } from '../components/ai-assistant-panel.js'
+import { showAlert } from '../components/app-dialogs.js'
 import {
   AutoSaveController,
   DocumentPersistenceController,
@@ -85,6 +88,7 @@ export interface DocumentViewElements {
   statusBar: HTMLElement
   notes: HTMLElement
   relations: HTMLElement
+  ai: HTMLElement
 }
 
 /**
@@ -118,6 +122,8 @@ export class DocumentView {
   private readonly notePanel: NotePanel
   private readonly workspaceRelationsPanel: WorkspaceRelationsPanel
   private readonly workspaceLibrary: WorkspaceLibraryDialog
+  private readonly aiSettingsDialog: AiSettingsDialog
+  private readonly aiAssistantPanel: AiAssistantPanel
   private readonly dirtyState: DirtyStateController
   private readonly autoSaveController: AutoSaveController
   private readonly distractionFreeController: DistractionFreeController
@@ -179,6 +185,8 @@ export class DocumentView {
       onCreateAbnt: () => this.createAbntDocument(),
       onInsertBibliography: (style, keys) => this.insertBibliography(style, keys)
     }, document.body)
+    this.aiSettingsDialog = new AiSettingsDialog(els.root)
+    this.aiAssistantPanel = new AiAssistantPanel(els.ai, this.editor, () => this.openAiSettings())
 
     this.findReplace = new FindReplacePanel(els.toolbar.parentElement ?? els.root, this.editor)
     this.commandPalette = new CommandPalette(
@@ -217,7 +225,9 @@ export class DocumentView {
       () => this.insertBibliography(),
       () => this.insertNote('footnote'),
       () => this.insertNote('endnote'),
-      () => void this.exportHtml()
+      () => void this.exportHtml(),
+      () => void this.aiSettingsDialog.show(),
+      () => this.toggleAiPanel()
     )
 
 
@@ -303,7 +313,7 @@ export class DocumentView {
           html: this.editor.getHTML(),
           json: this.editor.getJSON() as TipTapJSON
         }),
-        alertError: (message) => window.alert(message)
+        alertError: (message) => void showAlert(message, 'Erro', 'danger')
       },
       WRITABLE_FORMATS
     )
@@ -837,7 +847,7 @@ export class DocumentView {
       title: defaultName
     }, this.notes)
     if (!result.ok && result.error) {
-      window.alert(result.error)
+      await showAlert(result.error, 'Erro ao exportar HTML', 'danger')
     }
   }
 
@@ -869,6 +879,19 @@ export class DocumentView {
   /** Abre a Paleta de Comandos. */
   openCommandPalette(): void {
     this.commandPalette.show()
+  }
+
+  /** Abre as configurações de IA. */
+  openAiSettings(): void {
+    void this.aiSettingsDialog.show()
+  }
+
+  /** Alterna o painel lateral de IA. */
+  toggleAiPanel(): void {
+    const panel = this.els.ai.parentElement
+    const isHidden = panel?.hasAttribute('hidden') ?? true
+    panel?.toggleAttribute('hidden', !isHidden)
+    if (isHidden) void this.aiAssistantPanel.refresh()
   }
 
   /** Abre a biblioteca do workspace. */

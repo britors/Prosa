@@ -31,8 +31,10 @@ export class CommandPalette {
   private onInsertFootnote?: () => void
   private onInsertEndnote?: () => void
   private onExportHtml?: () => void
+  private onAiSettings?: () => void
+  private onAiPanel?: () => void
 
-  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void, onInsertVariable?: (name: DocumentVariableName) => void, onInsertToc?: () => void, onWorkspaceLibrary?: () => void, onNewAcademicWork?: () => void, onInsertBibliography?: () => void, onInsertFootnote?: () => void, onInsertEndnote?: () => void, onExportHtml?: () => void) {
+  constructor(container: HTMLElement, editor: Editor, onOpenFile: (path: string) => void, onToggleTypewriter?: () => void, onToggleDistractionFree?: () => void, onDailyNote?: () => void, onCitation?: () => void, onGraph?: () => void, onTemplateManager?: () => void, onSearch?: () => void, onPluginManager?: () => void, onVersionHistory?: () => void, onFontProfiles?: () => void, onFrontmatter?: () => void, onInsertMath?: () => void, onInsertVariable?: (name: DocumentVariableName) => void, onInsertToc?: () => void, onWorkspaceLibrary?: () => void, onNewAcademicWork?: () => void, onInsertBibliography?: () => void, onInsertFootnote?: () => void, onInsertEndnote?: () => void, onExportHtml?: () => void, onAiSettings?: () => void, onAiPanel?: () => void) {
     this.container = container
     this.editor = editor
     this.onOpenFile = onOpenFile
@@ -56,6 +58,8 @@ export class CommandPalette {
     this.onInsertFootnote = onInsertFootnote
     this.onInsertEndnote = onInsertEndnote
     this.onExportHtml = onExportHtml
+    this.onAiSettings = onAiSettings
+    this.onAiPanel = onAiPanel
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -98,6 +102,8 @@ export class CommandPalette {
         { label: 'Inserir Nota de Rodapé', action: () => this.onInsertFootnote?.() },
         { label: 'Inserir Nota Final', action: () => this.onInsertEndnote?.() },
         { label: 'Exportar HTML limpo', action: () => this.onExportHtml?.() },
+        { label: 'Assistente de IA', action: () => this.onAiPanel?.() },
+        { label: 'Configurações de IA', action: () => this.onAiSettings?.() },
         { label: 'Pesquisar no Workspace', action: () => this.onSearch?.() },
         ...recent.map(f => ({ label: `Abrir: ${f.name}`, action: () => this.onOpenFile(f.path) }))
     ]

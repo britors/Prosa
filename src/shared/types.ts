@@ -152,6 +152,80 @@ export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 /** Presets profissionais de exportação PDF. */
 export type PdfPreset = 'academic' | 'report' | 'contract' | 'book'
 
+/** Provedores de IA suportados pela configuração inicial. */
+export type AiProvider = 'openai' | 'gemini'
+
+/** Estado da chave de API de um provedor de IA, sem expor o segredo. */
+export interface AiApiKeyStatus {
+  provider: AiProvider
+  configured: boolean
+  encryptionAvailable: boolean
+}
+
+/** Pedido interno para geração de texto por IA. */
+export interface AiTextRequest {
+  instruction: string
+  input: string
+  provider?: AiProvider
+  model?: string
+  maxOutputTokens?: number
+}
+
+/** Resultado normalizado de um provedor de IA. */
+export interface AiTextResult {
+  provider: AiProvider
+  model: string
+  text: string
+}
+
+/** Ações de escrita assistida aceitas pelo IPC. */
+export type AiWritingAction =
+  | 'custom'
+  | 'review'
+  | 'improveClarity'
+  | 'summarize'
+  | 'generateAbstract'
+  | 'generateIntroduction'
+  | 'generateConclusion'
+  | 'extractKeywords'
+  | 'suggestTitles'
+  | 'mainPoints'
+  | 'analyzeIssues'
+  | 'reviewToneConsistency'
+  | 'standardizeLanguage'
+  | 'flagWeakPassages'
+  | 'suggestArgumentExpansion'
+  | 'checkVerbPersonConsistency'
+  | 'suggestStructure'
+  | 'compareOutline'
+  | 'suggestSectionBreakdown'
+  | 'detectLongSections'
+  | 'suggestTransitions'
+  | 'reorganizeIdeas'
+  | 'verifyBibliography'
+  | 'findMissingReferences'
+  | 'findUnusedReferences'
+  | 'suggestBibliographyStyleAdjustments'
+  | 'summarizeUsedReferences'
+  | 'suggestCitationNeededPlaces'
+  | 'transformDraftToAcademicArticle'
+  | 'transformToProfessionalReport'
+  | 'createShortAndLongVersions'
+  | 'generatePresentationOutline'
+  | 'createEditorialChecklist'
+  | 'expand'
+  | 'translate'
+  | 'changeTone'
+
+/** Payload seguro para ações de escrita assistida. */
+export interface AiWritingRequest {
+  action: AiWritingAction
+  text: string
+  instruction?: string
+  targetLanguage?: string
+  tone?: string
+}
+
 /** Perfil de fonte nomeado, aplicável ao editor. */
 export interface FontProfile {
   id: string
@@ -216,6 +290,10 @@ export interface ProsaSettings {
   showNotes: boolean
   showRelations: boolean
   distractionFree: boolean
+  aiEnabled: boolean
+  aiProvider: AiProvider
+  aiModel: string
+  aiApiKeyConfigured?: boolean
   recentFiles: RecentFile[]
   pinnedFiles: RecentFile[]
   zoom: number
@@ -299,6 +377,10 @@ export interface ProsaApi {
   clearRecentFiles: () => Promise<RecentFile[]>
   getSettings: () => Promise<ProsaSettings>
   setSettings: (settings: Partial<ProsaSettings>) => Promise<ProsaSettings>
+  getAiApiKeyStatus: (provider?: AiProvider) => Promise<AiApiKeyStatus>
+  setAiApiKey: (provider: AiProvider, apiKey: string) => Promise<AiApiKeyStatus>
+  removeAiApiKey: (provider: AiProvider) => Promise<AiApiKeyStatus>
+  runAiWritingAction: (request: AiWritingRequest) => Promise<AiTextResult>
   onMenuAction: (handler: (action: string, payload?: unknown) => void) => void
   notifyDirty: (dirty: boolean) => void
   getAppInfo: () => Promise<AppInfo>

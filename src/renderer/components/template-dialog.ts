@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Rodrigo Brito
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { showAlert, showConfirm } from './app-dialogs.js'
+
 export class TemplateDialog {
   private readonly overlay: HTMLElement
   private resolve: ((templateId: string | null) => void) | null = null
@@ -65,7 +67,7 @@ export class TemplateDialog {
     this.overlay.querySelectorAll<HTMLElement>('.btn-delete').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation()
-        if (confirm('Tem certeza que deseja excluir este template?')) {
+        if (await showConfirm('Tem certeza que deseja excluir este template?', 'Excluir template', 'danger', 'Excluir')) {
             await window.prosa.deleteTemplate(btn.dataset.id!)
             this.choose()
         }
@@ -80,7 +82,7 @@ export class TemplateDialog {
 
   private async createNewTemplate(name: string): Promise<void> {
     if (!name) {
-        alert('Por favor, insira um nome para o template.')
+        await showAlert('Por favor, insira um nome para o template.', 'Nome obrigatório', 'warning')
         return
     }
     

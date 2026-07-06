@@ -23,6 +23,7 @@ export interface WelcomeCallbacks {
   onNewAbnt: () => void
   onOpen: () => void
   onLibrary: () => void
+  onTour: () => void
   onOpenRecent: (path: string) => void
   onPin: (file: RecentFile) => void
   onUnpin: (path: string) => void
@@ -61,6 +62,9 @@ export class WelcomeScreen {
             <button class="btn btn-secondary" id="welcome-library">
               <i class="ti ti-books"></i> Biblioteca
             </button>
+            <button class="btn btn-secondary" id="welcome-tour">
+              <i class="ti ti-map"></i> Tour do projeto
+            </button>
           </div>
         </div>
         <div class="welcome-recent">
@@ -86,6 +90,9 @@ export class WelcomeScreen {
     )
     this.root.querySelector('#welcome-library')?.addEventListener('click', () =>
       this.callbacks.onLibrary()
+    )
+    this.root.querySelector('#welcome-tour')?.addEventListener('click', () =>
+      this.callbacks.onTour()
     )
     this.root.querySelectorAll('.recent-item').forEach((item) => {
       item.addEventListener('click', (e) => {

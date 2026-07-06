@@ -5,6 +5,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
+  AiApiKeyStatus,
+  AiProvider,
+  AiTextResult,
   BibliographyStyle,
   BackupVersion,
   FileResult,
@@ -49,6 +52,14 @@ const api: ProsaApi = {
     ipcRenderer.invoke('settings:get') as Promise<ProsaSettings>,
   setSettings: (settings: Partial<ProsaSettings>) =>
     ipcRenderer.invoke('settings:set', settings) as Promise<ProsaSettings>,
+  getAiApiKeyStatus: (provider?: AiProvider) =>
+    ipcRenderer.invoke('ai:keyStatus', provider) as Promise<AiApiKeyStatus>,
+  setAiApiKey: (provider: AiProvider, apiKey: string) =>
+    ipcRenderer.invoke('ai:setApiKey', provider, apiKey) as Promise<AiApiKeyStatus>,
+  removeAiApiKey: (provider: AiProvider) =>
+    ipcRenderer.invoke('ai:removeApiKey', provider) as Promise<AiApiKeyStatus>,
+  runAiWritingAction: (request) =>
+    ipcRenderer.invoke('ai:writingAction', request) as Promise<AiTextResult>,
   onMenuAction: (handler) => {
     ipcRenderer.on('menu:action', (_event, action: string, payload?: unknown) => {
       handler(action, payload)

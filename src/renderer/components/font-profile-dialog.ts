@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { BUILTIN_FONT_PROFILES } from './font-profiles.js'
+import { showAlert } from './app-dialogs.js'
 import type { FontProfile } from '../../shared/types.js'
 
 function escapeHtml(value: string): string {
@@ -109,7 +110,7 @@ export class FontProfileDialog {
     const lineHeight = Number((this.overlay.querySelector('#new-profile-line-height') as HTMLInputElement)?.value)
 
     if (!name || !fontFamily || !Number.isFinite(fontSize) || !Number.isFinite(lineHeight)) {
-      window.alert('Preencha nome, fonte, tamanho e altura de linha para salvar o perfil.')
+      await showAlert('Preencha nome, fonte, tamanho e altura de linha para salvar o perfil.', 'Perfil incompleto', 'warning')
       return
     }
 

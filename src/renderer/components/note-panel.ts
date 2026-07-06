@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { NoteEntry, TipTapJSON } from '../../shared/types.js'
+import { showConfirm } from './app-dialogs.js'
 
 interface NoteItem {
   id: string
@@ -103,9 +104,9 @@ export class NotePanel {
       item.querySelector('.note-item-btn')?.addEventListener('click', () => {
         if (id) this.onEdit(id)
       })
-      item.addEventListener('contextmenu', (event) => {
+      item.addEventListener('contextmenu', async (event) => {
         event.preventDefault()
-        if (id && confirm('Remover esta nota e todas as referências?')) {
+        if (id && await showConfirm('Remover esta nota e todas as referências?', 'Remover nota', 'danger', 'Remover')) {
           this.onRemove(id)
         }
       })

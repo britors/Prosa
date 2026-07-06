@@ -4,6 +4,7 @@
 
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
+import { defaultAiModel, normalizeAiModel, normalizeAiProvider } from '../shared/ai-settings.js'
 import type { AutoSavePolicy, FontProfile, PdfPreset, ProsaSettings, RecentFile } from '../shared/types.js'
 
 /** Valores padrão das configurações do Prosa. */
@@ -33,6 +34,10 @@ const defaults: ProsaSettings = {
   showNotes: false,
   showRelations: false,
   distractionFree: false,
+  aiEnabled: false,
+  aiProvider: 'openai',
+  aiModel: defaultAiModel('openai'),
+  aiApiKeyConfigured: false,
   recentFiles: [],
   pinnedFiles: [],
   zoom: 100
@@ -83,7 +88,7 @@ function normalizeFontProfiles(value: unknown): FontProfile[] {
   return value.filter(isFontProfile)
 }
 
-function normalizeSettings(raw: StoredSettings): ProsaSettings {
+export function normalizeSettings(raw: StoredSettings): ProsaSettings {
   let autoSavePolicy: AutoSavePolicy
   if (isAutoSavePolicy(raw.autoSavePolicy)) {
     autoSavePolicy = raw.autoSavePolicy
@@ -119,6 +124,9 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
   const fontProfiles = normalizeFontProfiles(raw.fontProfiles)
   const activeFontProfileId =
     typeof raw.activeFontProfileId === 'string' ? raw.activeFontProfileId : defaults.activeFontProfileId
+  const aiProvider = normalizeAiProvider(raw.aiProvider)
+  const aiModel = normalizeAiModel(raw.aiModel, aiProvider)
+  const aiEnabled = typeof raw.aiEnabled === 'boolean' ? raw.aiEnabled : defaults.aiEnabled
 
   return {
     ...defaults,
@@ -136,7 +144,11 @@ function normalizeSettings(raw: StoredSettings): ProsaSettings {
     focusBreakMinutes,
     wordGoal,
     fontProfiles,
-    activeFontProfileId
+    activeFontProfileId,
+    aiEnabled,
+    aiProvider,
+    aiModel,
+    aiApiKeyConfigured: false
   }
 }
 
@@ -197,7 +209,7 @@ export function getSettings(): ProsaSettings {
 /** Atualiza parcialmente as configurações e devolve o estado final. */
 export function setSettings(partial: Partial<ProsaSettings>): ProsaSettings {
   for (const [key, value] of Object.entries(partial)) {
-    if (value !== undefined) {
+    if (value !== undefined && key !== 'aiApiKeyConfigured') {
       store.set(key, value)
     }
   }

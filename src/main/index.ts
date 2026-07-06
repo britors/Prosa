@@ -38,7 +38,10 @@ import { initUpdater } from './updater.js'
 import { listSystemFonts } from './fonts.js'
 import { attachSpellCheckContextMenu, configureSpellChecker } from './spellcheck.js'
 import { getWorkspaceLibrary, getWorkspaceRelations, importBibTeX, setBibliographyStyle, updateWorkspaceCollections } from './workspace.js'
-import type { AppInfo, FontProfile, HtmlExportOptions, NoteEntry, RecentFile, SavePayload, TipTapJSON } from '../shared/types.js'
+import { getAiApiKey, getAiApiKeyStatus, hasAiApiKey, removeAiApiKey, setAiApiKey } from './ai-credentials.js'
+import { createAiService } from './ai-service.js'
+import { buildAiInstruction, validateAiWritingRequest } from '../shared/ai-actions.js'
+import type { AiProvider, AppInfo, FontProfile, HtmlExportOptions, NoteEntry, RecentFile, SavePayload, TipTapJSON } from '../shared/types.js'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('br.com.Rodrigo Brito.prosa')
@@ -563,6 +566,10 @@ function buildMenu(): void {
           accelerator: 'CmdOrCtrl+K',
           click: () => sendMenuAction('edit:commandPalette')
         },
+        {
+          label: 'Configurações de IA',
+          click: () => sendMenuAction('settings:ai')
+        },
         { type: 'separator' },
         // ...
         {
@@ -667,6 +674,10 @@ function buildMenu(): void {
           checked: settings.showRelations,
           click: () => sendMenuAction('view:toggleRelations')
         },
+        {
+          label: 'Assistente de IA',
+          click: () => sendMenuAction('view:toggleAi')
+        },
         { label: 'Alternar contagem de palavras', click: () => sendMenuAction('view:toggleWordCount') },
         {
           label: 'Biblioteca do Workspace',
@@ -706,6 +717,10 @@ function buildMenu(): void {
           click: () => sendMenuAction('help:about')
         },
         {
+          label: 'Tour do projeto',
+          click: () => sendMenuAction('help:tour')
+        },
+        {
           label: 'Licença GPLv3',
           click: () => void shell.openExternal('https://www.gnu.org/licenses/gpl-3.0.html')
         },
@@ -739,6 +754,11 @@ async function handleOpen(path?: string): Promise<void> {
 
 /** Registra todos os handlers IPC. */
 function registerIpc(): void {
+  const aiService = createAiService({
+    getSettings,
+    getApiKey: getAiApiKey
+  })
+
   ipcMain.handle('file:new', () => {
     documentDirty = false
     return { ok: true }
@@ -850,13 +870,35 @@ function registerIpc(): void {
   ipcMain.handle('fontProfiles:save', (_event, profile: Omit<FontProfile, 'id'>) => saveFontProfile(profile))
   ipcMain.handle('fontProfiles:delete', (_event, id: string) => deleteFontProfile(id))
 
-  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:get', () => {
+    const settings = getSettings()
+    return { ...settings, aiApiKeyConfigured: hasAiApiKey(settings.aiProvider) }
+  })
   ipcMain.handle('settings:set', (_event, partial) => {
     const updated = setSettings(partial)
     setupAutosave() // Atualiza o timer se necessário
     if (partial.syncPath !== undefined) setupSyncWatcher(notifySyncChange)
     buildMenu()
-    return updated
+    return { ...updated, aiApiKeyConfigured: hasAiApiKey(updated.aiProvider) }
+  })
+  ipcMain.handle('ai:keyStatus', (_event, provider?: AiProvider) => {
+    const settings = getSettings()
+    return getAiApiKeyStatus(provider ?? settings.aiProvider)
+  })
+  ipcMain.handle('ai:setApiKey', (_event, provider: AiProvider, apiKey: string) => {
+    if (provider !== 'openai' && provider !== 'gemini') throw new Error('Provedor de IA inválido.')
+    return setAiApiKey(provider, apiKey)
+  })
+  ipcMain.handle('ai:removeApiKey', (_event, provider: AiProvider) => {
+    if (provider !== 'openai' && provider !== 'gemini') throw new Error('Provedor de IA inválido.')
+    return removeAiApiKey(provider)
+  })
+  ipcMain.handle('ai:writingAction', async (_event, payload: unknown) => {
+    const request = validateAiWritingRequest(payload)
+    return aiService.generateText({
+      instruction: buildAiInstruction(request),
+      input: request.text
+    })
   })
   ipcMain.handle('app:info', () => APP_INFO)
   ipcMain.handle('fonts:list', () => listSystemFonts())

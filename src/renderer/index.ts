@@ -6,9 +6,11 @@ import { DocumentView, type DocumentViewElements } from './pages/document.js'
 import { WelcomeScreen } from './pages/welcome.js'
 import { SearchModal } from './components/search-modal.js'
 import { TemplateDialog } from './components/template-dialog.js'
+import { ProjectTourDialog } from './components/project-tour-dialog.js'
 import { applyTheme } from './components/theme-engine.js'
 import { setAppTheme } from './components/theme-selector.js'
 import { UpdateNotification } from './components/update-notification.js'
+import { showAlert } from './components/app-dialogs.js'
 import type { AppInfo, OpenedDocument, ProsaSettings } from '../shared/types.js'
 
 /** Localiza um elemento obrigatório no DOM. */
@@ -43,12 +45,26 @@ async function bootstrap(): Promise<void> {
     styles: el('styles'),
     notes: el('notes'),
     relations: el('relations'),
+    ai: el('ai-assistant'),
     statusBar: el('status-bar')
   }
 
   const searchModal = new SearchModal()
   const view = new DocumentView(elements, settings, searchModal)
   const templateDialog = new TemplateDialog(elements.root)
+  const projectTour = new ProjectTourDialog({
+    onNewDocument: () => {
+      void view.newDocument()
+      showEditor()
+    },
+    onNewAbnt: () => {
+      void view.createAbntDocument()
+      showEditor()
+    },
+    onOpenLibrary: () => void view.showWorkspaceLibrary(),
+    onOpenAiSettings: () => view.openAiSettings(),
+    onOpenCommandPalette: () => view.openCommandPalette()
+  })
   const welcomeRoot = el('welcome-view')
 
   /** Mostra a vista de edição e oculta a tela de boas-vindas. */
@@ -77,6 +93,7 @@ async function bootstrap(): Promise<void> {
     },
     onOpen: () => void openViaDialog(),
     onLibrary: () => void view.showWorkspaceLibrary(),
+    onTour: () => void projectTour.show(),
     onOpenRecent: (path) => void openPath(path),
     onPin: async (file) => {
         await window.prosa.pinFile(file)
@@ -95,7 +112,7 @@ async function bootstrap(): Promise<void> {
       view.load(result.document)
       showEditor()
     } else if (result.error) {
-      window.alert(`Não foi possível abrir: ${result.error}`)
+      await showAlert(`Não foi possível abrir: ${result.error}`, 'Erro ao abrir', 'danger')
     }
   }
 
@@ -108,7 +125,7 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  registerMenuActions(view, showEditor, showWelcome, openViaDialog, searchModal, templateDialog)
+  registerMenuActions(view, showEditor, showWelcome, openViaDialog, searchModal, templateDialog, projectTour)
   registerDragAndDrop(openPath)
 
   await showWelcome()
@@ -121,7 +138,8 @@ function registerMenuActions(
   showWelcome: () => Promise<void>,
   openViaDialog: () => Promise<void>,
   searchModal: SearchModal,
-  templateDialog: TemplateDialog
+  templateDialog: TemplateDialog,
+  projectTour: ProjectTourDialog
 ): void {
   const editor = view.editor
 
@@ -177,6 +195,9 @@ function registerMenuActions(
         break
       case 'edit:commandPalette':
         view.openCommandPalette()
+        break
+      case 'settings:ai':
+        view.openAiSettings()
         break
       case 'workspace:switch':
         void view.switchWorkspace()
@@ -253,6 +274,9 @@ function registerMenuActions(
       case 'view:toggleRelations':
         view.toggleRelations()
         break
+      case 'view:toggleAi':
+        view.toggleAiPanel()
+        break
       case 'view:toggleWordCount':
         view.toggleWordCount()
         break
@@ -264,6 +288,9 @@ function registerMenuActions(
         break
       case 'help:about':
         void showAbout()
+        break
+      case 'help:tour':
+        void projectTour.show()
         break
       case 'file:recentCleared':
         void showWelcome()
@@ -310,7 +337,7 @@ function registerDragAndDrop(openPath: (path: string) => Promise<void>): void {
 /** Exibe um diálogo simples "Sobre o Prosa". */
 async function showAbout(): Promise<void> {
   const info: AppInfo = await window.prosa.getAppInfo()
-  window.alert(
+  await showAlert(
     `${info.name} ${info.version}\n\n` +
       `Bem-vindo ao Prosa.\n` +
       `Este projeto nasceu com muito carinho para quem vive da escrita, da criacao e das ideias.\n` +
@@ -327,7 +354,8 @@ async function showAbout(): Promise<void> {
       `GitHub: ${info.github}\n` +
       `Suporte: ${info.support}\n\n` +
       `${info.copyright}\n` +
-      `Obrigado por usar, compartilhar feedback e ajudar o Prosa a crescer.`
+      `Obrigado por usar, compartilhar feedback e ajudar o Prosa a crescer.`,
+    'Sobre o Prosa'
   )
 }
 

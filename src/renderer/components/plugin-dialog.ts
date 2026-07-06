@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PluginInfo } from '../../shared/types.js'
+import { showAlert } from './app-dialogs.js'
 
 function escapeHtml(value: string): string {
   return value
@@ -110,7 +111,7 @@ export class PluginDialog {
                 : await window.prosa.removePlugin(id)
           this.render(plugins)
         } catch (error) {
-          window.alert(error instanceof Error ? error.message : String(error))
+          await showAlert(error instanceof Error ? error.message : String(error), 'Erro no plugin', 'danger')
         }
       })
     })
