@@ -1150,6 +1150,37 @@ body.is-resizing-image {
   max-width: 720px;
 }
 
+.tour-intro {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-component);
+  background: color-mix(in srgb, var(--bg) 74%, var(--surface));
+}
+
+.tour-portrait {
+  width: 94px;
+  height: 126px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.tour-intro-copy {
+  min-width: 0;
+}
+
+.tour-intro-caption {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .tour-progress {
   display: flex;
   flex-direction: column;

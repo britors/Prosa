@@ -63,10 +63,17 @@ export class ProjectTourDialog {
   private get steps(): TourStep[] {
     return [
       {
-        icon: 'ti-layout-dashboard',
-        title: 'Comece pela tela inicial',
+        icon: 'ti-feather',
+        title: 'A história de Prosi',
         description:
-          'Use a tela de boas-vindas para criar um documento, abrir um arquivo, acessar a biblioteca do workspace e retomar recentes.',
+          'Prosi nasceu da primeira página em branco que alguém decidiu preencher. Desde então, vive entre palavras, ideias e histórias, ajudando pessoas a transformar pensamentos em textos claros, elegantes e naturais. Sua pena azul não cria ideias do nada — ela revela o melhor daquilo que você já queria dizer.',
+        hint: 'Ele acompanha o tour para apresentar a proposta do Prosa.'
+      },
+      {
+        icon: 'ti-layout-dashboard',
+        title: 'Comece pela tela inicial com o Prosi',
+        description:
+          'Use a tela de boas-vindas para criar um documento, abrir um arquivo, acessar a biblioteca do workspace e retomar recentes. O Prosi está ali para te acompanhar nesse início.',
         hint: 'Esse é o ponto de partida para a maioria dos fluxos.',
         actionLabel: 'Novo documento',
         action: this.callbacks.onNewDocument
@@ -125,7 +132,13 @@ export class ProjectTourDialog {
           <h2>Tour do projeto</h2>
           <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
         </div>
-        <p class="modal-subtitle">Percurso rápido pelos pontos centrais do Prosa.</p>
+        <div class="tour-intro">
+          <img class="tour-portrait" src="assets/prosi_tour.png" alt="Prosi" />
+          <div class="tour-intro-copy">
+            <p class="modal-subtitle">Percurso rápido pelos pontos centrais do Prosa, guiado pelo Prosi.</p>
+            <p class="tour-intro-caption">Uma única versão do personagem acompanha o tour inteiro.</p>
+          </div>
+        </div>
         <div class="tour-progress">
           <span class="tour-step-count">${progress}</span>
           <div class="tour-progress-bar" aria-hidden="true">
