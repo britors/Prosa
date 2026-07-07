@@ -23,6 +23,11 @@ interface AiResultLoadingOptions {
   message: string
 }
 
+interface AiResultErrorOptions {
+  title: string
+  message: string
+}
+
 export class AiResultDialog {
   private readonly overlay: HTMLElement
 
@@ -45,6 +50,39 @@ export class AiResultDialog {
         </div>
       </div>
     `
+    this.overlay.hidden = false
+  }
+
+  showError(options: AiResultErrorOptions): void {
+    this.overlay.innerHTML = `
+      <div class="modal modal-wide ai-result-dialog ai-error-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.title)}">
+        <div class="modal-header">
+          <h2>${escapeHtml(options.title)}</h2>
+          <button class="modal-close" title="Fechar"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="ai-error-state" role="alert" aria-live="assertive">
+          <div class="ai-error-icon" aria-hidden="true"><i class="ti ti-alert-triangle"></i></div>
+          <p class="ai-error-message">${escapeHtml(options.message)}</p>
+        </div>
+        <div class="app-dialog-actions">
+          <button class="btn btn-primary" data-ai-result-close>Fechar</button>
+        </div>
+      </div>
+    `
+
+    const close = (): void => {
+      this.overlay.hidden = true
+    }
+
+    this.overlay.querySelector('.modal-close')?.addEventListener('click', close)
+    this.overlay.querySelector('[data-ai-result-close]')?.addEventListener('click', close)
+    this.overlay.addEventListener('click', (event) => {
+      if (event.target === this.overlay) close()
+    })
+    this.overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close()
+    })
+
     this.overlay.hidden = false
   }
 

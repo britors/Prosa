@@ -452,7 +452,10 @@ export class AiAssistantPanel {
       this.openResultDialog()
     } catch (error) {
       this.resultDialog.hide()
-      this.error = this.friendlyError(error)
+      this.resultDialog.showError({
+        title: 'Erro da IA',
+        message: this.friendlyError(error)
+      })
     } finally {
       this.busy = false
       await this.refresh()
@@ -505,7 +508,10 @@ export class AiAssistantPanel {
       this.openResultDialog()
     } catch (error) {
       this.resultDialog.hide()
-      this.error = this.friendlyError(error)
+      this.resultDialog.showError({
+        title: 'Erro da IA',
+        message: this.friendlyError(error)
+      })
     } finally {
       this.busy = false
       await this.refresh()

@@ -1444,6 +1444,12 @@ body.is-resizing-image {
   width: 420px;
 }
 
+.ai-error-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .ai-loading-state {
   display: flex;
   align-items: center;
@@ -1470,6 +1476,35 @@ body.is-resizing-image {
   to {
     transform: rotate(360deg);
   }
+}
+
+.ai-error-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-radius: var(--radius-component);
+}
+
+.ai-error-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+.ai-error-message {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ai-result-textarea {
