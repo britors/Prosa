@@ -40,6 +40,9 @@ importação e exportação de `.docx`, Markdown, texto puro e PDF.
   o botão direito, mostra sugestões de correção e "adicionar ao dicionário".
 - 🖨️ **Impressão** — diálogo de impressão do sistema (Ctrl+P) com saída em
   papel branco e texto preto.
+- 🤖 **IA assistida** — suporte a OpenAI, Gemini, Claude, Mistral, Groq e Cohere
+  para revisar, resumir, expandir, traduzir e reorganizar textos com confirmação
+  explícita.
 - 📊 **Barra de status** — contagem de palavras, caracteres, tempo de leitura,
   páginas, posição do cursor e zoom.
 - 📥 **Importação** — `.docx` (Word), `.odt` (LibreOffice/OpenDocument),

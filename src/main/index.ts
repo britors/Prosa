@@ -41,6 +41,7 @@ import { getWorkspaceLibrary, getWorkspaceRelations, importBibTeX, setBibliograp
 import { getAiApiKey, getAiApiKeyStatus, hasAiApiKey, removeAiApiKey, setAiApiKey } from './ai-credentials.js'
 import { createAiService } from './ai-service.js'
 import { buildAiInstruction, validateAiWritingRequest } from '../shared/ai-actions.js'
+import { isAiProvider } from '../shared/ai-settings.js'
 import type { AiProvider, AppInfo, FontProfile, HtmlExportOptions, NoteEntry, RecentFile, SavePayload, TipTapJSON } from '../shared/types.js'
 
 if (process.platform === 'win32') {
@@ -886,11 +887,11 @@ function registerIpc(): void {
     return getAiApiKeyStatus(provider ?? settings.aiProvider)
   })
   ipcMain.handle('ai:setApiKey', (_event, provider: AiProvider, apiKey: string) => {
-    if (provider !== 'openai' && provider !== 'gemini') throw new Error('Provedor de IA inválido.')
+    if (!isAiProvider(provider)) throw new Error('Provedor de IA inválido.')
     return setAiApiKey(provider, apiKey)
   })
   ipcMain.handle('ai:removeApiKey', (_event, provider: AiProvider) => {
-    if (provider !== 'openai' && provider !== 'gemini') throw new Error('Provedor de IA inválido.')
+    if (!isAiProvider(provider)) throw new Error('Provedor de IA inválido.')
     return removeAiApiKey(provider)
   })
   ipcMain.handle('ai:writingAction', async (_event, payload: unknown) => {

@@ -88,6 +88,70 @@ export function extractGeminiText(body: unknown): string {
   return parts.join('\n').trim()
 }
 
+export function extractAnthropicText(body: unknown): string {
+  if (typeof body !== 'object' || body === null) return ''
+  const content = (body as Record<string, unknown>).content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const item of content) {
+    if (typeof item !== 'object' || item === null) continue
+    const text = (item as Record<string, unknown>).text
+    if (typeof text === 'string') parts.push(text)
+  }
+  return parts.join('\n').trim()
+}
+
+export function extractMistralText(body: unknown): string {
+  if (typeof body !== 'object' || body === null) return ''
+  const choices = (body as Record<string, unknown>).choices
+  if (!Array.isArray(choices) || choices.length === 0) return ''
+  const firstChoice = choices[0]
+  if (typeof firstChoice !== 'object' || firstChoice === null) return ''
+  const message = (firstChoice as Record<string, unknown>).message
+  if (typeof message !== 'object' || message === null) return ''
+  const content = (message as Record<string, unknown>).content
+  if (typeof content === 'string') return content.trim()
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const part of content) {
+    if (typeof part === 'string') {
+      parts.push(part)
+      continue
+    }
+    if (typeof part !== 'object' || part === null) continue
+    const text = (part as Record<string, unknown>).text
+    if (typeof text === 'string') parts.push(text)
+  }
+  return parts.join('\n').trim()
+}
+
+export function extractGroqText(body: unknown): string {
+  if (typeof body !== 'object' || body === null) return ''
+  const choices = (body as Record<string, unknown>).choices
+  if (!Array.isArray(choices) || choices.length === 0) return ''
+  const firstChoice = choices[0]
+  if (typeof firstChoice !== 'object' || firstChoice === null) return ''
+  const message = (firstChoice as Record<string, unknown>).message
+  if (typeof message !== 'object' || message === null) return ''
+  const content = (message as Record<string, unknown>).content
+  return typeof content === 'string' ? content.trim() : ''
+}
+
+export function extractCohereText(body: unknown): string {
+  if (typeof body !== 'object' || body === null) return ''
+  const message = (body as Record<string, unknown>).message
+  if (typeof message !== 'object' || message === null) return ''
+  const content = (message as Record<string, unknown>).content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const item of content) {
+    if (typeof item !== 'object' || item === null) continue
+    const text = (item as Record<string, unknown>).text
+    if (typeof text === 'string') parts.push(text)
+  }
+  return parts.join('\n').trim()
+}
+
 async function generateWithOpenAi(request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
   const response = await fetchImpl('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -131,6 +195,111 @@ async function generateWithGemini(request: Required<AiTextRequest>, apiKey: stri
   return extractGeminiText(body)
 }
 
+async function generateWithAnthropic(request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
+  const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      system: request.instruction,
+      messages: [
+        {
+          role: 'user',
+          content: request.input
+        }
+      ]
+    })
+  })
+  const body = await readJson(response)
+  assertOk(response, body)
+  return extractAnthropicText(body)
+}
+
+async function generateWithMistral(request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
+  const response = await fetchImpl('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      messages: [
+        { role: 'system', content: request.instruction },
+        { role: 'user', content: request.input }
+      ]
+    })
+  })
+  const body = await readJson(response)
+  assertOk(response, body)
+  return extractMistralText(body)
+}
+
+async function generateWithGroq(request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
+  const response = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      messages: [
+        { role: 'system', content: request.instruction },
+        { role: 'user', content: request.input }
+      ]
+    })
+  })
+  const body = await readJson(response)
+  assertOk(response, body)
+  return extractGroqText(body)
+}
+
+async function generateWithCohere(request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
+  const response = await fetchImpl('https://api.cohere.com/v2/chat', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      messages: [
+        { role: 'system', content: request.instruction },
+        { role: 'user', content: request.input }
+      ]
+    })
+  })
+  const body = await readJson(response)
+  assertOk(response, body)
+  return extractCohereText(body)
+}
+
+async function generateWithProvider(provider: AiProvider, request: Required<AiTextRequest>, apiKey: string, fetchImpl: FetchLike): Promise<string> {
+  switch (provider) {
+    case 'openai':
+      return generateWithOpenAi(request, apiKey, fetchImpl)
+    case 'gemini':
+      return generateWithGemini(request, apiKey, fetchImpl)
+    case 'anthropic':
+      return generateWithAnthropic(request, apiKey, fetchImpl)
+    case 'mistral':
+      return generateWithMistral(request, apiKey, fetchImpl)
+    case 'groq':
+      return generateWithGroq(request, apiKey, fetchImpl)
+    case 'cohere':
+      return generateWithCohere(request, apiKey, fetchImpl)
+  }
+}
+
 export function createAiService(deps: AiServiceDeps): AiService {
   const fetchImpl = deps.fetchImpl ?? fetch
 
@@ -147,10 +316,7 @@ export function createAiService(deps: AiServiceDeps): AiService {
         throw new Error(`Falta configurar a chave de API do provedor ${normalized.provider}. Abra as configurações de IA e informe a chave antes de continuar.`)
       }
 
-      const text =
-        normalized.provider === 'openai'
-          ? await generateWithOpenAi(normalized, apiKey, fetchImpl)
-          : await generateWithGemini(normalized, apiKey, fetchImpl)
+      const text = await generateWithProvider(normalized.provider, normalized, apiKey, fetchImpl)
 
       if (!text) throw new Error('O provedor de IA não retornou texto.')
       return { provider: normalized.provider, model: normalized.model, text }

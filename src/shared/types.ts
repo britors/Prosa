@@ -153,7 +153,7 @@ export type PdfPageSize = 'A4' | 'Letter' | 'Legal'
 export type PdfPreset = 'academic' | 'report' | 'contract' | 'book'
 
 /** Provedores de IA suportados pela configuração inicial. */
-export type AiProvider = 'openai' | 'gemini'
+export type AiProvider = 'openai' | 'gemini' | 'anthropic' | 'mistral' | 'groq' | 'cohere'
 
 /** Estado da chave de API de um provedor de IA, sem expor o segredo. */
 export interface AiApiKeyStatus {

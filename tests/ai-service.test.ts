@@ -4,7 +4,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createAiService, extractGeminiText, extractOpenAiText } from '../src/main/ai-service.ts'
+import { createAiService, extractAnthropicText, extractCohereText, extractGeminiText, extractGroqText, extractMistralText, extractOpenAiText } from '../src/main/ai-service.ts'
 import type { AiProvider, ProsaSettings } from '../src/shared/types.ts'
 
 function settings(partial: Partial<ProsaSettings> = {}): ProsaSettings {
@@ -65,6 +65,38 @@ test('extrai texto de resposta Gemini', () => {
   assert.equal(extractGeminiText(body), 'parte 1\nparte 2')
 })
 
+test('extrai texto de resposta Anthropic', () => {
+  const body = {
+    content: [{ type: 'text', text: 'linha 1' }, { type: 'text', text: 'linha 2' }]
+  }
+
+  assert.equal(extractAnthropicText(body), 'linha 1\nlinha 2')
+})
+
+test('extrai texto de resposta Mistral', () => {
+  const body = {
+    choices: [{ message: { content: 'linha 1\nlinha 2' } }]
+  }
+
+  assert.equal(extractMistralText(body), 'linha 1\nlinha 2')
+})
+
+test('extrai texto de resposta Groq', () => {
+  const body = {
+    choices: [{ message: { content: 'linha 1\nlinha 2' } }]
+  }
+
+  assert.equal(extractGroqText(body), 'linha 1\nlinha 2')
+})
+
+test('extrai texto de resposta Cohere', () => {
+  const body = {
+    message: { content: [{ type: 'text', text: 'linha 1' }, { type: 'text', text: 'linha 2' }] }
+  }
+
+  assert.equal(extractCohereText(body), 'linha 1\nlinha 2')
+})
+
 test('serviço chama OpenAI sem expor segredo no payload', async () => {
   const captured: { url: string; init: RequestInit }[] = []
   const service = createAiService({
@@ -99,6 +131,121 @@ test('serviço chama Gemini com endpoint do modelo', async () => {
 
   assert.equal(result.text, 'feito')
   assert.match(capturedUrl, /models\/gemini-3\.5-flash:generateContent/)
+})
+
+test('serviço chama Anthropic com endpoint de messages', async () => {
+  let capturedUrl = ''
+  let capturedInit: RequestInit | undefined
+  const service = createAiService({
+    getSettings: () => settings({ aiProvider: 'anthropic', aiModel: 'claude-fable-5' }),
+    getApiKey: (provider: AiProvider) => provider === 'anthropic' ? 'anthropic-key' : null,
+    fetchImpl: async (url, init) => {
+      capturedUrl = url
+      capturedInit = init
+      return jsonResponse({ content: [{ type: 'text', text: 'feito' }] })
+    }
+  })
+
+  const result = await service.generateText({ instruction: 'Resuma', input: 'Texto' })
+
+  assert.equal(result.text, 'feito')
+  assert.equal(capturedUrl, 'https://api.anthropic.com/v1/messages')
+  const headers = capturedInit?.headers as Record<string, string> | undefined
+  assert.equal(headers?.['x-api-key'], 'anthropic-key')
+  assert.equal(headers?.['anthropic-version'], '2023-06-01')
+  assert.equal(headers?.['content-type'], 'application/json')
+  const body = JSON.parse(String(capturedInit?.body))
+  assert.equal(body.model, 'claude-fable-5')
+  assert.equal(body.max_tokens, 1200)
+  assert.equal(body.system, 'Resuma')
+  assert.deepEqual(body.messages, [{ role: 'user', content: 'Texto' }])
+})
+
+test('serviço chama Mistral com endpoint de chat completions', async () => {
+  let capturedUrl = ''
+  let capturedInit: RequestInit | undefined
+  const service = createAiService({
+    getSettings: () => settings({ aiProvider: 'mistral', aiModel: 'mistral-large-latest' }),
+    getApiKey: (provider: AiProvider) => provider === 'mistral' ? 'mistral-key' : null,
+    fetchImpl: async (url, init) => {
+      capturedUrl = url
+      capturedInit = init
+      return jsonResponse({ choices: [{ message: { content: 'feito' } }] })
+    }
+  })
+
+  const result = await service.generateText({ instruction: 'Resuma', input: 'Texto' })
+
+  assert.equal(result.text, 'feito')
+  assert.equal(capturedUrl, 'https://api.mistral.ai/v1/chat/completions')
+  const headers = capturedInit?.headers as Record<string, string> | undefined
+  assert.equal(headers?.Authorization, 'Bearer mistral-key')
+  assert.equal(headers?.['Content-Type'], 'application/json')
+  const body = JSON.parse(String(capturedInit?.body))
+  assert.equal(body.model, 'mistral-large-latest')
+  assert.equal(body.max_tokens, 1200)
+  assert.deepEqual(body.messages, [
+    { role: 'system', content: 'Resuma' },
+    { role: 'user', content: 'Texto' }
+  ])
+})
+
+test('serviço chama Groq com endpoint de chat completions', async () => {
+  let capturedUrl = ''
+  let capturedInit: RequestInit | undefined
+  const service = createAiService({
+    getSettings: () => settings({ aiProvider: 'groq', aiModel: 'llama-3.3-70b-versatile' }),
+    getApiKey: (provider: AiProvider) => provider === 'groq' ? 'groq-key' : null,
+    fetchImpl: async (url, init) => {
+      capturedUrl = url
+      capturedInit = init
+      return jsonResponse({ choices: [{ message: { content: 'feito' } }] })
+    }
+  })
+
+  const result = await service.generateText({ instruction: 'Resuma', input: 'Texto' })
+
+  assert.equal(result.text, 'feito')
+  assert.equal(capturedUrl, 'https://api.groq.com/openai/v1/chat/completions')
+  const headers = capturedInit?.headers as Record<string, string> | undefined
+  assert.equal(headers?.Authorization, 'Bearer groq-key')
+  assert.equal(headers?.['Content-Type'], 'application/json')
+  const body = JSON.parse(String(capturedInit?.body))
+  assert.equal(body.model, 'llama-3.3-70b-versatile')
+  assert.equal(body.max_tokens, 1200)
+  assert.deepEqual(body.messages, [
+    { role: 'system', content: 'Resuma' },
+    { role: 'user', content: 'Texto' }
+  ])
+})
+
+test('serviço chama Cohere com endpoint de chat v2', async () => {
+  let capturedUrl = ''
+  let capturedInit: RequestInit | undefined
+  const service = createAiService({
+    getSettings: () => settings({ aiProvider: 'cohere', aiModel: 'command-a-03-2025' }),
+    getApiKey: (provider: AiProvider) => provider === 'cohere' ? 'cohere-key' : null,
+    fetchImpl: async (url, init) => {
+      capturedUrl = url
+      capturedInit = init
+      return jsonResponse({ message: { content: [{ type: 'text', text: 'feito' }] } })
+    }
+  })
+
+  const result = await service.generateText({ instruction: 'Resuma', input: 'Texto' })
+
+  assert.equal(result.text, 'feito')
+  assert.equal(capturedUrl, 'https://api.cohere.com/v2/chat')
+  const headers = capturedInit?.headers as Record<string, string> | undefined
+  assert.equal(headers?.Authorization, 'Bearer cohere-key')
+  assert.equal(headers?.['Content-Type'], 'application/json')
+  const body = JSON.parse(String(capturedInit?.body))
+  assert.equal(body.model, 'command-a-03-2025')
+  assert.equal(body.max_tokens, 1200)
+  assert.deepEqual(body.messages, [
+    { role: 'system', content: 'Resuma' },
+    { role: 'user', content: 'Texto' }
+  ])
 })
 
 test('serviço bloqueia IA desativada', async () => {

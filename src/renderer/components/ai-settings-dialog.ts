@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { AiProvider, ProsaSettings } from '../../shared/types.js'
-import { AI_MODEL_OPTIONS, defaultAiModel } from '../../shared/ai-settings.js'
+import { AI_MODEL_OPTIONS, defaultAiModel, normalizeAiProvider } from '../../shared/ai-settings.js'
 import { showAlert } from './app-dialogs.js'
 
 function escapeHtml(value: string): string {
@@ -54,6 +54,10 @@ export class AiSettingsDialog {
           <select id="ai-provider" class="field-select">
             <option value="openai" ${settings.aiProvider === 'openai' ? 'selected' : ''}>OpenAI / ChatGPT</option>
             <option value="gemini" ${settings.aiProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+            <option value="anthropic" ${settings.aiProvider === 'anthropic' ? 'selected' : ''}>Anthropic / Claude</option>
+            <option value="mistral" ${settings.aiProvider === 'mistral' ? 'selected' : ''}>Mistral</option>
+            <option value="groq" ${settings.aiProvider === 'groq' ? 'selected' : ''}>Groq</option>
+            <option value="cohere" ${settings.aiProvider === 'cohere' ? 'selected' : ''}>Cohere</option>
           </select>
         </div>
         <div class="workspace-section">
@@ -111,7 +115,7 @@ export class AiSettingsDialog {
 
   private getProvider(): AiProvider {
     const value = this.overlay.querySelector<HTMLSelectElement>('#ai-provider')?.value
-    return value === 'gemini' ? 'gemini' : 'openai'
+    return normalizeAiProvider(value)
   }
 
   private modelOptionsHtml(provider: AiProvider, currentModel: string): string {

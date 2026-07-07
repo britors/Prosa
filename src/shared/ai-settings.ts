@@ -4,7 +4,7 @@
 
 import type { AiProvider } from './types.js'
 
-const VALID_AI_PROVIDERS: readonly AiProvider[] = ['openai', 'gemini']
+const VALID_AI_PROVIDERS: readonly AiProvider[] = ['openai', 'gemini', 'anthropic', 'mistral', 'groq', 'cohere']
 
 export interface AiModelOption {
   id: string
@@ -25,11 +25,35 @@ export const AI_MODEL_OPTIONS: Record<AiProvider, readonly AiModelOption[]> = {
     { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' }
+  ],
+  anthropic: [
+    { id: 'claude-fable-5', label: 'Claude Fable 5' },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
+  ],
+  mistral: [
+    { id: 'mistral-large-latest', label: 'Mistral Large' },
+    { id: 'mistral-small-latest', label: 'Mistral Small' }
+  ],
+  groq: [
+    { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' },
+    { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
+    { id: 'gemma2-9b-it', label: 'Gemma 2 9B IT' }
+  ],
+  cohere: [
+    { id: 'command-a-03-2025', label: 'Command A' },
+    { id: 'command-r-plus-08-2024', label: 'Command R+' },
+    { id: 'command-r-08-2024', label: 'Command R' }
   ]
 }
 
+export function isAiProvider(value: unknown): value is AiProvider {
+  return typeof value === 'string' && VALID_AI_PROVIDERS.includes(value as AiProvider)
+}
+
 export function normalizeAiProvider(value: unknown): AiProvider {
-  if (typeof value === 'string' && VALID_AI_PROVIDERS.includes(value as AiProvider)) return value as AiProvider
+  if (isAiProvider(value)) return value
   return 'openai'
 }
 
