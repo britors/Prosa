@@ -27,4 +27,4 @@
    git push
    ```
 
-> O `sha256sums` atual corresponde ao `.deb` da release **v4.0.3**.
+> O `sha256sums` atual corresponde ao `.deb` da release **v4.0.5**.
