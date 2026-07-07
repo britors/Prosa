@@ -435,6 +435,10 @@ export class AiAssistantPanel {
     this.result = ''
     this.resultSource = 'selection'
     await this.refresh()
+    this.resultDialog.showLoading({
+      title: 'Enviando para IA',
+      message: 'Aguarde enquanto o texto selecionado é enviado ao modelo e a resposta é gerada.'
+    })
 
     try {
       const response = await window.prosa.runAiWritingAction({
@@ -447,6 +451,7 @@ export class AiAssistantPanel {
       this.result = response.text
       this.openResultDialog()
     } catch (error) {
+      this.resultDialog.hide()
       this.error = this.friendlyError(error)
     } finally {
       this.busy = false
@@ -483,6 +488,10 @@ export class AiAssistantPanel {
     this.result = ''
     this.resultSource = 'document'
     await this.refresh()
+    this.resultDialog.showLoading({
+      title: 'Enviando para IA',
+      message: 'Aguarde enquanto o documento é enviado ao modelo e a resposta é gerada.'
+    })
 
     try {
       const response = await window.prosa.runAiWritingAction({
@@ -495,6 +504,7 @@ export class AiAssistantPanel {
       this.result = response.text
       this.openResultDialog()
     } catch (error) {
+      this.resultDialog.hide()
       this.error = this.friendlyError(error)
     } finally {
       this.busy = false

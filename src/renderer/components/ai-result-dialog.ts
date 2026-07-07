@@ -18,6 +18,11 @@ interface AiResultDialogOptions {
   onApply?: () => void
 }
 
+interface AiResultLoadingOptions {
+  title: string
+  message: string
+}
+
 export class AiResultDialog {
   private readonly overlay: HTMLElement
 
@@ -26,6 +31,21 @@ export class AiResultDialog {
     this.overlay.className = 'modal-overlay'
     this.overlay.hidden = true
     parent.appendChild(this.overlay)
+  }
+
+  showLoading(options: AiResultLoadingOptions): void {
+    this.overlay.innerHTML = `
+      <div class="modal ai-result-dialog ai-loading-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(options.title)}">
+        <div class="ai-loading-state" role="status" aria-live="polite">
+          <div class="ai-loading-spinner" aria-hidden="true"></div>
+          <div>
+            <h2>${escapeHtml(options.title)}</h2>
+            <p class="format-card-desc">${escapeHtml(options.message)}</p>
+          </div>
+        </div>
+      </div>
+    `
+    this.overlay.hidden = false
   }
 
   show(options: AiResultDialogOptions): void {

@@ -1440,6 +1440,38 @@ body.is-resizing-image {
   flex-direction: column;
 }
 
+.ai-loading-dialog {
+  width: 420px;
+}
+
+.ai-loading-state {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ai-loading-state h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ai-loading-spinner {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ai-loading-spin 0.8s linear infinite;
+}
+
+@keyframes ai-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .ai-result-textarea {
   width: 100%;
   min-height: 60vh;
