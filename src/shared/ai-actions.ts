@@ -67,7 +67,14 @@ export function validateAiWritingRequest(value: unknown): AiWritingRequest {
   }
 }
 
+const NO_COMMENTARY_SUFFIX =
+  'Responda apenas com o conteúdo pedido. Não inclua saudações, introduções como "aqui está" ou "claro", comentários avaliativos sobre o texto original (ex.: "esse texto já está ótimo") nem qualquer observação fora do que foi solicitado.'
+
 export function buildAiInstruction(request: AiWritingRequest): string {
+  return `${buildBaseInstruction(request)} ${NO_COMMENTARY_SUFFIX}`
+}
+
+function buildBaseInstruction(request: AiWritingRequest): string {
   switch (request.action) {
     case 'review':
       return 'Revise ortografia, gramática, pontuação e clareza do texto em português. Preserve o sentido e retorne apenas a versão revisada.'
