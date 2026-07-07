@@ -20,7 +20,13 @@ test('bloqueia payload grande demais antes do provedor', () => {
 
 test('ação custom exige instrução explícita', () => {
   assert.throws(() => buildAiInstruction({ action: 'custom', text: 'texto' }), /instrução/)
-  assert.equal(buildAiInstruction({ action: 'custom', text: 'texto', instruction: 'Explique' }), 'Explique')
+  assert.match(buildAiInstruction({ action: 'custom', text: 'texto', instruction: 'Explique' }), /^Explique /)
+})
+
+test('todas as ações orientam a IA a responder sem comentários fora do conteúdo pedido', () => {
+  assert.match(buildAiInstruction({ action: 'expand', text: 'texto' }), /comentários avaliativos/)
+  assert.match(buildAiInstruction({ action: 'translate', text: 'texto', targetLanguage: 'inglês' }), /comentários avaliativos/)
+  assert.match(buildAiInstruction({ action: 'changeTone', text: 'texto', tone: 'formal' }), /comentários avaliativos/)
 })
 
 test('ações com parâmetros montam instruções previsíveis', () => {

@@ -1435,6 +1435,26 @@ body.is-resizing-image {
   max-width: calc(100vw - 48px);
 }
 
+.ai-result-dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-result-textarea {
+  width: 100%;
+  min-height: 60vh;
+  resize: vertical;
+  white-space: pre-wrap;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-component);
+  padding: 12px;
+  margin-top: 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+
 .workspace-library {
   max-height: min(86vh, 920px);
   display: flex;

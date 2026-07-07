@@ -9,6 +9,7 @@ import { AI_TRANSLATION_LANGUAGES } from '../../shared/ai-languages.js'
 import { AI_TONE_OPTIONS } from '../../shared/ai-tones.js'
 import { extractCitations } from '../../shared/document-utils.js'
 import { showAlert, showConfirm } from './app-dialogs.js'
+import { AiResultDialog } from './ai-result-dialog.js'
 
 function escapeHtml(value: string): string {
   return value
@@ -60,6 +61,7 @@ export class AiAssistantPanel {
   private error = ''
   private aiEnabled = false
   private keyConfigured = false
+  private readonly resultDialog = new AiResultDialog()
 
   constructor(
     private readonly root: HTMLElement,
@@ -115,14 +117,15 @@ export class AiAssistantPanel {
     const ready = this.aiEnabled && this.keyConfigured
     const status = this.statusMessage(ready)
     const resultHtml = this.result
-      ? `<div class="ai-preview">${escapeHtml(this.result)}</div>
+      ? `<p class="format-card-desc">Resposta gerada (${this.result.length} caracteres).</p>
         <div class="ai-actions-row">
+          <button class="btn btn-secondary btn-sm" id="ai-view">Ver resposta</button>
           <button class="btn btn-secondary btn-sm" id="ai-copy">Copiar</button>
           <button class="btn btn-primary btn-sm" id="ai-apply" ${this.resultSource === 'selection' && !selected ? 'disabled' : ''}>
             ${this.resultSource === 'document' ? 'Inserir no cursor' : 'Substituir seleção'}
           </button>
         </div>`
-      : '<p class="panel-empty">A resposta aparecerá aqui antes de alterar o documento.</p>'
+      : '<p class="panel-empty">A resposta aparecerá em uma janela maior após ser gerada.</p>'
 
     this.root.innerHTML = `
       <div class="ai-panel">
@@ -345,12 +348,25 @@ export class AiAssistantPanel {
     this.root.querySelector('#ai-checklist-document')?.addEventListener('click', () =>
       void this.runDocumentAction('createEditorialChecklist', 'Enviar o documento inteiro ao provedor de IA para gerar um checklist editorial antes da exportação?')
     )
+    this.root.querySelector('#ai-view')?.addEventListener('click', () => this.openResultDialog())
     this.root.querySelector('#ai-copy')?.addEventListener('click', () => {
       void navigator.clipboard.writeText(this.result)
     })
     this.root.querySelector('#ai-apply')?.addEventListener('click', () => {
       if (!this.result) return
       this.editor.chain().focus().insertContent(this.result).run()
+    })
+  }
+
+  private openResultDialog(): void {
+    if (!this.result) return
+    const selected = this.getSelectedText()
+    const canApply = this.resultSource === 'document' || !!selected
+    this.resultDialog.show({
+      title: 'Resposta da IA',
+      text: this.result,
+      applyLabel: this.resultSource === 'document' ? 'Inserir no cursor' : 'Substituir seleção',
+      onApply: canApply ? () => this.editor.chain().focus().insertContent(this.result).run() : undefined
     })
   }
 
@@ -429,6 +445,7 @@ export class AiAssistantPanel {
         tone
       })
       this.result = response.text
+      this.openResultDialog()
     } catch (error) {
       this.error = this.friendlyError(error)
     } finally {
@@ -476,6 +493,7 @@ export class AiAssistantPanel {
           : this.root.querySelector<HTMLSelectElement>('#ai-document-tone')?.value
       })
       this.result = response.text
+      this.openResultDialog()
     } catch (error) {
       this.error = this.friendlyError(error)
     } finally {
