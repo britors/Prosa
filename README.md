@@ -97,15 +97,53 @@ O Prosa abre e salva os formatos padrão do **Microsoft Office** e do
 
 ## 📦 Instalação
 
-Baixe o instalador da sua plataforma na página de
-[**Releases**](https://github.com/britors/Prosa/releases):
+### Arch Linux
 
-| Plataforma | Arquivo |
-| --- | --- |
-| Debian/Ubuntu | `prosa_<versão>_amd64.deb` |
-| Fedora/openSUSE | `prosa-<versão>.x86_64.rpm` |
-| Windows | `Prosa Setup <versão>.exe` |
-| Arch Linux | `yay -S prosa` (AUR) |
+Publicado no AUR:
+
+```sh
+yay -S prosa
+```
+
+### openSUSE Leap, Fedora e Ubuntu/Debian
+
+Nenhuma está nos repositórios oficiais ainda (nem OBS, nem Copr, nem PPA). O
+mesmo instalador de conveniência serve as três — ele detecta a distro via
+`/etc/os-release` e baixa o pacote certo (`.rpm` ou `.deb`) da release mais
+recente:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/britors/Prosa/main/scripts/install.sh | sudo bash
+```
+
+Em openSUSE e Fedora baixa `prosa-<versão>.x86_64.rpm` (o mesmo RPM genérico
+do `electron-builder` serve pras duas distros, ao contrário do Vega, que tem
+specs separados) e instala via `zypper --allow-unsigned-rpm` / `dnf install
+--nogpgcheck` (o RPM ainda não é assinado, sem chave GPG configurada). Em
+Ubuntu/Debian baixa `prosa_<versão>_amd64.deb` e instala via `apt-get
+install` (assim as dependências são resolvidas normalmente, ao contrário de
+`dpkg -i`).
+
+Para travar numa versão específica:
+`PROSA_VERSION=v4.1.0 sudo -E bash install.sh` (baixe o script primeiro se
+for usar essa variante).
+
+### Windows
+
+Baixe `Prosa-Setup-<versão>.exe` na página de
+[**Releases**](https://github.com/britors/Prosa/releases) e rode o
+instalador.
+
+### Alternativa universal: AppImage
+
+Baixe `Prosa-<versão>.AppImage` na página de
+[**Releases**](https://github.com/britors/Prosa/releases), dê permissão de
+execução e rode — não precisa instalar nem de root:
+
+```sh
+chmod +x Prosa-*.AppImage
+./Prosa-*.AppImage
+```
 
 Os instaladores são gerados automaticamente pelo GitHub Actions a cada tag
 `vX.Y.Z` (veja `.github/workflows/release.yml`).
