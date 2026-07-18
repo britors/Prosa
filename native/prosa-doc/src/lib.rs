@@ -10,6 +10,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod docx;
+
 /// Nó de documento ProseMirror/TipTap serializado em JSON.
 ///
 /// Espelha `TipTapJSON` em `src/shared/types.ts`.

@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
+use prosa_doc::docx;
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
@@ -67,6 +68,19 @@ fn prosa_file_filter() -> gtk::FileFilter {
     filter
 }
 
+fn docx_file_filter() -> gtk::FileFilter {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("Word (.docx)"));
+    filter.add_suffix("docx");
+    filter
+}
+
+/// Nome do arquivo sem extensão, usado como título quando um `.docx` (que
+/// não carrega metadados como o `.prosa`) é aberto.
+fn file_stem_title(path: &std::path::Path) -> String {
+    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Sem título".to_string())
+}
+
 fn build_window(app: &adw::Application) {
     let text_view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::Word)
@@ -89,9 +103,9 @@ fn build_window(app: &adw::Application) {
     let title_widget = adw::WindowTitle::new("Prosa", "Sem título");
 
     let open_button = gtk::Button::from_icon_name("document-open-symbolic");
-    open_button.set_tooltip_text(Some("Abrir (.prosa)"));
+    open_button.set_tooltip_text(Some("Abrir (.prosa ou .docx)"));
     let save_button = gtk::Button::from_icon_name("document-save-symbolic");
-    save_button.set_tooltip_text(Some("Salvar"));
+    save_button.set_tooltip_text(Some("Salvar (.prosa)"));
 
     let bold_button = gtk::Button::from_icon_name("format-text-bold-symbolic");
     bold_button.set_tooltip_text(Some("Negrito (Ctrl+B)"));
@@ -104,6 +118,8 @@ fn build_window(app: &adw::Application) {
 
     let export_pdf_button = gtk::Button::from_icon_name("document-export-symbolic");
     export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
+    let export_docx_button = gtk::Button::with_label("Exportar .docx");
+    export_docx_button.set_tooltip_text(Some("Exportar como Word (.docx)"));
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&open_button);
@@ -114,6 +130,7 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&underline_button);
     header_bar.pack_start(&strike_button);
     header_bar.pack_end(&export_pdf_button);
+    header_bar.pack_end(&export_docx_button);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
@@ -187,11 +204,12 @@ fn build_window(app: &adw::Application) {
         state,
         move |_| {
             let dialog = gtk::FileDialog::builder()
-                .title("Abrir documento Prosa")
+                .title("Abrir documento")
                 .modal(true)
                 .build();
             let filters = gio::ListStore::new::<gtk::FileFilter>();
             filters.append(&prosa_file_filter());
+            filters.append(&docx_file_filter());
             dialog.set_filters(Some(&filters));
 
             glib::spawn_future_local(glib::clone!(
@@ -209,22 +227,36 @@ fn build_window(app: &adw::Application) {
                         Err(_) => return, // cancelado pelo usuário
                     };
                     let Some(path) = file.path() else { return };
-                    match ProsaFile::load(&path) {
-                        Ok(prosa_file) => {
-                            load_doc_into_buffer(&buffer, &prosa_file.content);
-                            title_widget.set_subtitle(&prosa_file.metadata.title);
-                            *state.borrow_mut() = DocumentState {
-                                path: Some(path),
-                                metadata: prosa_file.metadata,
-                                header: prosa_file.header,
-                                footer: prosa_file.footer,
-                            };
+                    let is_docx = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("docx"));
+
+                    let opened = if is_docx {
+                        std::fs::read(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|bytes| docx::read_docx(&bytes).map_err(|e| e.to_string()))
+                            .map(|content| {
+                                let now = now_iso();
+                                let metadata = DocumentMetadata {
+                                    title: file_stem_title(&path),
+                                    author: String::new(),
+                                    created_at: now.clone(),
+                                    modified_at: now,
+                                };
+                                (content, metadata, None, None)
+                            })
+                    } else {
+                        ProsaFile::load(&path)
+                            .map_err(|e| e.to_string())
+                            .map(|f| (f.content, f.metadata, f.header, f.footer))
+                    };
+
+                    match opened {
+                        Ok((content, metadata, header, footer)) => {
+                            load_doc_into_buffer(&buffer, &content);
+                            title_widget.set_subtitle(&metadata.title);
+                            *state.borrow_mut() = DocumentState { path: Some(path), metadata, header, footer };
                         }
-                        Err(err) => {
-                            let alert = adw::AlertDialog::new(
-                                Some("Não foi possível abrir o documento"),
-                                Some(&err.to_string()),
-                            );
+                        Err(message) => {
+                            let alert = adw::AlertDialog::new(Some("Não foi possível abrir o documento"), Some(&message));
                             alert.add_response("ok", "OK");
                             alert.present(Some(&window));
                         }
@@ -360,6 +392,48 @@ fn build_window(app: &adw::Application) {
                             Some("Não foi possível exportar o PDF"),
                             Some(&err.to_string()),
                         );
+                        alert.add_response("ok", "OK");
+                        alert.present(Some(&window));
+                    }
+                }
+            ));
+        }
+    ));
+
+    export_docx_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[strong]
+        state,
+        move |_| {
+            let default_name = format!("{}.docx", state.borrow().metadata.title);
+            let dialog = gtk::FileDialog::builder()
+                .title("Exportar .docx")
+                .modal(true)
+                .initial_name(default_name)
+                .build();
+            let filters = gio::ListStore::new::<gtk::FileFilter>();
+            filters.append(&docx_file_filter());
+            dialog.set_filters(Some(&filters));
+
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                window,
+                #[weak]
+                buffer,
+                async move {
+                    let Ok(file) = dialog.save_future(Some(&window)).await else { return };
+                    let Some(path) = file.path() else { return };
+
+                    let doc = doc_from_buffer(&buffer);
+                    let result = docx::write_docx(&doc).map_err(|e| e.to_string()).and_then(|bytes| {
+                        std::fs::write(&path, bytes).map_err(|e| e.to_string())
+                    });
+
+                    if let Err(message) = result {
+                        let alert = adw::AlertDialog::new(Some("Não foi possível exportar o .docx"), Some(&message));
                         alert.add_response("ok", "OK");
                         alert.present(Some(&window));
                     }
