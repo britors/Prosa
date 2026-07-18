@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub mod docx;
+pub mod odt;
+pub mod rtf;
+mod xml_util;
+
+/// Duas invocações concorrentes de `soffice --headless` disputam o lock do
+/// mesmo perfil de usuário do LibreOffice e falham aleatoriamente — os
+/// testes de compatibilidade real de cada formato (`docx`, `odt`, ...)
+/// tomam este mutex antes de invocar `soffice`, já que o test runner do
+/// Rust roda os `#[test]` de módulos diferentes em paralelo por padrão.
+#[cfg(test)]
+pub(crate) static SOFFICE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Nó de documento ProseMirror/TipTap serializado em JSON.
 ///

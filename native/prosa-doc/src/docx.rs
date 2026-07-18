@@ -18,6 +18,7 @@ use std::io::{Read, Write};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
 
+use crate::xml_util::{attr_by_local_name, local_name_string};
 use crate::{Mark, TipTapNode};
 
 /// Erros de leitura/escrita de um arquivo `.docx`.
@@ -33,31 +34,16 @@ pub enum DocxError {
     MissingDocumentXml,
 }
 
-fn local_name_string(name: quick_xml::name::QName) -> String {
-    String::from_utf8_lossy(name.local_name().as_ref()).into_owned()
-}
-
-fn attr_val(e: &BytesStart) -> Option<String> {
-    e.attributes().flatten().find_map(|a| {
-        let key_local = String::from_utf8_lossy(a.key.local_name().as_ref()).into_owned();
-        if key_local == "val" {
-            Some(String::from_utf8_lossy(&a.value).into_owned())
-        } else {
-            None
-        }
-    })
-}
-
 /// `<w:b/>`/`<w:i/>`/`<w:strike/>`: presentes = ligado, a menos que
 /// `w:val="0"`/`"false"` explicitamente desligue.
 fn is_flag_on(e: &BytesStart) -> bool {
-    !matches!(attr_val(e).as_deref(), Some("0") | Some("false"))
+    !matches!(attr_by_local_name(e, "val").as_deref(), Some("0") | Some("false"))
 }
 
 /// `<w:u w:val="...">`: o valor é o estilo do sublinhado, não um booleano.
 /// `"none"` desliga; qualquer outro estilo conta como sublinhado ligado.
 fn is_underline_on(e: &BytesStart) -> bool {
-    attr_val(e).as_deref() != Some("none")
+    attr_by_local_name(e, "val").as_deref() != Some("none")
 }
 
 fn push_unique(marks: &mut Vec<String>, name: &str) {
@@ -398,6 +384,7 @@ mod tests {
 
     #[test]
     fn libreoffice_compatibility() {
+        let _guard = crate::SOFFICE_LOCK.lock().unwrap();
         let has_soffice = std::process::Command::new("soffice").arg("--version").output().is_ok();
         if !has_soffice {
             eprintln!("aviso: LibreOffice (soffice) indisponível, checagens de compatibilidade real puladas");

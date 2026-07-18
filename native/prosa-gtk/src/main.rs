@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
-use prosa_doc::docx;
+use prosa_doc::{docx, odt, rtf};
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
@@ -75,10 +75,35 @@ fn docx_file_filter() -> gtk::FileFilter {
     filter
 }
 
-/// Nome do arquivo sem extensão, usado como título quando um `.docx` (que
-/// não carrega metadados como o `.prosa`) é aberto.
+fn odt_file_filter() -> gtk::FileFilter {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("OpenDocument (.odt)"));
+    filter.add_suffix("odt");
+    filter
+}
+
+fn rtf_file_filter() -> gtk::FileFilter {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("Rich Text (.rtf)"));
+    filter.add_suffix("rtf");
+    filter
+}
+
+/// Nome do arquivo sem extensão, usado como título quando um `.docx`/`.odt`/
+/// `.rtf` (que não carregam metadados como o `.prosa`) é aberto.
 fn file_stem_title(path: &std::path::Path) -> String {
     path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Sem título".to_string())
+}
+
+/// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
+fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    match extension {
+        "docx" => docx::read_docx(&bytes).map_err(|e| e.to_string()),
+        "odt" => odt::read_odt(&bytes).map_err(|e| e.to_string()),
+        "rtf" => rtf::read_rtf(&bytes).map_err(|e| e.to_string()),
+        other => Err(format!("formato não suportado: {other}")),
+    }
 }
 
 fn build_window(app: &adw::Application) {
@@ -118,8 +143,16 @@ fn build_window(app: &adw::Application) {
 
     let export_pdf_button = gtk::Button::from_icon_name("document-export-symbolic");
     export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
-    let export_docx_button = gtk::Button::with_label("Exportar .docx");
-    export_docx_button.set_tooltip_text(Some("Exportar como Word (.docx)"));
+
+    let export_menu = gio::Menu::new();
+    export_menu.append(Some("Word (.docx)"), Some("win.export-docx"));
+    export_menu.append(Some("OpenDocument (.odt)"), Some("win.export-odt"));
+    export_menu.append(Some("Rich Text (.rtf)"), Some("win.export-rtf"));
+    let export_menu_button = gtk::MenuButton::builder()
+        .icon_name("view-more-symbolic")
+        .tooltip_text("Exportar como...")
+        .menu_model(&export_menu)
+        .build();
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&open_button);
@@ -129,8 +162,8 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&italic_button);
     header_bar.pack_start(&underline_button);
     header_bar.pack_start(&strike_button);
+    header_bar.pack_end(&export_menu_button);
     header_bar.pack_end(&export_pdf_button);
-    header_bar.pack_end(&export_docx_button);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
@@ -210,6 +243,8 @@ fn build_window(app: &adw::Application) {
             let filters = gio::ListStore::new::<gtk::FileFilter>();
             filters.append(&prosa_file_filter());
             filters.append(&docx_file_filter());
+            filters.append(&odt_file_filter());
+            filters.append(&rtf_file_filter());
             dialog.set_filters(Some(&filters));
 
             glib::spawn_future_local(glib::clone!(
@@ -227,26 +262,21 @@ fn build_window(app: &adw::Application) {
                         Err(_) => return, // cancelado pelo usuário
                     };
                     let Some(path) = file.path() else { return };
-                    let is_docx = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("docx"));
+                    let extension =
+                        path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
 
-                    let opened = if is_docx {
-                        std::fs::read(&path)
-                            .map_err(|e| e.to_string())
-                            .and_then(|bytes| docx::read_docx(&bytes).map_err(|e| e.to_string()))
-                            .map(|content| {
-                                let now = now_iso();
-                                let metadata = DocumentMetadata {
-                                    title: file_stem_title(&path),
-                                    author: String::new(),
-                                    created_at: now.clone(),
-                                    modified_at: now,
-                                };
-                                (content, metadata, None, None)
-                            })
-                    } else {
-                        ProsaFile::load(&path)
-                            .map_err(|e| e.to_string())
-                            .map(|f| (f.content, f.metadata, f.header, f.footer))
+                    let opened = match extension.as_str() {
+                        "docx" | "odt" | "rtf" => read_foreign_document(&path, &extension).map(|content| {
+                            let now = now_iso();
+                            let metadata = DocumentMetadata {
+                                title: file_stem_title(&path),
+                                author: String::new(),
+                                created_at: now.clone(),
+                                modified_at: now,
+                            };
+                            (content, metadata, None, None)
+                        }),
+                        _ => ProsaFile::load(&path).map_err(|e| e.to_string()).map(|f| (f.content, f.metadata, f.header, f.footer)),
                     };
 
                     match opened {
@@ -400,49 +430,89 @@ fn build_window(app: &adw::Application) {
         }
     ));
 
-    export_docx_button.connect_clicked(glib::clone!(
+    for (action_name, format_label, extension, filter, write_fn) in [
+        (
+            "export-docx",
+            "Word (.docx)",
+            "docx",
+            docx_file_filter(),
+            Rc::new(|doc: &prosa_doc::TipTapNode| docx::write_docx(doc).map_err(|e| e.to_string()))
+                as Rc<dyn Fn(&prosa_doc::TipTapNode) -> Result<Vec<u8>, String>>,
+        ),
+        (
+            "export-odt",
+            "OpenDocument (.odt)",
+            "odt",
+            odt_file_filter(),
+            Rc::new(|doc: &prosa_doc::TipTapNode| odt::write_odt(doc).map_err(|e| e.to_string())),
+        ),
+        (
+            "export-rtf",
+            "Rich Text (.rtf)",
+            "rtf",
+            rtf_file_filter(),
+            Rc::new(|doc: &prosa_doc::TipTapNode| Ok(rtf::write_rtf(doc))),
+        ),
+    ] {
+        let action = gio::SimpleAction::new(action_name, None);
+        action.connect_activate(glib::clone!(
+            #[weak]
+            window,
+            #[weak]
+            buffer,
+            #[strong]
+            state,
+            move |_, _| {
+                spawn_export(window.clone(), buffer.clone(), state.clone(), format_label, extension, filter.clone(), write_fn.clone());
+            }
+        ));
+        window.add_action(&action);
+    }
+
+    window.present();
+}
+
+/// Diálogo de "salvar como" + escrita do documento num formato de
+/// exportação (docx/odt/rtf), compartilhado pelas três ações de menu.
+fn spawn_export(
+    window: adw::ApplicationWindow,
+    buffer: gtk::TextBuffer,
+    state: Rc<RefCell<DocumentState>>,
+    format_label: &'static str,
+    extension: &'static str,
+    filter: gtk::FileFilter,
+    write_fn: Rc<dyn Fn(&prosa_doc::TipTapNode) -> Result<Vec<u8>, String>>,
+) {
+    let default_name = format!("{}.{extension}", state.borrow().metadata.title);
+    let dialog = gtk::FileDialog::builder()
+        .title(format!("Exportar {format_label}"))
+        .modal(true)
+        .initial_name(default_name)
+        .build();
+    let filters = gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&filter);
+    dialog.set_filters(Some(&filters));
+
+    glib::spawn_future_local(glib::clone!(
         #[weak]
         window,
         #[weak]
         buffer,
-        #[strong]
-        state,
-        move |_| {
-            let default_name = format!("{}.docx", state.borrow().metadata.title);
-            let dialog = gtk::FileDialog::builder()
-                .title("Exportar .docx")
-                .modal(true)
-                .initial_name(default_name)
-                .build();
-            let filters = gio::ListStore::new::<gtk::FileFilter>();
-            filters.append(&docx_file_filter());
-            dialog.set_filters(Some(&filters));
+        async move {
+            let Ok(file) = dialog.save_future(Some(&window)).await else { return };
+            let Some(path) = file.path() else { return };
 
-            glib::spawn_future_local(glib::clone!(
-                #[weak]
-                window,
-                #[weak]
-                buffer,
-                async move {
-                    let Ok(file) = dialog.save_future(Some(&window)).await else { return };
-                    let Some(path) = file.path() else { return };
+            let doc = doc_from_buffer(&buffer);
+            let result = write_fn(&doc).and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()));
 
-                    let doc = doc_from_buffer(&buffer);
-                    let result = docx::write_docx(&doc).map_err(|e| e.to_string()).and_then(|bytes| {
-                        std::fs::write(&path, bytes).map_err(|e| e.to_string())
-                    });
-
-                    if let Err(message) = result {
-                        let alert = adw::AlertDialog::new(Some("Não foi possível exportar o .docx"), Some(&message));
-                        alert.add_response("ok", "OK");
-                        alert.present(Some(&window));
-                    }
-                }
-            ));
+            if let Err(message) = result {
+                let alert =
+                    adw::AlertDialog::new(Some(&format!("Não foi possível exportar como {format_label}")), Some(&message));
+                alert.add_response("ok", "OK");
+                alert.present(Some(&window));
+            }
         }
     ));
-
-    window.present();
 }
 
 fn main() -> glib::ExitCode {
