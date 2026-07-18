@@ -19,3 +19,4 @@ pango = "0.20"
 pangocairo = "0.20"
 cairo = { package = "cairo-rs", version = "0.20" }
 enchant = "0.3"
+regex = "1"

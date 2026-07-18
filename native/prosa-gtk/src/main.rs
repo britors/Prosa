@@ -7,6 +7,7 @@
 //! da epic "Migração do Prosa para Rust + GTK4").
 
 mod ai_ui;
+mod find_replace;
 mod formatting;
 mod live_pagination;
 mod print;
@@ -21,6 +22,7 @@ use gtk::{gdk, gio, glib};
 use prosa_doc::{docx, odt, rtf};
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
+use find_replace::{FindReplace, SearchOptions};
 use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
 use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
@@ -98,6 +100,31 @@ fn rtf_file_filter() -> gtk::FileFilter {
 /// `.rtf` (que não carregam metadados como o `.prosa`) é aberto.
 fn file_stem_title(path: &std::path::Path) -> String {
     path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Sem título".to_string())
+}
+
+/// Refaz a busca a partir do estado atual dos campos/opções e atualiza o
+/// contador "N/total" — chamado a cada mudança no termo, nas opções, ou
+/// depois de qualquer substituição.
+#[allow(clippy::too_many_arguments)]
+fn refresh_search(
+    buffer: &gtk::TextBuffer,
+    find_replace: &Rc<RefCell<FindReplace>>,
+    search_entry: &gtk::SearchEntry,
+    case_toggle: &gtk::ToggleButton,
+    whole_word_toggle: &gtk::ToggleButton,
+    regex_toggle: &gtk::ToggleButton,
+    match_position_label: &gtk::Label,
+) {
+    let options = SearchOptions {
+        case_sensitive: case_toggle.is_active(),
+        whole_word: whole_word_toggle.is_active(),
+        regex: regex_toggle.is_active(),
+    };
+    let mut fr = find_replace.borrow_mut();
+    fr.search(buffer, &search_entry.text(), options);
+    let total = fr.match_count();
+    let current = fr.current_position().unwrap_or(0);
+    match_position_label.set_text(&format!("{current}/{total}"));
 }
 
 /// Atualiza a barra de status com contagem de palavras, frases e páginas.
@@ -321,6 +348,54 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_end(&export_menu_button);
     header_bar.pack_end(&export_pdf_button);
 
+    // Barra de localizar/substituir: escondida por padrão, revelada com
+    // Ctrl+F. Um único bloco cobrindo busca e substituição (em vez das
+    // duas linhas condicionais do Electron) — mais simples de manter.
+    let search_entry = gtk::SearchEntry::builder().placeholder_text("Localizar").hexpand(true).build();
+    let replace_entry = gtk::Entry::builder().placeholder_text("Substituir por").hexpand(true).build();
+    let match_position_label = gtk::Label::builder().label("0/0").css_classes(["dim-label"]).width_chars(6).build();
+    let find_prev_button = gtk::Button::from_icon_name("go-up-symbolic");
+    find_prev_button.set_tooltip_text(Some("Anterior (Shift+Enter)"));
+    let find_next_button = gtk::Button::from_icon_name("go-down-symbolic");
+    find_next_button.set_tooltip_text(Some("Próximo (Enter)"));
+    let case_toggle = gtk::ToggleButton::builder().label("Aa").tooltip_text("Diferenciar maiúsculas/minúsculas").build();
+    let whole_word_toggle = gtk::ToggleButton::builder().label("Palavra").tooltip_text("Palavra inteira").build();
+    let regex_toggle = gtk::ToggleButton::builder().label(".*").tooltip_text("Expressão regular").build();
+    let replace_button = gtk::Button::with_label("Substituir");
+    let replace_all_button = gtk::Button::with_label("Substituir todas");
+    let find_close_button = gtk::Button::from_icon_name("window-close-symbolic");
+    find_close_button.set_tooltip_text(Some("Fechar (Esc)"));
+
+    let find_row = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+    find_row.append(&search_entry);
+    find_row.append(&match_position_label);
+    find_row.append(&find_prev_button);
+    find_row.append(&find_next_button);
+    find_row.append(&case_toggle);
+    find_row.append(&whole_word_toggle);
+    find_row.append(&regex_toggle);
+    find_row.append(&find_close_button);
+
+    let replace_row = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+    replace_row.append(&replace_entry);
+    replace_row.append(&replace_button);
+    replace_row.append(&replace_all_button);
+
+    let find_bar = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    find_bar.append(&find_row);
+    find_bar.append(&replace_row);
+
+    let find_bar_revealer = gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideDown).child(&find_bar).build();
+
+    let find_replace = Rc::new(RefCell::new(FindReplace::default()));
+
     // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
     // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
     // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
@@ -331,6 +406,7 @@ fn build_window(app: &adw::Application) {
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.add_top_bar(&find_bar_revealer);
     toolbar_view.set_content(Some(&content_box));
 
     let window = adw::ApplicationWindow::builder()
@@ -366,11 +442,20 @@ fn build_window(app: &adw::Application) {
     key_controller.connect_key_pressed(glib::clone!(
         #[weak]
         buffer,
+        #[weak]
+        find_bar_revealer,
+        #[weak]
+        search_entry,
         #[upgrade_or]
         glib::Propagation::Proceed,
         move |_, keyval, _keycode, modifiers| {
             if modifiers.contains(gdk::ModifierType::CONTROL_MASK) {
                 let lower = keyval.to_lower();
+                if lower == gdk::Key::f {
+                    find_bar_revealer.set_reveal_child(true);
+                    search_entry.grab_focus();
+                    return glib::Propagation::Stop;
+                }
                 let mark_name = if lower == gdk::Key::b {
                     Some("bold")
                 } else if lower == gdk::Key::i {
@@ -389,6 +474,204 @@ fn build_window(app: &adw::Application) {
         }
     ));
     text_view.add_controller(key_controller);
+
+    for toggle in [&case_toggle, &whole_word_toggle, &regex_toggle] {
+        toggle.connect_toggled(glib::clone!(
+            #[weak]
+            buffer,
+            #[strong]
+            find_replace,
+            #[weak]
+            search_entry,
+            #[weak]
+            case_toggle,
+            #[weak]
+            whole_word_toggle,
+            #[weak]
+            regex_toggle,
+            #[weak]
+            match_position_label,
+            move |_| refresh_search(&buffer, &find_replace, &search_entry, &case_toggle, &whole_word_toggle, &regex_toggle, &match_position_label)
+        ));
+    }
+
+    search_entry.connect_search_changed(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        find_replace,
+        #[weak]
+        search_entry,
+        #[weak]
+        case_toggle,
+        #[weak]
+        whole_word_toggle,
+        #[weak]
+        regex_toggle,
+        #[weak]
+        match_position_label,
+        move |_| refresh_search(&buffer, &find_replace, &search_entry, &case_toggle, &whole_word_toggle, &regex_toggle, &match_position_label)
+    ));
+
+    // Enter simples = próximo match (via "activate" da GtkSearchEntry).
+    search_entry.connect_activate(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        find_replace,
+        #[weak]
+        match_position_label,
+        move |_| {
+            let mut fr = find_replace.borrow_mut();
+            if let Some(mut iter) = fr.go_next(&buffer) {
+                text_view.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.3);
+            }
+            let total = fr.match_count();
+            let current = fr.current_position().unwrap_or(0);
+            match_position_label.set_text(&format!("{current}/{total}"));
+        }
+    ));
+
+    // Shift+Enter = anterior; Esc = fecha a barra. GtkSearchEntry não
+    // distingue Shift no "activate", então precisa de um controlador de
+    // tecla à parte.
+    let search_key_controller = gtk::EventControllerKey::new();
+    search_key_controller.connect_key_pressed(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        find_replace,
+        #[weak]
+        match_position_label,
+        #[weak]
+        find_bar_revealer,
+        #[upgrade_or]
+        glib::Propagation::Proceed,
+        move |_, keyval, _keycode, modifiers| {
+            if keyval == gdk::Key::Escape {
+                find_bar_revealer.set_reveal_child(false);
+                find_replace.borrow_mut().clear(&buffer);
+                text_view.grab_focus();
+                return glib::Propagation::Stop;
+            }
+            if keyval == gdk::Key::Return && modifiers.contains(gdk::ModifierType::SHIFT_MASK) {
+                let mut fr = find_replace.borrow_mut();
+                if let Some(mut iter) = fr.go_previous(&buffer) {
+                    text_view.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.3);
+                }
+                let total = fr.match_count();
+                let current = fr.current_position().unwrap_or(0);
+                match_position_label.set_text(&format!("{current}/{total}"));
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        }
+    ));
+    search_entry.add_controller(search_key_controller);
+
+    find_next_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        find_replace,
+        #[weak]
+        match_position_label,
+        move |_| {
+            let mut fr = find_replace.borrow_mut();
+            if let Some(mut iter) = fr.go_next(&buffer) {
+                text_view.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.3);
+            }
+            let total = fr.match_count();
+            let current = fr.current_position().unwrap_or(0);
+            match_position_label.set_text(&format!("{current}/{total}"));
+        }
+    ));
+    find_prev_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        find_replace,
+        #[weak]
+        match_position_label,
+        move |_| {
+            let mut fr = find_replace.borrow_mut();
+            if let Some(mut iter) = fr.go_previous(&buffer) {
+                text_view.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.3);
+            }
+            let total = fr.match_count();
+            let current = fr.current_position().unwrap_or(0);
+            match_position_label.set_text(&format!("{current}/{total}"));
+        }
+    ));
+
+    replace_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        find_replace,
+        #[weak]
+        replace_entry,
+        #[weak]
+        search_entry,
+        #[weak]
+        case_toggle,
+        #[weak]
+        whole_word_toggle,
+        #[weak]
+        regex_toggle,
+        #[weak]
+        match_position_label,
+        move |_| {
+            find_replace.borrow().replace_current(&buffer, &replace_entry.text());
+            refresh_search(&buffer, &find_replace, &search_entry, &case_toggle, &whole_word_toggle, &regex_toggle, &match_position_label);
+        }
+    ));
+    replace_all_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        find_replace,
+        #[weak]
+        replace_entry,
+        #[weak]
+        search_entry,
+        #[weak]
+        case_toggle,
+        #[weak]
+        whole_word_toggle,
+        #[weak]
+        regex_toggle,
+        #[weak]
+        match_position_label,
+        move |_| {
+            find_replace.borrow().replace_all(&buffer, &replace_entry.text());
+            refresh_search(&buffer, &find_replace, &search_entry, &case_toggle, &whole_word_toggle, &regex_toggle, &match_position_label);
+        }
+    ));
+
+    find_close_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        find_replace,
+        #[weak]
+        find_bar_revealer,
+        move |_| {
+            find_bar_revealer.set_reveal_child(false);
+            find_replace.borrow_mut().clear(&buffer);
+            text_view.grab_focus();
+        }
+    ));
 
     // Menu de contexto do corretor ortográfico: GtkTextView só expõe um
     // `extra-menu` estático (GMenuModel), não um sinal dinâmico tipo
@@ -864,5 +1147,10 @@ mod tests {
         crate::formatting::tests::toggle_mark_applies_and_removes();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
+        crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
+        crate::find_replace::tests::navigation_wraps_around_circularly();
+        crate::find_replace::tests::replace_current_only_changes_the_current_match();
+        crate::find_replace::tests::replace_all_handles_different_length_replacement_without_corruption();
+        crate::find_replace::tests::clear_removes_highlights_and_resets_state();
     }
 }
