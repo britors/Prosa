@@ -392,6 +392,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "enchant"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dafd018f9ff5933b0cf9d89a095c31125890f2246952749cbaad230b537644db"
+dependencies = [
+ "enchant-sys",
+]
+
+[[package]]
+name = "enchant-sys"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97af59f7a6d8a217695598f23dc12051734322e60b58e5ca2f3a2fffa59ba34f"
+dependencies = [
+ "pkg-config",
+]
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -431,7 +449,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1524,6 +1542,7 @@ name = "prosa-gtk"
 version = "0.1.0"
 dependencies = [
  "cairo-rs",
+ "enchant",
  "glib",
  "gtk4",
  "libadwaita",
@@ -1594,7 +1613,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1747,7 +1766,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2052,7 +2071,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

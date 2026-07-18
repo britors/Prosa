@@ -10,6 +10,7 @@ mod ai_ui;
 mod formatting;
 mod live_pagination;
 mod print;
+mod spellcheck;
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -22,6 +23,7 @@ use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
 use live_pagination::{count_words_and_sentences, LivePagination};
+use spellcheck::{LiveSpellcheck, SpellChecker};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
 
@@ -110,6 +112,40 @@ fn update_status_bar(buffer: &gtk::TextBuffer, pagination: &Rc<LivePagination>, 
         if sentences == 1 { "" } else { "s" },
         if pages == 1 { "" } else { "s" },
     ));
+}
+
+/// Palavra sob um clique do menu de contexto, com o suficiente pra
+/// substituí-la por uma sugestão ou adicioná-la ao dicionário.
+#[derive(Clone)]
+struct PendingMisspelling {
+    word: String,
+    start_offset: i32,
+    end_offset: i32,
+    suggestions: Vec<String>,
+}
+
+/// Palavra sob o iterador dado, usando os limites de palavra nativos do
+/// GTK (podem incluir números/apóstrofos — mais permissivo que a
+/// tokenização por caracteres alfabéticos que `spellcheck::find_misspelled_ranges`
+/// usa pro sublinhado; a diferença nas bordas é aceitável aqui, é só pra
+/// resolver "qual palavra o usuário clicou").
+fn word_at_iter(buffer: &gtk::TextBuffer, iter: &gtk::TextIter) -> Option<(String, i32, i32)> {
+    if !iter.inside_word() {
+        return None;
+    }
+    let mut start = iter.clone();
+    if !start.starts_word() {
+        start.backward_word_start();
+    }
+    let mut end = iter.clone();
+    if !end.ends_word() {
+        end.forward_word_end();
+    }
+    let word = buffer.text(&start, &end, false).to_string();
+    if word.is_empty() {
+        return None;
+    }
+    Some((word, start.offset(), end.offset()))
 }
 
 /// Recria os indicadores de quebra de página no overlay, um por ponto de
@@ -217,6 +253,12 @@ fn build_window(app: &adw::Application) {
     ));
 
     let pagination = Rc::new(LivePagination::default());
+
+    let spellchecker = Rc::new(SpellChecker::new());
+    let live_spellcheck = Rc::new(LiveSpellcheck::new(spellchecker.clone()));
+    if !spellchecker.is_available() {
+        eprintln!("aviso: nenhum dicionário de corretor ortográfico encontrado (pt_BR/en_US) — sublinhado desativado");
+    }
 
     let status_label = gtk::Label::builder().xalign(0.0).margin_start(12).margin_end(12).margin_top(4).margin_bottom(4).build();
     status_label.add_css_class("dim-label");
@@ -348,6 +390,91 @@ fn build_window(app: &adw::Application) {
     ));
     text_view.add_controller(key_controller);
 
+    // Menu de contexto do corretor ortográfico: GtkTextView só expõe um
+    // `extra-menu` estático (GMenuModel), não um sinal dinâmico tipo
+    // "populate-popup" — então a palavra sob o clique é resolvida na mão,
+    // num gesto na fase de *captura* (roda antes do menu nativo abrir), e
+    // o `extra-menu` é reconstruído ali mesmo.
+    let pending_misspelling: Rc<RefCell<Option<PendingMisspelling>>> = Rc::new(RefCell::new(None));
+
+    let spellcheck_actions = gio::SimpleActionGroup::new();
+    for index in 0..spellcheck::MAX_SUGGESTIONS {
+        let action = gio::SimpleAction::new(&format!("suggest-{index}"), None);
+        action.connect_activate(glib::clone!(
+            #[weak]
+            buffer,
+            #[strong]
+            pending_misspelling,
+            move |_, _| {
+                let Some(pending) = pending_misspelling.borrow().clone() else { return };
+                if let Some(suggestion) = pending.suggestions.get(index) {
+                    let mut start = buffer.iter_at_offset(pending.start_offset);
+                    let mut end = buffer.iter_at_offset(pending.end_offset);
+                    buffer.delete(&mut start, &mut end);
+                    buffer.insert(&mut start, suggestion);
+                }
+            }
+        ));
+        spellcheck_actions.add_action(&action);
+    }
+    let add_word_action = gio::SimpleAction::new("add-word", None);
+    add_word_action.connect_activate(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        pending_misspelling,
+        #[strong]
+        spellchecker,
+        #[strong]
+        live_spellcheck,
+        move |_, _| {
+            let Some(pending) = pending_misspelling.borrow().clone() else { return };
+            spellchecker.add_to_dictionary(&pending.word);
+            live_spellcheck.schedule_recompute(&buffer);
+        }
+    ));
+    spellcheck_actions.add_action(&add_word_action);
+    text_view.insert_action_group("spellcheck", Some(&spellcheck_actions));
+
+    let right_click = gtk::GestureClick::new();
+    right_click.set_button(3);
+    right_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    right_click.connect_pressed(glib::clone!(
+        #[weak]
+        text_view,
+        #[weak]
+        buffer,
+        #[strong]
+        spellchecker,
+        #[strong]
+        pending_misspelling,
+        move |_, _n_press, x, y| {
+            *pending_misspelling.borrow_mut() = None;
+            let menu = gio::Menu::new();
+
+            let (buffer_x, buffer_y) = text_view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
+            if let Some(iter) = text_view.iter_at_location(buffer_x, buffer_y) {
+                if let Some((word, start_offset, end_offset)) = word_at_iter(&buffer, &iter) {
+                    if spellchecker.is_available() && !spellchecker.check(&word) {
+                        let suggestions = spellchecker.suggest(&word);
+                        if suggestions.is_empty() {
+                            menu.append(Some("Nenhuma sugestão"), None::<&str>);
+                        } else {
+                            for (index, suggestion) in suggestions.iter().enumerate() {
+                                menu.append(Some(suggestion), Some(&format!("spellcheck.suggest-{index}")));
+                            }
+                        }
+                        menu.append(Some("Adicionar ao dicionário"), Some("spellcheck.add-word"));
+                        *pending_misspelling.borrow_mut() =
+                            Some(PendingMisspelling { word, start_offset, end_offset, suggestions });
+                    }
+                }
+            }
+            text_view.set_extra_menu(Some(&menu));
+        }
+    ));
+    text_view.add_controller(right_click);
+
     update_status_bar(&buffer, &pagination, &status_label);
     buffer.connect_changed(glib::clone!(
         #[weak]
@@ -358,8 +485,11 @@ fn build_window(app: &adw::Application) {
         pagination,
         #[weak]
         status_label,
+        #[strong]
+        live_spellcheck,
         move |_| {
             update_status_bar(&buffer, &pagination, &status_label);
+            live_spellcheck.schedule_recompute(&buffer);
             pagination.schedule_recompute(
                 &text_view,
                 &buffer,
