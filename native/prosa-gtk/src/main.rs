@@ -106,7 +106,21 @@ fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<pros
     }
 }
 
+/// A "folha" é sempre branca (papel), como no restante do app — só a
+/// janela/botões ao redor seguem o tema claro/escuro do sistema.
+fn install_page_css() {
+    let provider = gtk::CssProvider::new();
+    provider.load_from_string(
+        "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }",
+    );
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+}
+
 fn build_window(app: &adw::Application) {
+    install_page_css();
+
     let text_view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::Word)
         .top_margin(24)
@@ -114,6 +128,7 @@ fn build_window(app: &adw::Application) {
         .left_margin(96)
         .right_margin(96)
         .build();
+    text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
 
@@ -515,9 +530,23 @@ fn spawn_export(
     ));
 }
 
+/// Por padrão, libadwaita já segue claro/escuro do sistema (via portal
+/// freedesktop). Se não der pra identificar nenhuma DE, força escuro em vez
+/// de cair no claro (fallback do próprio GTK quando o portal não existe).
+fn apply_theme_fallback() {
+    let has_known_desktop = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| !v.is_empty())
+        || std::env::var("DESKTOP_SESSION").is_ok_and(|v| !v.is_empty());
+    if !has_known_desktop {
+        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+    }
+}
+
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
-    app.connect_activate(build_window);
+    app.connect_activate(|app| {
+        apply_theme_fallback();
+        build_window(app);
+    });
     app.run()
 }
 
