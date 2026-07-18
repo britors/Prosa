@@ -1559,6 +1559,7 @@ dependencies = [
  "pangocairo",
  "prosa-doc",
  "regex",
+ "serde_json",
 ]
 
 [[package]]

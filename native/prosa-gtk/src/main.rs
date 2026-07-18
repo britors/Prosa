@@ -1,15 +1,17 @@
 //! Prosa nativo — casca GTK4 + libadwaita (MVP).
 //!
-//! Cobre o escopo do MVP da migração: shell nativo, editor de texto simples
-//! sobre `GtkTextView` (com negrito/itálico/sublinhado/tachado) e abrir/salvar
-//! o formato `.prosa` existente. Sem paginação, tabelas, imagens ou estrutura
-//! de bloco (títulos) ainda — isso é trabalho das fases seguintes (ver issues
-//! da epic "Migração do Prosa para Rust + GTK4").
+//! Cobre o escopo do MVP da migração: shell nativo, editor de texto rico
+//! sobre `GtkTextView` (negrito/itálico/sublinhado/tachado, títulos H1-H3,
+//! localizar/substituir, corretor ortográfico, IA assistida) e abrir/salvar
+//! o formato `.prosa` existente. Sem tabelas nem imagens ainda — isso é
+//! trabalho das fases seguintes (ver issues da epic "Migração do Prosa
+//! para Rust + GTK4").
 
 mod ai_ui;
 mod find_replace;
 mod formatting;
 mod live_pagination;
+mod outline;
 mod print;
 mod spellcheck;
 
@@ -23,7 +25,7 @@ use prosa_doc::{docx, odt, rtf};
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use find_replace::{FindReplace, SearchOptions};
-use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
+use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_heading_level, setup_heading_tags, setup_mark_tags, toggle_mark};
 use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
 
@@ -125,6 +127,31 @@ fn refresh_search(
     let total = fr.match_count();
     let current = fr.current_position().unwrap_or(0);
     match_position_label.set_text(&format!("{current}/{total}"));
+}
+
+/// Reconstrói a lista do painel de tópicos a partir dos títulos atuais do
+/// buffer, guardando a linha de cada item em `outline_lines` (na mesma
+/// ordem/índice das linhas do `GtkListBox`) pra navegação no clique.
+fn refresh_outline(buffer: &gtk::TextBuffer, outline_list: &gtk::ListBox, outline_lines: &Rc<RefCell<Vec<i32>>>) {
+    while let Some(row) = outline_list.row_at_index(0) {
+        outline_list.remove(&row);
+    }
+    let entries = outline::build_outline(buffer);
+    let mut lines = outline_lines.borrow_mut();
+    lines.clear();
+    for entry in entries {
+        let label = gtk::Label::builder()
+            .label(format!("{} {}", entry.number, entry.text))
+            .xalign(0.0)
+            .margin_start((entry.level as i32 - 1) * 12 + 8)
+            .margin_top(4)
+            .margin_bottom(4)
+            .margin_end(8)
+            .ellipsize(pango::EllipsizeMode::End)
+            .build();
+        outline_list.append(&label);
+        lines.push(entry.line);
+    }
 }
 
 /// Atualiza a barra de status com contagem de palavras, frases e páginas.
@@ -236,6 +263,7 @@ fn build_window(app: &adw::Application) {
     text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
+    setup_heading_tags(&buffer);
 
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -307,6 +335,20 @@ fn build_window(app: &adw::Application) {
     underline_button.set_tooltip_text(Some("Sublinhado (Ctrl+U)"));
     let strike_button = gtk::Button::from_icon_name("format-text-strikethrough-symbolic");
     strike_button.set_tooltip_text(Some("Tachado"));
+    let superscript_button = gtk::Button::from_icon_name("format-text-superscript-symbolic");
+    superscript_button.set_tooltip_text(Some("Sobrescrito"));
+    let subscript_button = gtk::Button::from_icon_name("format-text-subscript-symbolic");
+    subscript_button.set_tooltip_text(Some("Subscrito"));
+
+    let heading_menu = gio::Menu::new();
+    heading_menu.append(Some("Título 1"), Some("win.heading-1"));
+    heading_menu.append(Some("Título 2"), Some("win.heading-2"));
+    heading_menu.append(Some("Título 3"), Some("win.heading-3"));
+    heading_menu.append(Some("Parágrafo normal"), Some("win.heading-none"));
+    let heading_menu_button =
+        gtk::MenuButton::builder().icon_name("format-text-larger-symbolic").tooltip_text("Título do parágrafo").menu_model(&heading_menu).build();
+
+    let outline_toggle_button = gtk::ToggleButton::builder().icon_name("view-list-symbolic").tooltip_text("Painel de tópicos").build();
 
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
@@ -343,7 +385,11 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&italic_button);
     header_bar.pack_start(&underline_button);
     header_bar.pack_start(&strike_button);
+    header_bar.pack_start(&superscript_button);
+    header_bar.pack_start(&subscript_button);
+    header_bar.pack_start(&heading_menu_button);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_start(&outline_toggle_button);
     header_bar.pack_start(&ai_menu_button);
     header_bar.pack_end(&export_menu_button);
     header_bar.pack_end(&export_pdf_button);
@@ -395,19 +441,35 @@ fn build_window(app: &adw::Application) {
     let find_bar_revealer = gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideDown).child(&find_bar).build();
 
     let find_replace = Rc::new(RefCell::new(FindReplace::default()));
+    let outline_lines: Rc<RefCell<Vec<i32>>> = Rc::new(RefCell::new(Vec::new()));
+
+    // Painel de tópicos: lista de títulos (H1-H3) do documento, clicável
+    // pra navegar. Escondido por padrão, revelado pelo botão da toolbar.
+    let outline_list = gtk::ListBox::new();
+    outline_list.add_css_class("navigation-sidebar");
+    outline_list.set_selection_mode(gtk::SelectionMode::None);
+    let outline_scrolled = gtk::ScrolledWindow::builder().child(&outline_list).vexpand(true).width_request(220).build();
+    let outline_revealer =
+        gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideRight).reveal_child(false).child(&outline_scrolled).build();
 
     // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
     // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
     // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
     // simples como conteúdo evita esse caminho de negociação de tamanho.
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content_box.set_hexpand(true);
     content_box.append(&overlay);
     content_box.append(&status_label);
+
+    let main_split = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    main_split.append(&outline_revealer);
+    main_split.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    main_split.append(&content_box);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_top_bar(&find_bar_revealer);
-    toolbar_view.set_content(Some(&content_box));
+    toolbar_view.set_content(Some(&main_split));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -437,6 +499,77 @@ fn build_window(app: &adw::Application) {
         buffer,
         move |_| toggle_mark(&buffer, "strike")
     ));
+    superscript_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "superscript")
+    ));
+    subscript_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "subscript")
+    ));
+
+    outline_toggle_button.connect_toggled(glib::clone!(
+        #[weak]
+        outline_revealer,
+        move |button| outline_revealer.set_reveal_child(button.is_active())
+    ));
+
+    outline_list.connect_row_activated(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        text_view,
+        #[strong]
+        outline_lines,
+        move |_, row| {
+            if let Some(&line) = outline_lines.borrow().get(row.index() as usize) {
+                let mut iter = buffer.iter_at_line(line).unwrap_or_else(|| buffer.start_iter());
+                buffer.place_cursor(&iter);
+                text_view.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.1);
+            }
+        }
+    ));
+
+    for (action_name, level) in [("heading-1", Some(1u8)), ("heading-2", Some(2)), ("heading-3", Some(3)), ("heading-none", None)] {
+        let action = gio::SimpleAction::new(action_name, None);
+        action.connect_activate(glib::clone!(
+            #[weak]
+            buffer,
+            #[weak]
+            text_view,
+            #[strong]
+            pagination,
+            #[weak]
+            outline_list,
+            #[strong]
+            outline_lines,
+            #[weak]
+            status_label,
+            move |_, _| {
+                set_heading_level(&buffer, current_line(&buffer), level);
+                // Aplicar/remover a tag de título não dispara `changed` (só
+                // insere/remove conteúdo dispara isso) — precisa atualizar
+                // o esboço e a paginação (o tamanho da fonte mudou) na mão.
+                refresh_outline(&buffer, &outline_list, &outline_lines);
+                pagination.schedule_recompute(
+                    &text_view,
+                    &buffer,
+                    glib::clone!(
+                        #[weak]
+                        buffer,
+                        #[strong]
+                        pagination,
+                        #[weak]
+                        status_label,
+                        move || update_status_bar(&buffer, &pagination, &status_label)
+                    ),
+                );
+            }
+        ));
+        window.add_action(&action);
+    }
 
     let key_controller = gtk::EventControllerKey::new();
     key_controller.connect_key_pressed(glib::clone!(
@@ -759,6 +892,7 @@ fn build_window(app: &adw::Application) {
     text_view.add_controller(right_click);
 
     update_status_bar(&buffer, &pagination, &status_label);
+    refresh_outline(&buffer, &outline_list, &outline_lines);
     buffer.connect_changed(glib::clone!(
         #[weak]
         text_view,
@@ -770,8 +904,13 @@ fn build_window(app: &adw::Application) {
         status_label,
         #[strong]
         live_spellcheck,
+        #[weak]
+        outline_list,
+        #[strong]
+        outline_lines,
         move |_| {
             update_status_bar(&buffer, &pagination, &status_label);
+            refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
             pagination.schedule_recompute(
                 &text_view,
@@ -1145,6 +1284,12 @@ mod tests {
         crate::formatting::tests::round_trip_preserves_marks();
         crate::formatting::tests::multiple_paragraphs_round_trip();
         crate::formatting::tests::toggle_mark_applies_and_removes();
+        crate::formatting::tests::heading_round_trips_with_level();
+        crate::formatting::tests::heading_levels_above_three_are_clamped_down();
+        crate::formatting::tests::set_heading_level_toggles_between_paragraph_and_heading();
+        crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();
+        crate::outline::tests::ignores_lines_without_heading();
+        crate::outline::tests::empty_document_has_no_outline();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
