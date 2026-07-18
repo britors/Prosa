@@ -7,6 +7,7 @@
 //! da epic "Migração do Prosa para Rust + GTK4").
 
 mod formatting;
+mod print;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -24,6 +25,11 @@ const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
 struct DocumentState {
     path: Option<PathBuf>,
     metadata: DocumentMetadata,
+    /// HTML de cabeçalho/rodapé carregado de um `.prosa` existente. A UI
+    /// nativa ainda não permite editá-los — são só preservados ao salvar e
+    /// usados (como texto puro) na exportação para PDF.
+    header: Option<String>,
+    footer: Option<String>,
 }
 
 fn now_iso() -> String {
@@ -42,6 +48,8 @@ fn new_document_state() -> DocumentState {
             created_at: now_iso(),
             modified_at: now_iso(),
         },
+        header: None,
+        footer: None,
     }
 }
 
@@ -94,6 +102,9 @@ fn build_window(app: &adw::Application) {
     let strike_button = gtk::Button::from_icon_name("format-text-strikethrough-symbolic");
     strike_button.set_tooltip_text(Some("Tachado"));
 
+    let export_pdf_button = gtk::Button::from_icon_name("document-export-symbolic");
+    export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
+
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&open_button);
     header_bar.pack_start(&save_button);
@@ -102,6 +113,7 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&italic_button);
     header_bar.pack_start(&underline_button);
     header_bar.pack_start(&strike_button);
+    header_bar.pack_end(&export_pdf_button);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
@@ -204,6 +216,8 @@ fn build_window(app: &adw::Application) {
                             *state.borrow_mut() = DocumentState {
                                 path: Some(path),
                                 metadata: prosa_file.metadata,
+                                header: prosa_file.header,
+                                footer: prosa_file.footer,
                             };
                         }
                         Err(err) => {
@@ -249,8 +263,8 @@ fn build_window(app: &adw::Application) {
                         content: doc_from_buffer(&buffer),
                         metadata: current.metadata.clone(),
                         notes: None,
-                        header: None,
-                        footer: None,
+                        header: current.header.clone(),
+                        footer: current.footer.clone(),
                     };
                     match prosa_file.save(&path) {
                         Ok(()) => {
@@ -298,6 +312,62 @@ fn build_window(app: &adw::Application) {
         }
     ));
 
+    export_pdf_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[strong]
+        state,
+        move |_| {
+            let default_name = format!("{}.pdf", state.borrow().metadata.title);
+            let dialog = gtk::FileDialog::builder()
+                .title("Exportar PDF")
+                .modal(true)
+                .initial_name(default_name)
+                .build();
+            let filters = gio::ListStore::new::<gtk::FileFilter>();
+            let pdf_filter = gtk::FileFilter::new();
+            pdf_filter.set_name(Some("PDF"));
+            pdf_filter.add_suffix("pdf");
+            filters.append(&pdf_filter);
+            dialog.set_filters(Some(&filters));
+
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                window,
+                #[weak]
+                buffer,
+                #[strong]
+                state,
+                async move {
+                    let Ok(file) = dialog.save_future(Some(&window)).await else { return };
+                    let Some(path) = file.path() else { return };
+
+                    let doc = doc_from_buffer(&buffer);
+                    let current = state.borrow();
+                    let result = print::export_to_pdf(
+                        &window,
+                        &path,
+                        &doc,
+                        current.header.as_deref(),
+                        current.footer.as_deref(),
+                    );
+                    drop(current);
+
+                    if let Err(err) = result {
+                        let alert = adw::AlertDialog::new(
+                            Some("Não foi possível exportar o PDF"),
+                            Some(&err.to_string()),
+                        );
+                        alert.add_response("ok", "OK");
+                        alert.present(Some(&window));
+                    }
+                }
+            ));
+        }
+    ));
+
     window.present();
 }
 
@@ -305,4 +375,22 @@ fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
     app.connect_activate(build_window);
     app.run()
+}
+
+/// GTK só aceita ser inicializado numa única thread do processo, mas o
+/// harness padrão do Rust roda cada `#[test]` em sua própria thread — por
+/// isso todos os testes que tocam GTK (deste e dos outros módulos) são
+/// chamados a partir deste único `#[test]`, em vez de terem o atributo cada
+/// um no seu módulo.
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn all_gtk_dependent_tests() {
+        let _ = gtk::init();
+        crate::formatting::tests::round_trip_preserves_marks();
+        crate::formatting::tests::multiple_paragraphs_round_trip();
+        crate::formatting::tests::toggle_mark_applies_and_removes();
+        crate::print::tests::page_breaks_split_when_content_overflows();
+        crate::print::tests::export_produces_multi_page_pdf_with_pagination();
+    }
 }

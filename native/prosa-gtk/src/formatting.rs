@@ -18,6 +18,58 @@ use prosa_doc::{Mark, TipTapNode};
 /// Nomes de mark suportados, iguais aos tipos registrados no editor Electron.
 pub const MARK_NAMES: [&str; 4] = ["bold", "italic", "underline", "strike"];
 
+/// Escapa texto para uso dentro de Pango markup (`set_markup`).
+fn escape_markup(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+fn markup_for_node(node: &TipTapNode, out: &mut String) {
+    if let Some(text) = &node.text {
+        let mut open = String::new();
+        let mut close = String::new();
+        if let Some(marks) = &node.marks {
+            for mark in marks {
+                let tag = match mark.kind.as_str() {
+                    "bold" => Some("b"),
+                    "italic" => Some("i"),
+                    "underline" => Some("u"),
+                    "strike" => Some("s"),
+                    _ => None,
+                };
+                if let Some(tag) = tag {
+                    open.push('<');
+                    open.push_str(tag);
+                    open.push('>');
+                    close.insert_str(0, &format!("</{tag}>"));
+                }
+            }
+        }
+        out.push_str(&open);
+        out.push_str(&escape_markup(text));
+        out.push_str(&close);
+    }
+    if let Some(children) = &node.content {
+        for child in children {
+            markup_for_node(child, out);
+        }
+    }
+}
+
+/// Constrói Pango markup (`<b>`/`<i>`/`<u>`/`<s>`) a partir do `doc` TipTap,
+/// uma linha por bloco de nível superior — usado na exportação para PDF.
+pub fn markup_from_doc(doc: &TipTapNode) -> String {
+    let mut out = String::new();
+    if let Some(blocks) = &doc.content {
+        for (index, block) in blocks.iter().enumerate() {
+            if index > 0 {
+                out.push('\n');
+            }
+            markup_for_node(block, &mut out);
+        }
+    }
+    out
+}
+
 /// Cria e registra na tag table do buffer uma `GtkTextTag` para cada mark suportada.
 pub fn setup_mark_tags(buffer: &TextBuffer) {
     let bold = TextTag::builder()
@@ -195,23 +247,14 @@ pub fn load_doc_into_buffer(buffer: &TextBuffer, doc: &TipTapNode) {
     }
 }
 
+/// Testes que tocam GTK real (`GtkTextBuffer`). Não têm `#[test]` próprio:
+/// GTK só aceita ser inicializado numa única thread do processo, e o harness
+/// padrão do Rust roda cada `#[test]` em sua própria thread — por isso todos
+/// os testes que dependem de GTK, de qualquer módulo, são chamados a partir
+/// de um único `#[test]` central em `tests.rs`.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-
-    fn init_gtk() {
-        let _ = gtk::init();
-    }
-
-    /// Um único #[test]: GTK só pode ser inicializado numa thread do
-    /// processo, e o harness de testes usa uma thread nova por #[test].
-    #[test]
-    fn buffer_mark_round_trips() {
-        init_gtk();
-        round_trip_preserves_marks();
-        multiple_paragraphs_round_trip();
-        toggle_mark_applies_and_removes();
-    }
 
     fn first_run_marks(doc: &TipTapNode) -> Vec<String> {
         doc.content.as_ref().unwrap()[0]
@@ -224,7 +267,7 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn toggle_mark_applies_and_removes() {
+    pub(crate) fn toggle_mark_applies_and_removes() {
         let buffer = TextBuffer::new(None);
         setup_mark_tags(&buffer);
         buffer.set_text("palavra simples");
@@ -247,7 +290,7 @@ mod tests {
         );
     }
 
-    fn round_trip_preserves_marks() {
+    pub(crate) fn round_trip_preserves_marks() {
         let buffer = TextBuffer::new(None);
         setup_mark_tags(&buffer);
 
@@ -272,7 +315,7 @@ mod tests {
         assert_eq!(rebuilt, original);
     }
 
-    fn multiple_paragraphs_round_trip() {
+    pub(crate) fn multiple_paragraphs_round_trip() {
         let buffer = TextBuffer::new(None);
         setup_mark_tags(&buffer);
 
