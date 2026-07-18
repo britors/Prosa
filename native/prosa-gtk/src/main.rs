@@ -1,17 +1,22 @@
 //! Prosa nativo — casca GTK4 + libadwaita (MVP).
 //!
 //! Cobre o escopo do MVP da migração: shell nativo, editor de texto simples
-//! sobre `GtkTextView` e abrir/salvar o formato `.prosa` existente. Sem
-//! paginação, tabelas, imagens ou formatação rica ainda — isso é trabalho das
-//! fases seguintes (ver issues da epic "Migração do Prosa para Rust + GTK4").
+//! sobre `GtkTextView` (com negrito/itálico/sublinhado/tachado) e abrir/salvar
+//! o formato `.prosa` existente. Sem paginação, tabelas, imagens ou estrutura
+//! de bloco (títulos) ainda — isso é trabalho das fases seguintes (ver issues
+//! da epic "Migração do Prosa para Rust + GTK4").
+
+mod formatting;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::{gio, glib};
-use prosa_doc::{DocumentMetadata, ProsaFile, TipTapNode};
+use gtk::{gdk, gio, glib};
+use prosa_doc::{DocumentMetadata, ProsaFile};
+
+use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
 
@@ -63,6 +68,7 @@ fn build_window(app: &adw::Application) {
         .right_margin(96)
         .build();
     let buffer = text_view.buffer();
+    setup_mark_tags(&buffer);
 
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -79,9 +85,23 @@ fn build_window(app: &adw::Application) {
     let save_button = gtk::Button::from_icon_name("document-save-symbolic");
     save_button.set_tooltip_text(Some("Salvar"));
 
+    let bold_button = gtk::Button::from_icon_name("format-text-bold-symbolic");
+    bold_button.set_tooltip_text(Some("Negrito (Ctrl+B)"));
+    let italic_button = gtk::Button::from_icon_name("format-text-italic-symbolic");
+    italic_button.set_tooltip_text(Some("Itálico (Ctrl+I)"));
+    let underline_button = gtk::Button::from_icon_name("format-text-underline-symbolic");
+    underline_button.set_tooltip_text(Some("Sublinhado (Ctrl+U)"));
+    let strike_button = gtk::Button::from_icon_name("format-text-strikethrough-symbolic");
+    strike_button.set_tooltip_text(Some("Tachado"));
+
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&open_button);
     header_bar.pack_start(&save_button);
+    header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_start(&bold_button);
+    header_bar.pack_start(&italic_button);
+    header_bar.pack_start(&underline_button);
+    header_bar.pack_start(&strike_button);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
@@ -94,6 +114,55 @@ fn build_window(app: &adw::Application) {
         .default_height(700)
         .content(&toolbar_view)
         .build();
+
+    bold_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "bold")
+    ));
+    italic_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "italic")
+    ));
+    underline_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "underline")
+    ));
+    strike_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| toggle_mark(&buffer, "strike")
+    ));
+
+    let key_controller = gtk::EventControllerKey::new();
+    key_controller.connect_key_pressed(glib::clone!(
+        #[weak]
+        buffer,
+        #[upgrade_or]
+        glib::Propagation::Proceed,
+        move |_, keyval, _keycode, modifiers| {
+            if modifiers.contains(gdk::ModifierType::CONTROL_MASK) {
+                let lower = keyval.to_lower();
+                let mark_name = if lower == gdk::Key::b {
+                    Some("bold")
+                } else if lower == gdk::Key::i {
+                    Some("italic")
+                } else if lower == gdk::Key::u {
+                    Some("underline")
+                } else {
+                    None
+                };
+                if let Some(name) = mark_name {
+                    toggle_mark(&buffer, name);
+                    return glib::Propagation::Stop;
+                }
+            }
+            glib::Propagation::Proceed
+        }
+    ));
+    text_view.add_controller(key_controller);
 
     open_button.connect_clicked(glib::clone!(
         #[weak]
@@ -130,7 +199,7 @@ fn build_window(app: &adw::Application) {
                     let Some(path) = file.path() else { return };
                     match ProsaFile::load(&path) {
                         Ok(prosa_file) => {
-                            buffer.set_text(&prosa_file.content.plain_text());
+                            load_doc_into_buffer(&buffer, &prosa_file.content);
                             title_widget.set_subtitle(&prosa_file.metadata.title);
                             *state.borrow_mut() = DocumentState {
                                 path: Some(path),
@@ -161,24 +230,23 @@ fn build_window(app: &adw::Application) {
         #[strong]
         state,
         move |_| {
-            let (start, end) = buffer.bounds();
-            let text = buffer.text(&start, &end, false).to_string();
-
             let existing_path = state.borrow().path.clone();
 
             let finish_save = glib::clone!(
                 #[weak]
+                window,
+                #[weak]
+                buffer,
+                #[weak]
                 title_widget,
                 #[strong]
                 state,
-                #[weak]
-                window,
-                move |path: PathBuf, text: String| {
+                move |path: PathBuf| {
                     let mut current = state.borrow_mut();
                     current.metadata.modified_at = now_iso();
                     let prosa_file = ProsaFile {
                         version: 1,
-                        content: TipTapNode::doc_from_plain_text(&text),
+                        content: doc_from_buffer(&buffer),
                         metadata: current.metadata.clone(),
                         notes: None,
                         header: None,
@@ -203,7 +271,7 @@ fn build_window(app: &adw::Application) {
             );
 
             if let Some(path) = existing_path {
-                finish_save(path, text);
+                finish_save(path);
                 return;
             }
 
@@ -222,7 +290,7 @@ fn build_window(app: &adw::Application) {
                 async move {
                     if let Ok(file) = dialog.save_future(Some(&window)).await {
                         if let Some(path) = file.path() {
-                            finish_save(path, text);
+                            finish_save(path);
                         }
                     }
                 }

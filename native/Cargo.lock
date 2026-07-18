@@ -523,6 +523,7 @@ dependencies = [
  "glib",
  "gtk4",
  "libadwaita",
+ "pango",
  "prosa-doc",
 ]
 
