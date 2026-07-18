@@ -6,11 +6,12 @@
 //! de bloco (títulos) ainda — isso é trabalho das fases seguintes (ver issues
 //! da epic "Migração do Prosa para Rust + GTK4").
 
+mod ai_ui;
 mod formatting;
 mod live_pagination;
 mod print;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -238,6 +239,20 @@ fn build_window(app: &adw::Application) {
     let strike_button = gtk::Button::from_icon_name("format-text-strikethrough-symbolic");
     strike_button.set_tooltip_text(Some("Tachado"));
 
+    let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
+
+    let ai_menu = gio::Menu::new();
+    let ai_actions_section = gio::Menu::new();
+    for index in 0..ai_ui::ACTIONS_MENU.len() {
+        let (label, _) = ai_ui::ACTIONS_MENU[index];
+        ai_actions_section.append(Some(label), Some(&format!("win.ai-action-{index}")));
+    }
+    ai_menu.append_section(None, &ai_actions_section);
+    let ai_settings_section = gio::Menu::new();
+    ai_settings_section.append(Some("Configurar IA..."), Some("win.ai-settings"));
+    ai_menu.append_section(None, &ai_settings_section);
+    let ai_menu_button = gtk::MenuButton::builder().label("IA").tooltip_text("Ações de IA").menu_model(&ai_menu).build();
+
     let export_pdf_button = gtk::Button::from_icon_name("document-export-symbolic");
     export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
 
@@ -259,6 +274,8 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&italic_button);
     header_bar.pack_start(&underline_button);
     header_bar.pack_start(&strike_button);
+    header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_start(&ai_menu_button);
     header_bar.pack_end(&export_menu_button);
     header_bar.pack_end(&export_pdf_button);
 
@@ -604,6 +621,33 @@ fn build_window(app: &adw::Application) {
             state,
             move |_, _| {
                 spawn_export(window.clone(), buffer.clone(), state.clone(), format_label, extension, filter.clone(), write_fn.clone());
+            }
+        ));
+        window.add_action(&action);
+    }
+
+    let ai_settings_action = gio::SimpleAction::new("ai-settings", None);
+    ai_settings_action.connect_activate(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        ai_provider,
+        move |_, _| ai_ui::open_settings_dialog(&window, &ai_provider)
+    ));
+    window.add_action(&ai_settings_action);
+
+    for index in 0..ai_ui::ACTIONS_MENU.len() {
+        let action = gio::SimpleAction::new(&format!("ai-action-{index}"), None);
+        action.connect_activate(glib::clone!(
+            #[weak]
+            window,
+            #[weak]
+            buffer,
+            #[strong]
+            ai_provider,
+            move |_, _| {
+                let (_, ai_action) = ai_ui::ACTIONS_MENU[index];
+                ai_ui::run_action(&window, &buffer, ai_provider.get(), ai_action);
             }
         ));
         window.add_action(&action);

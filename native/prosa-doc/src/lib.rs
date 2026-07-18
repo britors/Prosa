@@ -10,6 +10,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod ai;
 pub mod docx;
 pub mod odt;
 pub mod rtf;
