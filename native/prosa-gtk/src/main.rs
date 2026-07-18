@@ -111,6 +111,28 @@ fn update_status_bar(buffer: &gtk::TextBuffer, pagination: &Rc<LivePagination>, 
     ));
 }
 
+/// Recria os indicadores de quebra de página no overlay, um por ponto de
+/// quebra do último recálculo (ver `LivePagination`). Cada indicador é um
+/// widget comum, sem nenhuma relação com o buffer de texto.
+fn sync_break_lines(overlay: &gtk::Overlay, break_line_widgets: &Rc<RefCell<Vec<(gtk::Widget, i32)>>>, breaks: &[i32]) {
+    let mut widgets = break_line_widgets.borrow_mut();
+    for (widget, _) in widgets.drain(..) {
+        overlay.remove_overlay(&widget);
+    }
+    for (index, y) in breaks.iter().enumerate() {
+        let label = gtk::Label::new(Some(&format!("· Página {} ·", index + 2)));
+        label.add_css_class("prosa-page-break-label");
+        let line = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Start).build();
+        line.add_css_class("prosa-page-break-line");
+        line.append(&label);
+        line.set_can_target(false);
+        overlay.add_overlay(&line);
+        widgets.push((line.upcast::<gtk::Widget>(), *y));
+    }
+    drop(widgets);
+    overlay.queue_allocate();
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -129,7 +151,17 @@ fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
-         scrolledwindow.prosa-desk { background-color: #2e2e2e; }",
+         scrolledwindow.prosa-desk { background-color: #2e2e2e; }\n\
+         box.prosa-page-break-line {\n\
+             background-color: rgba(46, 46, 46, 0.85);\n\
+             border-top: 1px solid rgba(0, 0, 0, 0.35);\n\
+             border-bottom: 1px solid rgba(0, 0, 0, 0.35);\n\
+             padding: 4px 0;\n\
+         }\n\
+         label.prosa-page-break-label {\n\
+             color: #d8d8d8;\n\
+             font-size: 0.8em;\n\
+         }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -159,6 +191,37 @@ fn build_window(app: &adw::Application) {
         .vexpand(true)
         .build();
     scrolled.add_css_class("prosa-desk");
+
+    // As linhas de quebra de página flutuam por cima do texto (GtkOverlay),
+    // sem inserir nada no buffer — ver o histórico em live_pagination.rs.
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&scrolled));
+
+    let break_line_widgets: Rc<RefCell<Vec<(gtk::Widget, i32)>>> = Rc::new(RefCell::new(Vec::new()));
+
+    overlay.connect_get_child_position(glib::clone!(
+        #[weak]
+        text_view,
+        #[strong]
+        break_line_widgets,
+        #[upgrade_or]
+        None,
+        move |overlay, widget| {
+            let buffer_y = break_line_widgets.borrow().iter().find(|(w, _)| w == widget).map(|(_, y)| *y)?;
+            let (_, window_y) = text_view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, buffer_y);
+            #[allow(deprecated)]
+            let (_, oy) = text_view.translate_coordinates(overlay, 0.0, window_y as f64)?;
+            Some(gdk::Rectangle::new(0, oy.round() as i32, overlay.width(), 28))
+        }
+    ));
+
+    // A rolagem não realoca o overlay sozinha (ele não muda de tamanho), só
+    // reposiciona os filhos quando algo pede uma realocação explicitamente.
+    scrolled.vadjustment().connect_value_changed(glib::clone!(
+        #[weak]
+        overlay,
+        move |_| overlay.queue_allocate()
+    ));
 
     let pagination = Rc::new(LivePagination::default());
 
@@ -212,7 +275,7 @@ fn build_window(app: &adw::Application) {
     // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
     // simples como conteúdo evita esse caminho de negociação de tamanho.
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content_box.append(&scrolled);
+    content_box.append(&overlay);
     content_box.append(&status_label);
 
     let toolbar_view = adw::ToolbarView::new();
@@ -298,7 +361,14 @@ fn build_window(app: &adw::Application) {
                     pagination,
                     #[weak]
                     status_label,
-                    move || update_status_bar(&buffer, &pagination, &status_label)
+                    #[weak]
+                    overlay,
+                    #[strong]
+                    break_line_widgets,
+                    move || {
+                        update_status_bar(&buffer, &pagination, &status_label);
+                        sync_break_lines(&overlay, &break_line_widgets, &pagination.break_points_buffer_y());
+                    }
                 ),
             );
         }

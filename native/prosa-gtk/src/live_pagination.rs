@@ -1,35 +1,48 @@
-//! Simulação de páginas A4 na tela.
+//! Paginação A4 ao vivo na tela.
 //!
 //! A "folha" (`GtkTextView`) fica com largura fixa e fundo branco,
 //! centralizada sobre um fundo escuro (a "mesa" ao redor) — ver
-//! `install_page_css` em `main.rs`. Ao ultrapassar a altura de conteúdo de
-//! uma página A4, um espaço extra é aplicado à última linha da página via
-//! `GtkTextTag` (`pixels-below-lines`), simulando a quebra para a próxima
-//! folha.
+//! `install_page_css` em `main.rs`.
 //!
-//! Uma primeira versão tentava inserir um widget de verdade no meio do
-//! fluxo do texto via `GtkTextChildAnchor`. Isso entrou num loop de
-//! remedição do GTK (o widget some sob medição, o texto fica maior,
-//! remede, aumenta de novo — sem nunca convergir) e travou o processo. Uma
-//! `GtkTextTag` com `pixels-below-lines` não insere nem remove conteúdo do
-//! buffer (só marca um trecho existente), então não dispara `changed` nem
-//! participa desse tipo de realimentação — só custa não ter uma cor escura
-//! distinta no vão, apenas espaço em branco extra.
+//! Este módulo só faz a *medição*: onde (em coordenadas de buffer) cada
+//! página A4 termina, andando linha visual por linha visual via
+//! `TextView::forward_display_line` + `iter_location` (soma corretamente
+//! parágrafos que ocupam várias linhas na tela — uma versão anterior usava
+//! só `line_yrange`, que mede a linha *visual*, e por isso nunca via quebra
+//! num parágrafo longo). A parte visual (as linhas de quebra desenhadas por
+//! cima do texto) é responsabilidade de `main.rs`, via um `GtkOverlay`.
 //!
-//! Diferente da paginação de exportação (`print.rs`, que opera sobre um
-//! `pango::Layout` isolado só na hora de gerar o PDF), esta roda ao vivo
-//! sobre o próprio `GtkTextView` em edição, medindo a altura real de cada
-//! linha via `TextView::line_yrange`. É reconstruída do zero a cada
-//! recálculo (remove toda a marcação, remede, reaplica), então não faz
-//! tentativa de atualização incremental — aceitável para os tamanhos de
-//! documento do MVP.
+//! ## Duas abordagens de indicador visual descartadas antes desta
+//!
+//! 1ª tentativa: inserir um widget de verdade no meio do texto via
+//! `GtkTextChildAnchor`. Entrou num loop de remedição do GTK (a altura
+//! exigida da `TextView` crescia sem parar, nunca convergindo) e travou o
+//! processo.
+//!
+//! 2ª tentativa: `GtkTextTag` com `pixels-below-lines` na última linha de
+//! cada página (não insere/remove conteúdo do buffer, então não tem o
+//! problema da 1ª). Mas essa propriedade só se aplica a *parágrafos*
+//! inteiros — não dá pra quebrar no meio de um parágrafo longo (comum em
+//! prosa real), então documentos com poucos parágrafos grandes nunca
+//! ganhavam quebra nenhuma.
+//!
+//! Um `GtkOverlay` com widgets flutuantes (a abordagem atual) resolve os
+//! dois problemas: não toca o buffer e funciona em qualquer ponto, não só
+//! em fronteira de parágrafo. Uma suspeita inicial de que o `GtkOverlay`
+//! também travava (mesmo loop de remedição da 1ª tentativa) não se
+//! confirmou: era contaminação de teste — invocar o binário repetidamente
+//! reativa a mesma instância do GApplication em vez de abrir um processo
+//! novo, então os testes estavam medindo o app real sendo redimensionado
+//! na tela, não um bug determinístico. Confirmado estável em 10+ execuções
+//! isoladas (`application_id` só do teste) com um documento de estresse
+//! (parágrafo único de ~250 frases).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
 use gtk::prelude::*;
-use gtk::{glib, TextBuffer, TextTag, TextView};
+use gtk::{glib, TextBuffer, TextView};
 
 /// A4 a 96dpi (referência padrão do desktop GTK sem escala de HiDPI).
 pub const PAGE_WIDTH_PX: i32 = 794;
@@ -42,34 +55,25 @@ pub const MARGIN_BOTTOM_PX: i32 = 94;
 pub const MARGIN_LEFT_PX: i32 = 76;
 pub const MARGIN_RIGHT_PX: i32 = 76;
 
-const PAGE_BREAK_GAP_PX: i32 = 96;
 const PAGE_CONTENT_HEIGHT_PX: i32 = PAGE_HEIGHT_PX - MARGIN_TOP_PX - MARGIN_BOTTOM_PX;
-const PAGE_BREAK_TAG_NAME: &str = "prosa-page-break";
 
-/// Estado vivo da paginação: quantas páginas o último recálculo encontrou.
+/// Estado vivo da paginação: os pontos de quebra (em coordenadas de buffer,
+/// eixo Y) encontrados no último recálculo.
+#[derive(Default)]
 pub struct LivePagination {
     page_count: Cell<usize>,
+    break_points_buffer_y: RefCell<Vec<i32>>,
     debounce_source: RefCell<Option<glib::SourceId>>,
-}
-
-impl Default for LivePagination {
-    fn default() -> Self {
-        LivePagination { page_count: Cell::new(1), debounce_source: RefCell::new(None) }
-    }
 }
 
 impl LivePagination {
     pub fn page_count(&self) -> usize {
-        self.page_count.get()
+        self.page_count.get().max(1)
     }
 
-    fn ensure_tag(buffer: &TextBuffer) -> TextTag {
-        if let Some(tag) = buffer.tag_table().lookup(PAGE_BREAK_TAG_NAME) {
-            return tag;
-        }
-        let tag = TextTag::builder().name(PAGE_BREAK_TAG_NAME).pixels_below_lines(PAGE_BREAK_GAP_PX).build();
-        buffer.tag_table().add(&tag);
-        tag
+    /// Coordenadas Y (de buffer) de cada quebra, do último recálculo.
+    pub fn break_points_buffer_y(&self) -> Vec<i32> {
+        self.break_points_buffer_y.borrow().clone()
     }
 
     /// Agenda um recálculo com debounce (250ms) — chamar a cada `changed` do
@@ -91,39 +95,24 @@ impl LivePagination {
     }
 
     fn recompute(&self, text_view: &TextView, buffer: &TextBuffer) {
-        let tag = Self::ensure_tag(buffer);
+        let mut iter = buffer.start_iter();
+        let mut page_start_y = text_view.iter_location(&iter).y();
+        let mut breaks = Vec::new();
 
-        // Remove a marcação inteira antes de remedir do zero — sem isso, o
-        // espaço já aplicado por um recálculo anterior distorceria a
-        // medição das linhas no próximo.
-        let (start, end) = buffer.bounds();
-        buffer.remove_tag(&tag, &start, &end);
-
-        let line_count = buffer.line_count();
-        let mut cumulative = 0i32;
-        let mut break_after_lines = Vec::new();
-        for line in 0..line_count {
-            let Some(iter) = buffer.iter_at_line(line) else { continue };
-            let (_, height) = text_view.line_yrange(&iter);
-            if height <= 0 {
-                continue;
+        loop {
+            let rect = text_view.iter_location(&iter);
+            let line_bottom = rect.y() + rect.height();
+            if line_bottom - page_start_y > PAGE_CONTENT_HEIGHT_PX {
+                breaks.push(rect.y());
+                page_start_y = rect.y();
             }
-            if cumulative > 0 && cumulative + height > PAGE_CONTENT_HEIGHT_PX {
-                break_after_lines.push(line - 1);
-                cumulative = height;
-            } else {
-                cumulative += height;
+            if !text_view.forward_display_line(&mut iter) {
+                break;
             }
         }
 
-        for line in &break_after_lines {
-            let Some(line_start) = buffer.iter_at_line(*line) else { continue };
-            let line_end = if *line + 1 < line_count { buffer.iter_at_line(*line + 1) } else { None };
-            let line_end = line_end.unwrap_or_else(|| buffer.end_iter());
-            buffer.apply_tag(&tag, &line_start, &line_end);
-        }
-
-        self.page_count.set(break_after_lines.len() + 1);
+        self.page_count.set(breaks.len() + 1);
+        *self.break_points_buffer_y.borrow_mut() = breaks;
     }
 }
 
