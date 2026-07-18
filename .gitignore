@@ -26,3 +26,6 @@ Thumbs.db
 
 packaging/
 build/
+
+# Rust (native/ — migração Rust + GTK4)
+native/target/

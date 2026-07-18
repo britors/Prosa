@@ -1,0 +1,12 @@
+[package]
+name = "prosa-doc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Modelo de documento nativo do Prosa, compatível com o formato .prosa (JSON) usado pela versão Electron/TipTap."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
