@@ -113,18 +113,16 @@ fn update_status_bar(buffer: &gtk::TextBuffer, pagination: &Rc<LivePagination>, 
 
 /// Recria os indicadores de quebra de página no overlay, um por ponto de
 /// quebra do último recálculo (ver `LivePagination`). Cada indicador é um
-/// widget comum, sem nenhuma relação com o buffer de texto.
+/// widget comum, sem nenhuma relação com o buffer de texto — só a cor da
+/// "mesa" aparecendo por cima da folha, sem texto.
 fn sync_break_lines(overlay: &gtk::Overlay, break_line_widgets: &Rc<RefCell<Vec<(gtk::Widget, i32)>>>, breaks: &[i32]) {
     let mut widgets = break_line_widgets.borrow_mut();
     for (widget, _) in widgets.drain(..) {
         overlay.remove_overlay(&widget);
     }
-    for (index, y) in breaks.iter().enumerate() {
-        let label = gtk::Label::new(Some(&format!("· Página {} ·", index + 2)));
-        label.add_css_class("prosa-page-break-label");
-        let line = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Start).build();
+    for y in breaks {
+        let line = gtk::Box::new(gtk::Orientation::Vertical, 0);
         line.add_css_class("prosa-page-break-line");
-        line.append(&label);
         line.set_can_target(false);
         overlay.add_overlay(&line);
         widgets.push((line.upcast::<gtk::Widget>(), *y));
@@ -151,17 +149,7 @@ fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
-         scrolledwindow.prosa-desk { background-color: #2e2e2e; }\n\
-         box.prosa-page-break-line {\n\
-             background-color: rgba(46, 46, 46, 0.85);\n\
-             border-top: 1px solid rgba(0, 0, 0, 0.35);\n\
-             border-bottom: 1px solid rgba(0, 0, 0, 0.35);\n\
-             padding: 4px 0;\n\
-         }\n\
-         label.prosa-page-break-label {\n\
-             color: #d8d8d8;\n\
-             font-size: 0.8em;\n\
-         }",
+         scrolledwindow.prosa-desk, box.prosa-page-break-line { background-color: #2e2e2e; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -211,7 +199,11 @@ fn build_window(app: &adw::Application) {
             let (_, window_y) = text_view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, buffer_y);
             #[allow(deprecated)]
             let (_, oy) = text_view.translate_coordinates(overlay, 0.0, window_y as f64)?;
-            Some(gdk::Rectangle::new(0, oy.round() as i32, overlay.width(), 28))
+            // Só a largura da própria folha (não a tela toda) — do
+            // contrário o indicador cobre a barra de rolagem, que fica
+            // fora dessa faixa.
+            let x = ((overlay.width() - live_pagination::PAGE_WIDTH_PX) / 2).max(0);
+            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, 32))
         }
     ));
 
