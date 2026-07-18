@@ -7,6 +7,7 @@
 //! da epic "Migração do Prosa para Rust + GTK4").
 
 mod formatting;
+mod live_pagination;
 mod print;
 
 use std::cell::RefCell;
@@ -19,6 +20,7 @@ use prosa_doc::{docx, odt, rtf};
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use formatting::{doc_from_buffer, load_doc_into_buffer, setup_mark_tags, toggle_mark};
+use live_pagination::{count_words_and_sentences, LivePagination};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
 
@@ -95,6 +97,20 @@ fn file_stem_title(path: &std::path::Path) -> String {
     path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Sem título".to_string())
 }
 
+/// Atualiza a barra de status com contagem de palavras, frases e páginas.
+fn update_status_bar(buffer: &gtk::TextBuffer, pagination: &Rc<LivePagination>, label: &gtk::Label) {
+    let (start, end) = buffer.bounds();
+    let text = buffer.text(&start, &end, false);
+    let (words, sentences) = count_words_and_sentences(&text);
+    let pages = pagination.page_count();
+    label.set_text(&format!(
+        "{words} palavra{} · {sentences} frase{} · {pages} página{}",
+        if words == 1 { "" } else { "s" },
+        if sentences == 1 { "" } else { "s" },
+        if pages == 1 { "" } else { "s" },
+    ));
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -106,12 +122,14 @@ fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<pros
     }
 }
 
-/// A "folha" é sempre branca (papel), como no restante do app — só a
-/// janela/botões ao redor seguem o tema claro/escuro do sistema.
+/// A "folha" (`GtkTextView`) é sempre branca (papel), com largura fixa de
+/// A4, centralizada sobre um fundo escuro (a "mesa" ao redor) — janela e
+/// botões continuam seguindo o tema claro/escuro do sistema à parte disso.
 fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
-        "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }",
+        "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
+         scrolledwindow.prosa-desk { background-color: #2e2e2e; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -123,20 +141,29 @@ fn build_window(app: &adw::Application) {
 
     let text_view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::Word)
-        .top_margin(24)
-        .bottom_margin(24)
-        .left_margin(96)
-        .right_margin(96)
+        .top_margin(live_pagination::MARGIN_TOP_PX)
+        .bottom_margin(live_pagination::MARGIN_BOTTOM_PX)
+        .left_margin(live_pagination::MARGIN_LEFT_PX)
+        .right_margin(live_pagination::MARGIN_RIGHT_PX)
+        .width_request(live_pagination::PAGE_WIDTH_PX)
+        .hexpand(false)
+        .halign(gtk::Align::Center)
         .build();
     text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
 
     let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
         .child(&text_view)
         .vexpand(true)
         .build();
+    scrolled.add_css_class("prosa-desk");
+
+    let pagination = Rc::new(LivePagination::default());
+
+    let status_label = gtk::Label::builder().xalign(0.0).margin_start(12).margin_end(12).margin_top(4).margin_bottom(4).build();
+    status_label.add_css_class("dim-label");
 
     let state = Rc::new(RefCell::new(new_document_state()));
 
@@ -180,9 +207,17 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_end(&export_menu_button);
     header_bar.pack_end(&export_pdf_button);
 
+    // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
+    // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
+    // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
+    // simples como conteúdo evita esse caminho de negociação de tamanho.
+    let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content_box.append(&scrolled);
+    content_box.append(&status_label);
+
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
-    toolbar_view.set_content(Some(&scrolled));
+    toolbar_view.set_content(Some(&content_box));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -240,6 +275,34 @@ fn build_window(app: &adw::Application) {
         }
     ));
     text_view.add_controller(key_controller);
+
+    update_status_bar(&buffer, &pagination, &status_label);
+    buffer.connect_changed(glib::clone!(
+        #[weak]
+        text_view,
+        #[weak]
+        buffer,
+        #[strong]
+        pagination,
+        #[weak]
+        status_label,
+        move |_| {
+            update_status_bar(&buffer, &pagination, &status_label);
+            pagination.schedule_recompute(
+                &text_view,
+                &buffer,
+                glib::clone!(
+                    #[weak]
+                    buffer,
+                    #[strong]
+                    pagination,
+                    #[weak]
+                    status_label,
+                    move || update_status_bar(&buffer, &pagination, &status_label)
+                ),
+            );
+        }
+    ));
 
     open_button.connect_clicked(glib::clone!(
         #[weak]
