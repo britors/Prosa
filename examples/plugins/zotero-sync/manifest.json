@@ -1,9 +1,0 @@
-{
-  "id": "zotero-sync",
-  "name": "Zotero Sync",
-  "version": "1.0.0",
-  "entrypoint": "index.js",
-  "permissions": ["storage", "dialog", "workspace"],
-  "description": "Importa uma exportação BibTeX local do Zotero para a bibliografia do workspace.",
-  "author": "Prosa"
-}
