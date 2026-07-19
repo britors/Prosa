@@ -14,6 +14,7 @@ mod find_replace;
 mod font_style;
 mod formatting;
 mod graph_view;
+mod header_footer_ui;
 mod live_pagination;
 mod outline;
 mod print;
@@ -40,6 +41,11 @@ use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
+
+/// Widgets flutuantes de banda de página no overlay (indicador de quebra e,
+/// desde o cabeçalho/rodapé, rodapé-acima/cabeçalho-abaixo): cada entrada é
+/// `(widget, y do buffer, altura)` — ver `sync_page_bands`.
+type PageBandWidgets = Rc<RefCell<Vec<(gtk::Widget, i32, i32)>>>;
 
 /// Estado do documento atualmente aberto na janela.
 struct DocumentState {
@@ -277,24 +283,154 @@ fn word_at_iter(buffer: &gtk::TextBuffer, iter: &gtk::TextIter) -> Option<(Strin
     Some((word, start.offset(), end.offset()))
 }
 
-/// Recria os indicadores de quebra de página no overlay, um por ponto de
-/// quebra do último recálculo (ver `LivePagination`). Cada indicador é um
-/// widget comum, sem nenhuma relação com o buffer de texto — só a cor da
-/// "mesa" aparecendo por cima da folha, sem texto.
-fn sync_break_lines(overlay: &gtk::Overlay, break_line_widgets: &Rc<RefCell<Vec<(gtk::Widget, i32)>>>, breaks: &[i32]) {
-    let mut widgets = break_line_widgets.borrow_mut();
-    for (widget, _) in widgets.drain(..) {
+/// Recria as bandas de cabeçalho/rodapé no overlay: uma caixa por ponto de
+/// quebra do último recálculo (ver `LivePagination`), mostrando o rodapé
+/// (+numeração) da página que termina ali e o cabeçalho da que começa
+/// embaixo, mais as duas bandas fixas da primeira/última página. Nenhuma
+/// delas tem relação com o buffer de texto — só texto flutuando por cima da
+/// folha, espelhando o que `print::export_to_pdf` desenha no PDF.
+///
+/// A caixa de cada quebra cobre um pouco mais da folha do que antes (ver
+/// `live_pagination::content_height_px`, que já reserva esse espaço a mais
+/// ao decidir onde quebrar) — é uma simulação: o `GtkTextView` continua de
+/// fluxo contínuo por baixo, então a caixa só "esconde" o trecho de texto
+/// real que ficaria bem ali, mostrando a banda de cabeçalho/rodapé no lugar.
+#[allow(clippy::too_many_arguments)]
+fn sync_page_bands(
+    overlay: &gtk::Overlay,
+    break_band_widgets: &PageBandWidgets,
+    header_band: &gtk::Label,
+    header_band_y: &Rc<Cell<i32>>,
+    footer_band: &gtk::Label,
+    footer_band_y: &Rc<Cell<i32>>,
+    text_view: &gtk::TextView,
+    buffer: &gtk::TextBuffer,
+    breaks: &[i32],
+    header: Option<&str>,
+    footer: Option<&str>,
+) {
+    let has_header = header.is_some_and(|h| !h.is_empty());
+    let total_pages = breaks.len() + 1;
+
+    let first_line_y = text_view.iter_location(&buffer.start_iter()).y();
+    header_band_y.set(first_line_y - live_pagination::MARGIN_TOP_PX + (live_pagination::MARGIN_TOP_PX - live_pagination::HEADER_BAND_HEIGHT_PX) / 2);
+    header_band.set_text(header.unwrap_or(""));
+    header_band.set_visible(has_header);
+
+    let last_line_rect = text_view.iter_location(&buffer.end_iter());
+    let last_line_bottom = last_line_rect.y() + last_line_rect.height();
+    footer_band_y.set(last_line_bottom + (live_pagination::MARGIN_BOTTOM_PX - live_pagination::FOOTER_BAND_HEIGHT_PX) / 2);
+    footer_band.set_text(&print::footer_line(footer, total_pages, total_pages));
+
+    let mut widgets = break_band_widgets.borrow_mut();
+    for (widget, _, _) in widgets.drain(..) {
         overlay.remove_overlay(&widget);
     }
-    for y in breaks {
-        let line = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        line.add_css_class("prosa-page-break-line");
-        line.set_can_target(false);
-        overlay.add_overlay(&line);
-        widgets.push((line.upcast::<gtk::Widget>(), *y));
+    for (index, &y) in breaks.iter().enumerate() {
+        let page_ending = index + 1;
+        let box_ = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        box_.add_css_class("prosa-page-break-line");
+        box_.set_can_target(false);
+
+        let footer_label = gtk::Label::builder()
+            .xalign(0.5)
+            .justify(gtk::Justification::Center)
+            .css_classes(["prosa-band-on-desk"])
+            .label(print::footer_line(footer, page_ending, total_pages))
+            .build();
+        box_.append(&footer_label);
+
+        let mut height = live_pagination::PAGE_GAP_PX + live_pagination::FOOTER_BAND_HEIGHT_PX;
+        if has_header {
+            let header_label = gtk::Label::builder()
+                .xalign(0.5)
+                .justify(gtk::Justification::Center)
+                .css_classes(["prosa-band-on-desk"])
+                .label(header.unwrap_or_default())
+                .build();
+            box_.append(&header_label);
+            height += live_pagination::HEADER_BAND_HEIGHT_PX;
+        }
+
+        overlay.add_overlay(&box_);
+        widgets.push((box_.upcast::<gtk::Widget>(), y, height));
     }
     drop(widgets);
     overlay.queue_allocate();
+}
+
+/// Reagenda o recálculo de paginação e, quando terminar (debounce de
+/// `LivePagination`), atualiza a barra de status e as bandas de cabeçalho/
+/// rodapé — helper compartilhado por todo ponto que precisa disparar isso
+/// (edição do buffer, troca de nível de título, edição de cabeçalho/rodapé).
+#[allow(clippy::too_many_arguments)]
+fn refresh_pagination(
+    text_view: &gtk::TextView,
+    buffer: &gtk::TextBuffer,
+    pagination: &Rc<LivePagination>,
+    overlay: &gtk::Overlay,
+    break_line_widgets: &PageBandWidgets,
+    header_band: &gtk::Label,
+    header_band_y: &Rc<Cell<i32>>,
+    footer_band: &gtk::Label,
+    footer_band_y: &Rc<Cell<i32>>,
+    state: &Rc<RefCell<DocumentState>>,
+    status_label: &gtk::Label,
+) {
+    let has_header = glib::clone!(
+        #[strong]
+        state,
+        move || state.borrow().header.as_deref().is_some_and(|h| !h.is_empty())
+    );
+    pagination.schedule_recompute(
+        text_view,
+        buffer,
+        has_header,
+        glib::clone!(
+            #[weak]
+            buffer,
+            #[strong]
+            pagination,
+            #[weak]
+            status_label,
+            #[weak]
+            overlay,
+            #[strong]
+            break_line_widgets,
+            #[weak]
+            header_band,
+            #[strong]
+            header_band_y,
+            #[weak]
+            footer_band,
+            #[strong]
+            footer_band_y,
+            #[strong]
+            state,
+            #[weak]
+            text_view,
+            move || {
+                update_status_bar(&buffer, &pagination, &status_label);
+                let (header, footer) = {
+                    let s = state.borrow();
+                    (s.header.clone(), s.footer.clone())
+                };
+                sync_page_bands(
+                    &overlay,
+                    &break_line_widgets,
+                    &header_band,
+                    &header_band_y,
+                    &footer_band,
+                    &footer_band_y,
+                    &text_view,
+                    &buffer,
+                    &pagination.break_points_buffer_y(),
+                    header.as_deref(),
+                    footer.as_deref(),
+                );
+            }
+        ),
+    );
 }
 
 /// Abre um documento (`.prosa`/`.docx`/`.odt`/`.rtf`) num caminho já
@@ -446,7 +582,9 @@ fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
-         scrolledwindow.prosa-desk, box.prosa-page-break-line { background-color: #2e2e2e; }",
+         scrolledwindow.prosa-desk, box.prosa-page-break-line { background-color: #2e2e2e; }\n\
+         label.prosa-band-on-paper { color: #1a1a1a; font-size: 9px; }\n\
+         label.prosa-band-on-desk { color: #cfcfcf; font-size: 9px; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -490,17 +628,48 @@ fn build_window(app: &adw::Application) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scrolled));
 
-    let break_line_widgets: Rc<RefCell<Vec<(gtk::Widget, i32)>>> = Rc::new(RefCell::new(Vec::new()));
+    // Cabeçalho/rodapé repetidos em cada página (mesmo texto usado na
+    // exportação de PDF, `print::export_to_pdf`): duas bandas fixas pra
+    // primeira/última página (dentro da margem real do `GtkTextView`, sobre
+    // fundo branco) e uma banda por quebra de página no meio do documento
+    // (reaproveita o indicador que já existia, antes vazio, sobre o fundo
+    // escuro da "mesa") — ver `sync_page_bands`.
+    let header_band = gtk::Label::builder().xalign(0.5).justify(gtk::Justification::Center).css_classes(["prosa-band-on-paper"]).build();
+    let footer_band = gtk::Label::builder().xalign(0.5).justify(gtk::Justification::Center).css_classes(["prosa-band-on-paper"]).build();
+    header_band.set_can_target(false);
+    footer_band.set_can_target(false);
+    overlay.add_overlay(&header_band);
+    overlay.add_overlay(&footer_band);
+    let header_band_widget = header_band.clone().upcast::<gtk::Widget>();
+    let footer_band_widget = footer_band.clone().upcast::<gtk::Widget>();
+    let header_band_y: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+    let footer_band_y: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+
+    let break_line_widgets: PageBandWidgets = Rc::new(RefCell::new(Vec::new()));
 
     overlay.connect_get_child_position(glib::clone!(
         #[weak]
         text_view,
         #[strong]
         break_line_widgets,
+        #[strong]
+        header_band_widget,
+        #[strong]
+        header_band_y,
+        #[strong]
+        footer_band_widget,
+        #[strong]
+        footer_band_y,
         #[upgrade_or]
         None,
         move |overlay, widget| {
-            let buffer_y = break_line_widgets.borrow().iter().find(|(w, _)| w == widget).map(|(_, y)| *y)?;
+            let (buffer_y, height) = if widget == &header_band_widget {
+                (header_band_y.get(), live_pagination::HEADER_BAND_HEIGHT_PX)
+            } else if widget == &footer_band_widget {
+                (footer_band_y.get(), live_pagination::FOOTER_BAND_HEIGHT_PX)
+            } else {
+                break_line_widgets.borrow().iter().find(|(w, _, _)| w == widget).map(|(_, y, h)| (*y, *h))?
+            };
             let (_, window_y) = text_view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, buffer_y);
             #[allow(deprecated)]
             let (_, oy) = text_view.translate_coordinates(overlay, 0.0, window_y as f64)?;
@@ -508,7 +677,7 @@ fn build_window(app: &adw::Application) {
             // contrário o indicador cobre a barra de rolagem, que fica
             // fora dessa faixa.
             let x = ((overlay.width() - live_pagination::PAGE_WIDTH_PX) / 2).max(0);
-            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, live_pagination::PAGE_GAP_PX))
+            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, height))
         }
     ));
 
@@ -596,6 +765,10 @@ fn build_window(app: &adw::Application) {
     history_button.set_tooltip_text(Some("Histórico de versões"));
     let sync_button = gtk::Button::from_icon_name("folder-remote-symbolic");
     sync_button.set_tooltip_text(Some("Sincronização"));
+    // Sem ícone simbólico de "cabeçalho/rodapé" no tema Adwaita — rótulo de
+    // texto, mesmo padrão de "Bib"/"H"/"Aa"/"IA" já usado no resto da barra.
+    let header_footer_button = gtk::Button::with_label("C/R");
+    header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
 
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
@@ -677,6 +850,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
     nav_group.append(&sync_button);
+    nav_group.append(&header_footer_button);
     nav_group.append(&ai_menu_button);
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -1129,6 +1303,88 @@ fn build_window(app: &adw::Application) {
         }
     ));
 
+    header_footer_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        text_view,
+        #[weak]
+        buffer,
+        #[strong]
+        pagination,
+        #[weak]
+        overlay,
+        #[strong]
+        break_line_widgets,
+        #[weak]
+        header_band,
+        #[strong]
+        header_band_y,
+        #[weak]
+        footer_band,
+        #[strong]
+        footer_band_y,
+        #[strong]
+        state,
+        #[weak]
+        status_label,
+        move |_| {
+            let (current_header, current_footer) = {
+                let s = state.borrow();
+                (s.header.clone(), s.footer.clone())
+            };
+            header_footer_ui::open_dialog(
+                &window,
+                current_header.as_deref(),
+                current_footer.as_deref(),
+                glib::clone!(
+                    #[weak]
+                    text_view,
+                    #[weak]
+                    buffer,
+                    #[strong]
+                    pagination,
+                    #[weak]
+                    overlay,
+                    #[strong]
+                    break_line_widgets,
+                    #[weak]
+                    header_band,
+                    #[strong]
+                    header_band_y,
+                    #[weak]
+                    footer_band,
+                    #[strong]
+                    footer_band_y,
+                    #[strong]
+                    state,
+                    #[weak]
+                    status_label,
+                    move |header, footer| {
+                        {
+                            let mut s = state.borrow_mut();
+                            s.header = header;
+                            s.footer = footer;
+                        }
+                        refresh_pagination(
+                            &text_view,
+                            &buffer,
+                            &pagination,
+                            &overlay,
+                            &break_line_widgets,
+                            &header_band,
+                            &header_band_y,
+                            &footer_band,
+                            &footer_band_y,
+                            &state,
+                            &status_label,
+                        );
+                    }
+                ),
+            );
+        }
+    ));
+
     outline_list.connect_row_activated(glib::clone!(
         #[weak]
         buffer,
@@ -1160,24 +1416,38 @@ fn build_window(app: &adw::Application) {
             outline_lines,
             #[weak]
             status_label,
+            #[weak]
+            overlay,
+            #[strong]
+            break_line_widgets,
+            #[weak]
+            header_band,
+            #[strong]
+            header_band_y,
+            #[weak]
+            footer_band,
+            #[strong]
+            footer_band_y,
+            #[strong]
+            state,
             move |_, _| {
                 set_heading_level(&buffer, current_line(&buffer), level);
                 // Aplicar/remover a tag de título não dispara `changed` (só
                 // insere/remove conteúdo dispara isso) — precisa atualizar
                 // o esboço e a paginação (o tamanho da fonte mudou) na mão.
                 refresh_outline(&buffer, &outline_list, &outline_lines);
-                pagination.schedule_recompute(
+                refresh_pagination(
                     &text_view,
                     &buffer,
-                    glib::clone!(
-                        #[weak]
-                        buffer,
-                        #[strong]
-                        pagination,
-                        #[weak]
-                        status_label,
-                        move || update_status_bar(&buffer, &pagination, &status_label)
-                    ),
+                    &pagination,
+                    &overlay,
+                    &break_line_widgets,
+                    &header_band,
+                    &header_band_y,
+                    &footer_band,
+                    &footer_band_y,
+                    &state,
+                    &status_label,
                 );
             }
         ));
@@ -1523,6 +1793,20 @@ fn build_window(app: &adw::Application) {
         outline_lines,
         #[strong]
         loading_document,
+        #[weak]
+        overlay,
+        #[strong]
+        break_line_widgets,
+        #[weak]
+        header_band,
+        #[strong]
+        header_band_y,
+        #[weak]
+        footer_band,
+        #[strong]
+        footer_band_y,
+        #[strong]
+        state,
         move |_| {
             if !loading_document.get() {
                 wikilink::linkify_pending(&buffer);
@@ -1535,25 +1819,18 @@ fn build_window(app: &adw::Application) {
             update_status_bar(&buffer, &pagination, &status_label);
             refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
-            pagination.schedule_recompute(
+            refresh_pagination(
                 &text_view,
                 &buffer,
-                glib::clone!(
-                    #[weak]
-                    buffer,
-                    #[strong]
-                    pagination,
-                    #[weak]
-                    status_label,
-                    #[weak]
-                    overlay,
-                    #[strong]
-                    break_line_widgets,
-                    move || {
-                        update_status_bar(&buffer, &pagination, &status_label);
-                        sync_break_lines(&overlay, &break_line_widgets, &pagination.break_points_buffer_y());
-                    }
-                ),
+                &pagination,
+                &overlay,
+                &break_line_widgets,
+                &header_band,
+                &header_band_y,
+                &footer_band,
+                &footer_band_y,
+                &state,
+                &status_label,
             );
         }
     ));

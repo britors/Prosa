@@ -61,7 +61,21 @@ pub const MARGIN_RIGHT_PX: i32 = 76;
 /// a última página e a barra de status.
 pub const PAGE_GAP_PX: i32 = 32;
 
-const PAGE_CONTENT_HEIGHT_PX: i32 = PAGE_HEIGHT_PX - MARGIN_TOP_PX - MARGIN_BOTTOM_PX;
+/// Altura reservada pra cabeçalho/rodapé em tela, convertida de
+/// `header_height_pt`/`footer_height_pt` (`print::PageLayout::academic_a4`,
+/// 24pt) pra pixels a 96dpi — mesma proporção usada no resto deste módulo.
+pub const HEADER_BAND_HEIGHT_PX: i32 = 32;
+pub const FOOTER_BAND_HEIGHT_PX: i32 = 32;
+
+/// Altura de conteúdo disponível por página, descontando cabeçalho (só se
+/// `has_header`) e rodapé (sempre — a numeração de página ocupa esse espaço
+/// mesmo sem texto de rodapé definido). Espelha
+/// `print::PageLayout::content_height`, que faz o mesmo cálculo pra exportar
+/// o PDF — sem isso, a contagem de páginas na tela diverge da do PDF assim
+/// que um cabeçalho é definido.
+pub fn content_height_px(has_header: bool) -> i32 {
+    PAGE_HEIGHT_PX - MARGIN_TOP_PX - MARGIN_BOTTOM_PX - FOOTER_BAND_HEIGHT_PX - if has_header { HEADER_BAND_HEIGHT_PX } else { 0 }
+}
 
 /// Estado vivo da paginação: os pontos de quebra (em coordenadas de buffer,
 /// eixo Y) encontrados no último recálculo.
@@ -83,8 +97,17 @@ impl LivePagination {
     }
 
     /// Agenda um recálculo com debounce (250ms) — chamar a cada `changed` do
-    /// buffer.
-    pub fn schedule_recompute(self: &Rc<Self>, text_view: &TextView, buffer: &TextBuffer, on_done: impl Fn() + 'static) {
+    /// buffer. `has_header` é reavaliado só na hora do disparo (não capturado
+    /// já resolvido no momento do agendamento) porque os fluxos de abrir
+    /// documento inserem o conteúdo no buffer *antes* de atualizar o estado
+    /// do cabeçalho — resolver cedo demais leria um valor desatualizado.
+    pub fn schedule_recompute(
+        self: &Rc<Self>,
+        text_view: &TextView,
+        buffer: &TextBuffer,
+        has_header: impl Fn() -> bool + 'static,
+        on_done: impl Fn() + 'static,
+    ) {
         if let Some(source) = self.debounce_source.borrow_mut().take() {
             source.remove();
         }
@@ -93,14 +116,15 @@ impl LivePagination {
         let buffer = buffer.clone();
         let source = glib::timeout_add_local(Duration::from_millis(250), move || {
             *this.debounce_source.borrow_mut() = None;
-            this.recompute(&text_view, &buffer);
+            this.recompute(&text_view, &buffer, has_header());
             on_done();
             glib::ControlFlow::Break
         });
         *self.debounce_source.borrow_mut() = Some(source);
     }
 
-    fn recompute(&self, text_view: &TextView, buffer: &TextBuffer) {
+    fn recompute(&self, text_view: &TextView, buffer: &TextBuffer, has_header: bool) {
+        let content_height = content_height_px(has_header);
         let mut iter = buffer.start_iter();
         let mut page_start_y = text_view.iter_location(&iter).y();
         let mut breaks = Vec::new();
@@ -108,7 +132,7 @@ impl LivePagination {
         loop {
             let rect = text_view.iter_location(&iter);
             let line_bottom = rect.y() + rect.height();
-            if line_bottom - page_start_y > PAGE_CONTENT_HEIGHT_PX {
+            if line_bottom - page_start_y > content_height {
                 breaks.push(rect.y());
                 page_start_y = rect.y();
             }
@@ -146,6 +170,13 @@ pub fn count_words_and_sentences(text: &str) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_height_shrinks_when_header_is_present() {
+        let without_header = content_height_px(false);
+        let with_header = content_height_px(true);
+        assert_eq!(without_header - with_header, HEADER_BAND_HEIGHT_PX, "só o cabeçalho deve consumir espaço extra, condicionalmente");
+    }
 
     #[test]
     fn counts_words_and_sentences() {
