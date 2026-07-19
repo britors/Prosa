@@ -19,6 +19,7 @@ mod print;
 mod save_format;
 mod spellcheck;
 mod template_dialog;
+mod version_history_ui;
 mod wikilink;
 
 use std::cell::{Cell, RefCell};
@@ -28,7 +29,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use prosa_doc::{docx, odt, rtf};
-use prosa_doc::{DocumentMetadata, ProsaFile};
+use prosa_doc::{version_history, DocumentMetadata, ProsaFile};
 
 use find_replace::{FindReplace, SearchOptions};
 use save_format::SaveFormat;
@@ -367,6 +368,41 @@ fn apply_new_document(
     backlinks.refresh(None);
 }
 
+/// Restaura um snapshot do histórico de versões (`version_history_ui`) como
+/// conteúdo do editor. Mantém `path`/`format` do documento atual — restaurar
+/// não muda onde/como o arquivo é salvo, só o conteúdo/metadados/cabeçalho/
+/// rodapé. Antes de substituir o buffer, grava uma cópia de segurança do
+/// estado atual (mesmo mecanismo de `write_document`), pra restaurar não ser
+/// uma operação destrutiva sem volta.
+fn restore_version(
+    buffer: &gtk::TextBuffer,
+    title_widget: &adw::WindowTitle,
+    state: &Rc<RefCell<DocumentState>>,
+    loading_document: &Rc<Cell<bool>>,
+    backlinks: &BacklinksPanel,
+    path: &Path,
+    restored: ProsaFile,
+) {
+    let safety_snapshot = {
+        let current = state.borrow();
+        ProsaFile { version: 1, content: doc_from_buffer(buffer), metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone() }
+    };
+    let _ = version_history::create_backup(path, &safety_snapshot, version_history::DEFAULT_KEEP_VERSIONS, now_iso());
+
+    loading_document.set(true);
+    load_doc_into_buffer(buffer, &restored.content);
+    loading_document.set(false);
+
+    title_widget.set_subtitle(&restored.metadata.title);
+    {
+        let mut current = state.borrow_mut();
+        current.metadata = restored.metadata;
+        current.header = restored.header;
+        current.footer = restored.footer;
+    }
+    backlinks.refresh(Some(path));
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -517,6 +553,8 @@ fn build_window(app: &adw::Application) {
     // de texto, mesmo padrão de "H"/"Aa"/"IA" já usado no resto da barra.
     let bibliography_button = gtk::Button::with_label("Bib");
     bibliography_button.set_tooltip_text(Some("Bibliografia"));
+    let history_button = gtk::Button::from_icon_name("document-open-recent-symbolic");
+    history_button.set_tooltip_text(Some("Histórico de versões"));
 
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
@@ -564,15 +602,20 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&backlinks_toggle_button);
     nav_group.append(&graph_button);
     nav_group.append(&bibliography_button);
+    nav_group.append(&history_button);
     nav_group.append(&ai_menu_button);
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&file_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&format_group);
-    header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
-    header_bar.pack_start(&nav_group);
+    // `nav_group` (tópicos/backlinks/grafo/bibliografia/IA) foi movido do
+    // lado esquerdo (antes do título) pro direito (depois do título) a
+    // pedido do usuário — primeira chamada de `pack_end` fica mais perto do
+    // título, as seguintes vão se afastando em direção à borda.
     header_bar.pack_end(&export_pdf_button);
+    header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_end(&nav_group);
 
     // Barra de localizar/substituir: escondida por padrão, revelada com
     // Ctrl+F. Um único bloco cobrindo busca e substituição (em vez das
@@ -848,6 +891,44 @@ fn build_window(app: &adw::Application) {
         backlinks,
         move |_| {
             bibliography_ui::open_bibliography_dialog(&window, &buffer, &backlinks.workspace_root);
+        }
+    ));
+
+    history_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[weak]
+        title_widget,
+        #[strong]
+        state,
+        #[strong]
+        loading_document,
+        #[strong]
+        backlinks,
+        move |_| {
+            let path = state.borrow().path.clone();
+            let on_restore: Rc<dyn Fn(ProsaFile)> = Rc::new(glib::clone!(
+                #[weak]
+                buffer,
+                #[weak]
+                title_widget,
+                #[strong]
+                state,
+                #[strong]
+                loading_document,
+                #[strong]
+                backlinks,
+                #[strong]
+                path,
+                move |restored: ProsaFile| {
+                    if let Some(path) = &path {
+                        restore_version(&buffer, &title_widget, &state, &loading_document, &backlinks, path, restored);
+                    }
+                }
+            ));
+            version_history_ui::open_version_history_dialog(&window, &buffer, path, on_restore);
         }
     ));
 
@@ -1551,7 +1632,7 @@ fn write_document(
         SaveFormat::Prosa => {
             let prosa_file = ProsaFile {
                 version: 1,
-                content: doc,
+                content: doc.clone(),
                 metadata: current.metadata.clone(),
                 notes: None,
                 header: current.header.clone(),
@@ -1570,6 +1651,14 @@ fn write_document(
 
     match result {
         Ok(()) => {
+            // Backup automático a cada salvamento, igual ao original
+            // (`backup-service.ts`), mas sempre com a representação
+            // canônica `.prosa` do conteúdo — independe do formato de
+            // exportação escolhido (docx/odt/rtf também acionam backup).
+            let snapshot =
+                ProsaFile { version: 1, content: doc, metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone() };
+            let _ = version_history::create_backup(&path, &snapshot, version_history::DEFAULT_KEEP_VERSIONS, now_iso());
+
             title_widget.set_subtitle(&current.metadata.title);
             current.path = Some(path.clone());
             current.format = format;
