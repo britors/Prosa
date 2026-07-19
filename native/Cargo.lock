@@ -1695,7 +1695,7 @@ dependencies = [
 
 [[package]]
 name = "prosa-doc"
-version = "5.1.0"
+version = "5.1.2"
 dependencies = [
  "keyring",
  "notify-debouncer-full",
@@ -1712,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "prosa-gtk"
-version = "5.1.0"
+version = "5.1.2"
 dependencies = [
  "cairo-rs",
  "enchant",
