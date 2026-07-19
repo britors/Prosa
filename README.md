@@ -2,213 +2,131 @@
 
 ## Escreva. Formate. Publique
 
-**Editor de texto moderno, open source e em modo escuro — parte da suíte de escritório Rodrigo Brito.**
+**Editor de texto nativo, open source e em modo escuro — parte da suíte de escritório Rodrigo Brito.**
 
 [![Licença: GPL v3](https://img.shields.io/badge/Licen%C3%A7a-GPLv3-06B6D4.svg)](LICENSE)
-![Electron](https://img.shields.io/badge/Electron-34-0891B2.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-06B6D4.svg)
+![Rust](https://img.shields.io/badge/Rust-2021-06B6D4.svg)
+![GTK4](https://img.shields.io/badge/GTK4%20%2B%20libadwaita-0891B2.svg)
 
 ---
 
-O **Prosa** é um processador de texto desktop construído com Electron e TypeScript,
-com foco em uma experiência de uso moderna, modo escuro elegante e um código-fonte
-limpo e tipado. Ele compete com o LibreOffice Writer e o Microsoft Word, mas com a
-leveza e a estética de um editor atual.
+O **Prosa** é um processador de texto desktop nativo para Linux/GNOME,
+construído em **Rust** sobre **GTK4** e **libadwaita** — leve, integrado ao
+tema do sistema e sem a pegada de memória de uma casca Electron. Compete com
+o LibreOffice Writer e o Microsoft Word, mas com a leveza e a estética de um
+editor atual.
 
-O editor é construído sobre o [TipTap](https://tiptap.dev) (ProseMirror) e suporta
-importação e exportação de `.docx`, Markdown, texto puro e PDF.
-
-![alt text](prosa.png)
+> O Prosa começou como um app Electron/TypeScript e foi reescrito do zero em
+> Rust nativo. A versão Electron foi descontinuada e removida deste
+> repositório; o histórico completo dela continua disponível no `git log`.
 
 ## ✨ Funcionalidades
 
-- 📝 **Edição rica** — títulos (H1–H6), negrito, itálico, sublinhado, tachado,
-  sobrescrito, subscrito, cores, realce, tamanhos e **todas as fontes
-  instaladas no computador** (com pré-visualização no seletor).
-- 📐 **Página A4 simulada** — área de edição com margens e dimensões reais.
-- 🖼️ **Imagens** — inserir por arquivo, arrastar-e-soltar ou colar (embutidas
-  no documento como base64).
-- 📰 **Cabeçalho e rodapé** — bandas editáveis da página, salvas no documento,
-  repetidas em todas as páginas na impressão/PDF e exportadas como cabeçalho e
-  rodapé nativos do `.docx` (Word) e do `.odt` (LibreOffice).
-- 📑 **Painel de tópicos** — outline automático dos títulos do documento, com
-  navegação por clique.
-- 🎨 **Estilos de parágrafo** — Normal, Títulos, Citação, Bloco de código.
-- 🔍 **Localizar & Substituir** — com diferenciação de maiúsculas, palavra inteira
-  e expressões regulares.
-- ✅ **Corretor ortográfico** — sublinha palavras erradas (pt-BR e en-US) e, com
-  o botão direito, mostra sugestões de correção e "adicionar ao dicionário".
-- 🖨️ **Impressão** — diálogo de impressão do sistema (Ctrl+P) com saída em
-  papel branco e texto preto.
-- 🤖 **IA assistida** — suporte a OpenAI, Gemini, Claude, Mistral, Groq e Cohere
-  para revisar, resumir, expandir, traduzir e reorganizar textos com confirmação
-  explícita.
-- 📊 **Barra de status** — contagem de palavras, caracteres, tempo de leitura,
-  páginas, posição do cursor e zoom.
-- 📥 **Importação** — `.docx` (Word), `.odt` (LibreOffice/OpenDocument),
-  `.rtf`, `.doc` (Word 97-2003, somente leitura), Markdown e texto puro.
-- 📤 **Exportação** — `.docx`, `.odt`, `.rtf`, Markdown, texto e PDF (printToPDF).
-- 💾 **Formato nativo `.prosa`** — JSON com o documento TipTap e metadados.
-- 🗂️ **Arquivos recentes** e tela de boas-vindas com arrastar-e-soltar.
-- 🌙 **Modo escuro** dedicado, com a identidade visual da Rodrigo Brito.
+- 📝 **Edição rica** — títulos (H1–H3), negrito, itálico, sublinhado,
+  tachado, sobrescrito, subscrito, alinhamento de parágrafo (esquerda,
+  centro, direita, justificado) e família/tamanho de fonte (com busca entre
+  as fontes instaladas no sistema).
+- 📐 **Página A4 simulada** — área de edição com margens reais e indicador
+  de quebra de página ao vivo.
+- 📑 **Painel de tópicos** — outline automático dos títulos do documento,
+  com navegação por clique.
+- 🔗 **Wikilinks, backlinks e grafo** — `[[Link]]` entre documentos de um
+  workspace, painel de referências e visualização em grafo das conexões.
+- 📚 **Citações e bibliografia** — importação de `.bib` (BibTeX), estilos
+  ABNT/APA/IEEE, inserção de citações e lista de referências.
+- 🕓 **Histórico de versões** — backup automático a cada salvamento, diff
+  contra o documento atual e restauração de uma versão anterior.
+- 🔄 **Sincronização** — observa uma pasta de sincronização externa
+  (Dropbox, Drive, etc.) e avisa quando o documento aberto muda por fora do
+  Prosa.
+- 🗂️ **Modelos de documento** — Artigo, Relatório, Contrato, Ata, Proposta
+  comercial e Capítulo de livro, prontos no comando "Novo documento".
+- 🔍 **Localizar & Substituir** — com diferenciação de maiúsculas, palavra
+  inteira e expressões regulares.
+- ✅ **Corretor ortográfico** — sublinha palavras erradas (pt-BR e en-US) e,
+  com o botão direito, mostra sugestões de correção.
+- 🖨️ **Exportação em PDF** — paginação real via GtkPrintOperation/Pango.
+- 🤖 **IA assistida** — suporte a OpenAI, Gemini, Claude, Mistral, Groq e
+  Cohere para revisar, resumir, expandir, traduzir e reorganizar textos.
+- 📥📤 **Importação e exportação** — `.docx` (Word), `.odt`
+  (LibreOffice/OpenDocument) e `.rtf`, verificados contra o LibreOffice real.
+- 💾 **Formato nativo `.prosa`** — JSON com o documento e metadados,
+  compatível com o formato usado pela versão Electron original.
+- 🌙 **Modo claro/escuro** — segue o tema do sistema via libadwaita.
 
 ## 📁 Compatibilidade de formatos
 
-O Prosa abre e salva os formatos padrão do **Microsoft Office** e do
-**LibreOffice**:
-
 | Formato | Extensão | Abrir | Salvar | Origem |
 | --- | --- | :---: | :---: | --- |
-| Prosa (nativo) | `.prosa` | ✅ | ✅ | JSON (TipTap + metadados) |
+| Prosa (nativo) | `.prosa` | ✅ | ✅ | JSON (documento + metadados) |
 | Word | `.docx` | ✅ | ✅ | Microsoft Office |
 | OpenDocument Text | `.odt` | ✅ | ✅ | LibreOffice / OpenOffice |
 | Rich Text | `.rtf` | ✅ | ✅ | Word e LibreOffice |
-| Word 97-2003 | `.doc` | ⚠️ | — | Legado (leitura do texto) |
-| Markdown | `.md` | ✅ | ✅ | — |
-| Texto puro | `.txt` | ✅ | ✅ | — |
-| PDF | `.pdf` | — | ✅ | Exportação (printToPDF) |
+| PDF | `.pdf` | — | ✅ | Exportação |
 
-> ⚠️ O formato binário `.doc` (Word 97-2003) é obsoleto: o Prosa extrai o
-> texto para leitura, mas a formatação rica não é preservada. Para editar,
-> salve como `.docx` ou `.odt`. Formatos que não são documentos de texto
-> (`.ods`, `.odp`, `.xlsx`, `.pptx`) não são abertos pelo Writer.
+> Sobrescrito/subscrito ainda não são preservados na exportação para
+> `.docx`/`.odt`/`.rtf` (o texto sobrevive, a formatação some) — extensão
+> planejada, não implementada ainda.
 
 ## ⌨️ Atalhos de teclado
 
 | Ação | Atalho |
 | --- | --- |
-| Novo documento | `Ctrl+N` |
-| Abrir | `Ctrl+O` |
-| Salvar | `Ctrl+S` |
-| Salvar como | `Ctrl+Shift+S` |
-| Exportar PDF | `Ctrl+Shift+E` |
-| Imprimir | `Ctrl+P` |
-| Localizar | `Ctrl+F` |
-| Substituir | `Ctrl+H` |
+| Localizar / Substituir | `Ctrl+F` |
 | Negrito | `Ctrl+B` |
 | Itálico | `Ctrl+I` |
 | Sublinhado | `Ctrl+U` |
-| Título 1–6 | `Ctrl+Alt+1` … `Ctrl+Alt+6` |
-| Ampliar / Reduzir / Restaurar zoom | `Ctrl++` / `Ctrl+-` / `Ctrl+0` |
-| Alternar tópicos | `Ctrl+Shift+O` |
-| Desfazer / Refazer | `Ctrl+Z` / `Ctrl+Y` |
 
-> No macOS, use `Cmd` no lugar de `Ctrl`.
-
-## 📦 Instalação
-
-### Arch Linux
-
-Publicado no AUR:
-
-```sh
-yay -S prosa
-```
-
-### openSUSE Leap, Fedora e Ubuntu/Debian
-
-Nenhuma está nos repositórios oficiais ainda (nem OBS, nem Copr, nem PPA). O
-mesmo instalador de conveniência serve as três — ele detecta a distro via
-`/etc/os-release` e baixa o pacote certo (`.rpm` ou `.deb`) da release mais
-recente:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/britors/Prosa/main/scripts/install.sh | sudo bash
-```
-
-Em openSUSE e Fedora baixa `prosa-<versão>.x86_64.rpm` (o mesmo RPM genérico
-do `electron-builder` serve pras duas distros, ao contrário do Vega, que tem
-specs separados) e instala via `zypper --allow-unsigned-rpm` / `dnf install
---nogpgcheck` (o RPM ainda não é assinado, sem chave GPG configurada). Em
-Ubuntu/Debian baixa `prosa_<versão>_amd64.deb` e instala via `apt-get
-install` (assim as dependências são resolvidas normalmente, ao contrário de
-`dpkg -i`).
-
-Para travar numa versão específica:
-`PROSA_VERSION=v4.1.0 sudo -E bash install.sh` (baixe o script primeiro se
-for usar essa variante).
-
-### Windows
-
-Baixe `Prosa-Setup-<versão>.exe` na página de
-[**Releases**](https://github.com/britors/Prosa/releases) e rode o
-instalador.
-
-### Alternativa universal: AppImage
-
-Baixe `Prosa-<versão>.AppImage` na página de
-[**Releases**](https://github.com/britors/Prosa/releases), dê permissão de
-execução e rode — não precisa instalar nem de root:
-
-```sh
-chmod +x Prosa-*.AppImage
-./Prosa-*.AppImage
-```
-
-Os instaladores são gerados automaticamente pelo GitHub Actions a cada tag
-`vX.Y.Z` (veja `.github/workflows/release.yml`).
+> Cobertura de atalhos ainda parcial — a maioria das ações (salvar, abrir,
+> títulos, alinhamento, etc.) por enquanto só está na barra de ferramentas.
 
 ## 🚀 Como compilar e executar
 
 ### Pré-requisitos
 
-- [Node.js](https://nodejs.org) 20 ou superior
-- npm 10 ou superior
+- [Rust](https://rustup.rs) (edição 2021 ou mais recente)
+- GTK4 e libadwaita (>= 1.5) com cabeçalhos de desenvolvimento
+- Pango, Cairo e `enchant` (corretor ortográfico) com cabeçalhos de
+  desenvolvimento
+- Dicionários de corretor ortográfico (`myspell-pt_BR`/`myspell-en_US` ou
+  equivalentes da distro)
+
+Em openSUSE/Fedora, por exemplo:
+
+```sh
+sudo zypper install gtk4-devel libadwaita-devel enchant-devel \
+  myspell-pt_BR myspell-en_US
+```
 
 ### Passos
 
 ```bash
-# 1. Instalar dependências
-npm install
+cd native
 
-# 2. Compilar (main, preload e renderer via esbuild)
-npm run build
+# Compilar (debug)
+cargo build
 
-# 3. Executar a aplicação
-npm start
+# Ou compilar otimizado
+cargo build --release
+
+# Executar
+./target/debug/prosa      # ou target/release/prosa
 ```
 
-### Scripts disponíveis
-
-| Script | Descrição |
-| --- | --- |
-| `npm run build` | Compila os bundles para `dist/`. |
-| `npm run build:watch` | Compila e observa alterações. |
-| `npm start` | Compila e abre o Prosa. |
-| `npm run typecheck` | Verificação de tipos com `tsc --noEmit`. |
-| `npm test` | Executa os testes com `node:test` + `tsx`. |
-| `npm run test:e2e` | Executa integração/E2E do renderer com Electron. |
-| `npm run dist` | Gera os instaladores com `electron-builder`. |
-
-## 🧪 Testes
-
-Os testes usam o runner nativo do Node (`node:test`) e cobrem importação/exportação
-de `.docx` e Markdown, além das utilidades de contagem e extração de tópicos.
+### Testes
 
 ```bash
-npm test
-```
-
-Para os fluxos críticos do renderer (Electron E2E):
-
-```bash
-npm run test:e2e
-```
-
-Em ambientes headless (CI/Linux sem display), execute com Xvfb:
-
-```bash
-xvfb-run -a npm run test:e2e
+cd native
+cargo test --workspace
 ```
 
 ## 🏗️ Estrutura do projeto
 
 ```bash
-src/
-├── main/         # Processo principal do Electron (janela, menus, IPC, arquivos)
-├── renderer/     # Interface: editor TipTap, barra de ferramentas, painéis, páginas
-└── shared/      # Tipos e utilidades compartilhadas entre os processos
-tests/            # Testes unitários (node:test)
+native/
+├── prosa-doc/    # Modelo de documento, conversão de formatos, IA, histórico
+│                 # de versões, sincronização — sem dependência de GTK
+└── prosa-gtk/    # Casca GTK4 + libadwaita (binário `prosa`)
 ```
 
 ## 🤝 Contribuindo
@@ -216,20 +134,16 @@ tests/            # Testes unitários (node:test)
 Contribuições são bem-vindas! Para contribuir:
 
 1. Faça um fork do repositório e crie um branch a partir de `main`.
-2. Mantenha o **TypeScript em modo estrito** — sem `any` desnecessário.
+2. Rode `cargo fmt` e `cargo test --workspace` antes de abrir o PR.
 3. Adicione o cabeçalho de licença em todo arquivo novo:
 
-   ```ts
+   ```rust
    // Prosa — Editor de Texto
    // Copyright (C) 2026 Rodrigo Brito
    // SPDX-License-Identifier: GPL-3.0-or-later
    ```
 
-4. Garanta que `npm run typecheck` e `npm test` passem.
-5. Abra um Pull Request descrevendo a mudança.
-
-O estilo de código segue o mesmo padrão do projeto
-[Prisma4Postgres](https://github.com/britors/Prisma4Postgres).
+4. Abra um Pull Request descrevendo a mudança.
 
 ## 📄 Licença
 
@@ -244,7 +158,6 @@ DETERMINADO FIM. Consulte a [GNU General Public License](LICENSE) para mais deta
 
 Desenvolvido pela **Rodrigo Brito**.
 
-- 🌐 Site: [https://github.com/britors/Prosa] [(https://github.com/britors/Prosa))
 - 💻 GitHub: [github.com/britors/prosa](https://github.com/britors/prosa)
 - ✉️ Suporte: [rodrigo@w3ti.com.br](mailto:rodrigo@w3ti.com.br)
 
