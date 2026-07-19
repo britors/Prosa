@@ -14,7 +14,6 @@ mod find_replace;
 mod font_style;
 mod formatting;
 mod graph_view;
-mod header_footer_ui;
 mod live_pagination;
 mod outline;
 mod print;
@@ -47,13 +46,30 @@ const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
 /// `(widget, y do buffer, altura)` — ver `sync_page_bands`.
 type PageBandWidgets = Rc<RefCell<Vec<(gtk::Widget, i32, i32)>>>;
 
+/// Widgets/estado das bandas de cabeçalho/rodapé, agrupados só pra não
+/// empilhar 6+ parâmetros soltos em toda função/closure que precisa
+/// atualizá-las (`sync_page_bands`/`refresh_pagination`). `header_entry` é
+/// ela mesma o widget flutuante no overlay; `footer_entry`/`footer_page_label`
+/// (numeração automática, só-leitura) ficam dentro de `footer_container`, que
+/// é o widget flutuante do rodapé.
+#[derive(Clone)]
+struct PageBands {
+    header_entry: gtk::Entry,
+    footer_entry: gtk::Entry,
+    footer_page_label: gtk::Label,
+    footer_container: gtk::Box,
+    header_band_y: Rc<Cell<i32>>,
+    footer_band_y: Rc<Cell<i32>>,
+    break_widgets: PageBandWidgets,
+}
+
 /// Estado do documento atualmente aberto na janela.
 struct DocumentState {
     path: Option<PathBuf>,
     metadata: DocumentMetadata,
-    /// HTML de cabeçalho/rodapé carregado de um `.prosa` existente. A UI
-    /// nativa ainda não permite editá-los — são só preservados ao salvar e
-    /// usados (como texto puro) na exportação para PDF.
+    /// Texto plano de cabeçalho/rodapé, editável direto na tela (banda sobre
+    /// a página) — ver `PageBands`/`sync_page_bands`. Também usado (como
+    /// texto puro) na exportação para PDF.
     header: Option<String>,
     footer: Option<String>,
     /// Formato do `path` atual (se houver). Some salva silenciosamente nesse
@@ -295,14 +311,9 @@ fn word_at_iter(buffer: &gtk::TextBuffer, iter: &gtk::TextIter) -> Option<(Strin
 /// ao decidir onde quebrar) — é uma simulação: o `GtkTextView` continua de
 /// fluxo contínuo por baixo, então a caixa só "esconde" o trecho de texto
 /// real que ficaria bem ali, mostrando a banda de cabeçalho/rodapé no lugar.
-#[allow(clippy::too_many_arguments)]
 fn sync_page_bands(
     overlay: &gtk::Overlay,
-    break_band_widgets: &PageBandWidgets,
-    header_band: &gtk::Label,
-    header_band_y: &Rc<Cell<i32>>,
-    footer_band: &gtk::Label,
-    footer_band_y: &Rc<Cell<i32>>,
+    bands: &PageBands,
     text_view: &gtk::TextView,
     buffer: &gtk::TextBuffer,
     breaks: &[i32],
@@ -312,17 +323,34 @@ fn sync_page_bands(
     let has_header = header.is_some_and(|h| !h.is_empty());
     let total_pages = breaks.len() + 1;
 
+    // Só troca o texto se realmente mudou (não igual ao que já está lá) —
+    // evita reposicionar o cursor/seleção quando a mudança já veio do
+    // próprio campo (o usuário digitando direto na banda), que é o caso mais
+    // comum de chamada desta função.
+    let header_text = header.unwrap_or("");
+    if bands.header_entry.text() != header_text {
+        bands.header_entry.set_text(header_text);
+    }
+    let footer_text = footer.unwrap_or("");
+    if bands.footer_entry.text() != footer_text {
+        bands.footer_entry.set_text(footer_text);
+    }
+    bands.footer_page_label.set_text(&print::footer_line(None, total_pages, total_pages));
+
+    // Cabeçalho/rodapé editáveis ficam sempre visíveis (mesmo vazios, com
+    // placeholder convidando a clicar) — diferente do PDF, que só reserva
+    // espaço de cabeçalho quando há texto de verdade (ver `has_header` mais
+    // abaixo, só usado pras bandas só-leitura do meio do documento).
     let first_line_y = text_view.iter_location(&buffer.start_iter()).y();
-    header_band_y.set(first_line_y - live_pagination::MARGIN_TOP_PX + (live_pagination::MARGIN_TOP_PX - live_pagination::HEADER_BAND_HEIGHT_PX) / 2);
-    header_band.set_text(header.unwrap_or(""));
-    header_band.set_visible(has_header);
+    bands
+        .header_band_y
+        .set(first_line_y - live_pagination::MARGIN_TOP_PX + (live_pagination::MARGIN_TOP_PX - live_pagination::HEADER_BAND_HEIGHT_PX) / 2);
 
     let last_line_rect = text_view.iter_location(&buffer.end_iter());
     let last_line_bottom = last_line_rect.y() + last_line_rect.height();
-    footer_band_y.set(last_line_bottom + (live_pagination::MARGIN_BOTTOM_PX - live_pagination::FOOTER_BAND_HEIGHT_PX) / 2);
-    footer_band.set_text(&print::footer_line(footer, total_pages, total_pages));
+    bands.footer_band_y.set(last_line_bottom + (live_pagination::MARGIN_BOTTOM_PX - live_pagination::FOOTER_BAND_HEIGHT_PX) / 2);
 
-    let mut widgets = break_band_widgets.borrow_mut();
+    let mut widgets = bands.break_widgets.borrow_mut();
     for (widget, _, _) in widgets.drain(..) {
         overlay.remove_overlay(&widget);
     }
@@ -363,17 +391,12 @@ fn sync_page_bands(
 /// `LivePagination`), atualiza a barra de status e as bandas de cabeçalho/
 /// rodapé — helper compartilhado por todo ponto que precisa disparar isso
 /// (edição do buffer, troca de nível de título, edição de cabeçalho/rodapé).
-#[allow(clippy::too_many_arguments)]
 fn refresh_pagination(
     text_view: &gtk::TextView,
     buffer: &gtk::TextBuffer,
     pagination: &Rc<LivePagination>,
     overlay: &gtk::Overlay,
-    break_line_widgets: &PageBandWidgets,
-    header_band: &gtk::Label,
-    header_band_y: &Rc<Cell<i32>>,
-    footer_band: &gtk::Label,
-    footer_band_y: &Rc<Cell<i32>>,
+    bands: &PageBands,
     state: &Rc<RefCell<DocumentState>>,
     status_label: &gtk::Label,
 ) {
@@ -396,15 +419,7 @@ fn refresh_pagination(
             #[weak]
             overlay,
             #[strong]
-            break_line_widgets,
-            #[weak]
-            header_band,
-            #[strong]
-            header_band_y,
-            #[weak]
-            footer_band,
-            #[strong]
-            footer_band_y,
+            bands,
             #[strong]
             state,
             #[weak]
@@ -415,19 +430,7 @@ fn refresh_pagination(
                     let s = state.borrow();
                     (s.header.clone(), s.footer.clone())
                 };
-                sync_page_bands(
-                    &overlay,
-                    &break_line_widgets,
-                    &header_band,
-                    &header_band_y,
-                    &footer_band,
-                    &footer_band_y,
-                    &text_view,
-                    &buffer,
-                    &pagination.break_points_buffer_y(),
-                    header.as_deref(),
-                    footer.as_deref(),
-                );
+                sync_page_bands(&overlay, &bands, &text_view, &buffer, &pagination.break_points_buffer_y(), header.as_deref(), footer.as_deref());
             }
         ),
     );
@@ -583,8 +586,10 @@ fn install_page_css() {
     provider.load_from_string(
         "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
          scrolledwindow.prosa-desk, box.prosa-page-break-line { background-color: #2e2e2e; }\n\
-         label.prosa-band-on-paper { color: #1a1a1a; font-size: 9px; }\n\
-         label.prosa-band-on-desk { color: #cfcfcf; font-size: 9px; }",
+         label.prosa-band-on-paper, entry.prosa-band-on-paper text { color: #1a1a1a; font-size: 9px; }\n\
+         label.prosa-band-on-desk { color: #cfcfcf; font-size: 9px; }\n\
+         entry.prosa-band-entry, entry.prosa-band-entry text { background-color: transparent; box-shadow: none; }\n\
+         entry.prosa-band-entry image { background-color: transparent; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -629,46 +634,61 @@ fn build_window(app: &adw::Application) {
     overlay.set_child(Some(&scrolled));
 
     // Cabeçalho/rodapé repetidos em cada página (mesmo texto usado na
-    // exportação de PDF, `print::export_to_pdf`): duas bandas fixas pra
-    // primeira/última página (dentro da margem real do `GtkTextView`, sobre
-    // fundo branco) e uma banda por quebra de página no meio do documento
-    // (reaproveita o indicador que já existia, antes vazio, sobre o fundo
-    // escuro da "mesa") — ver `sync_page_bands`.
-    let header_band = gtk::Label::builder().xalign(0.5).justify(gtk::Justification::Center).css_classes(["prosa-band-on-paper"]).build();
-    let footer_band = gtk::Label::builder().xalign(0.5).justify(gtk::Justification::Center).css_classes(["prosa-band-on-paper"]).build();
-    header_band.set_can_target(false);
-    footer_band.set_can_target(false);
-    overlay.add_overlay(&header_band);
-    overlay.add_overlay(&footer_band);
-    let header_band_widget = header_band.clone().upcast::<gtk::Widget>();
-    let footer_band_widget = footer_band.clone().upcast::<gtk::Widget>();
-    let header_band_y: Rc<Cell<i32>> = Rc::new(Cell::new(0));
-    let footer_band_y: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+    // exportação de PDF, `print::export_to_pdf`): editáveis direto na tela
+    // (sem diálogo) via `header_entry`/`footer_entry`, sobre a margem real
+    // da primeira/última página (fundo branco). A numeração de página
+    // ("Página N de Total") é automática e fica num rótulo à parte
+    // (`footer_page_label`), não editável, ao lado do rodapé. Cada quebra de
+    // página no meio do documento ganha uma banda só-leitura espelhando o
+    // mesmo texto (reaproveita o indicador que já existia, antes vazio,
+    // sobre o fundo escuro da "mesa") — ver `sync_page_bands`.
+    let header_entry = gtk::Entry::builder()
+        .placeholder_text("Clique para adicionar um cabeçalho")
+        .has_frame(false)
+        .xalign(0.5)
+        .css_classes(["prosa-band-entry", "prosa-band-on-paper"])
+        .build();
+    let footer_entry = gtk::Entry::builder()
+        .placeholder_text("Clique para adicionar um rodapé")
+        .has_frame(false)
+        .hexpand(true)
+        .css_classes(["prosa-band-entry", "prosa-band-on-paper"])
+        .build();
+    let footer_page_label = gtk::Label::builder().xalign(1.0).css_classes(["prosa-band-on-paper", "dim-label"]).build();
+    footer_page_label.set_can_target(false);
+    let footer_container = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+    footer_container.append(&footer_entry);
+    footer_container.append(&footer_page_label);
 
-    let break_line_widgets: PageBandWidgets = Rc::new(RefCell::new(Vec::new()));
+    overlay.add_overlay(&header_entry);
+    overlay.add_overlay(&footer_container);
+
+    let bands = PageBands {
+        header_entry: header_entry.clone(),
+        footer_entry: footer_entry.clone(),
+        footer_page_label: footer_page_label.clone(),
+        footer_container: footer_container.clone(),
+        header_band_y: Rc::new(Cell::new(0)),
+        footer_band_y: Rc::new(Cell::new(0)),
+        break_widgets: Rc::new(RefCell::new(Vec::new())),
+    };
 
     overlay.connect_get_child_position(glib::clone!(
         #[weak]
         text_view,
         #[strong]
-        break_line_widgets,
-        #[strong]
-        header_band_widget,
-        #[strong]
-        header_band_y,
-        #[strong]
-        footer_band_widget,
-        #[strong]
-        footer_band_y,
+        bands,
         #[upgrade_or]
         None,
         move |overlay, widget| {
-            let (buffer_y, height) = if widget == &header_band_widget {
-                (header_band_y.get(), live_pagination::HEADER_BAND_HEIGHT_PX)
-            } else if widget == &footer_band_widget {
-                (footer_band_y.get(), live_pagination::FOOTER_BAND_HEIGHT_PX)
+            let header_widget = bands.header_entry.clone().upcast::<gtk::Widget>();
+            let footer_widget = bands.footer_container.clone().upcast::<gtk::Widget>();
+            let (buffer_y, height) = if widget == &header_widget {
+                (bands.header_band_y.get(), live_pagination::HEADER_BAND_HEIGHT_PX)
+            } else if widget == &footer_widget {
+                (bands.footer_band_y.get(), live_pagination::FOOTER_BAND_HEIGHT_PX)
             } else {
-                break_line_widgets.borrow().iter().find(|(w, _, _)| w == widget).map(|(_, y, h)| (*y, *h))?
+                bands.break_widgets.borrow().iter().find(|(w, _, _)| w == widget).map(|(_, y, h)| (*y, *h))?
             };
             let (_, window_y) = text_view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, buffer_y);
             #[allow(deprecated)]
@@ -765,10 +785,6 @@ fn build_window(app: &adw::Application) {
     history_button.set_tooltip_text(Some("Histórico de versões"));
     let sync_button = gtk::Button::from_icon_name("folder-remote-symbolic");
     sync_button.set_tooltip_text(Some("Sincronização"));
-    // Sem ícone simbólico de "cabeçalho/rodapé" no tema Adwaita — rótulo de
-    // texto, mesmo padrão de "Bib"/"H"/"Aa"/"IA" já usado no resto da barra.
-    let header_footer_button = gtk::Button::with_label("C/R");
-    header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
 
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
@@ -850,7 +866,6 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
     nav_group.append(&sync_button);
-    nav_group.append(&header_footer_button);
     nav_group.append(&ai_menu_button);
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -1303,87 +1318,10 @@ fn build_window(app: &adw::Application) {
         }
     ));
 
-    header_footer_button.connect_clicked(glib::clone!(
-        #[weak]
-        window,
-        #[weak]
-        text_view,
-        #[weak]
-        buffer,
-        #[strong]
-        pagination,
-        #[weak]
-        overlay,
-        #[strong]
-        break_line_widgets,
-        #[weak]
-        header_band,
-        #[strong]
-        header_band_y,
-        #[weak]
-        footer_band,
-        #[strong]
-        footer_band_y,
-        #[strong]
-        state,
-        #[weak]
-        status_label,
-        move |_| {
-            let (current_header, current_footer) = {
-                let s = state.borrow();
-                (s.header.clone(), s.footer.clone())
-            };
-            header_footer_ui::open_dialog(
-                &window,
-                current_header.as_deref(),
-                current_footer.as_deref(),
-                glib::clone!(
-                    #[weak]
-                    text_view,
-                    #[weak]
-                    buffer,
-                    #[strong]
-                    pagination,
-                    #[weak]
-                    overlay,
-                    #[strong]
-                    break_line_widgets,
-                    #[weak]
-                    header_band,
-                    #[strong]
-                    header_band_y,
-                    #[weak]
-                    footer_band,
-                    #[strong]
-                    footer_band_y,
-                    #[strong]
-                    state,
-                    #[weak]
-                    status_label,
-                    move |header, footer| {
-                        {
-                            let mut s = state.borrow_mut();
-                            s.header = header;
-                            s.footer = footer;
-                        }
-                        refresh_pagination(
-                            &text_view,
-                            &buffer,
-                            &pagination,
-                            &overlay,
-                            &break_line_widgets,
-                            &header_band,
-                            &header_band_y,
-                            &footer_band,
-                            &footer_band_y,
-                            &state,
-                            &status_label,
-                        );
-                    }
-                ),
-            );
-        }
-    ));
+    // Cabeçalho/rodapé são editados direto nas bandas sobre a página (ver
+    // `bands`/`sync_page_bands`), não por diálogo — `header_entry`/
+    // `footer_entry` disparam a atualização do estado + recálculo de
+    // paginação a cada tecla, mais abaixo (perto de `buffer.connect_changed`).
 
     outline_list.connect_row_activated(glib::clone!(
         #[weak]
@@ -1419,15 +1357,7 @@ fn build_window(app: &adw::Application) {
             #[weak]
             overlay,
             #[strong]
-            break_line_widgets,
-            #[weak]
-            header_band,
-            #[strong]
-            header_band_y,
-            #[weak]
-            footer_band,
-            #[strong]
-            footer_band_y,
+            bands,
             #[strong]
             state,
             move |_, _| {
@@ -1436,19 +1366,7 @@ fn build_window(app: &adw::Application) {
                 // insere/remove conteúdo dispara isso) — precisa atualizar
                 // o esboço e a paginação (o tamanho da fonte mudou) na mão.
                 refresh_outline(&buffer, &outline_list, &outline_lines);
-                refresh_pagination(
-                    &text_view,
-                    &buffer,
-                    &pagination,
-                    &overlay,
-                    &break_line_widgets,
-                    &header_band,
-                    &header_band_y,
-                    &footer_band,
-                    &footer_band_y,
-                    &state,
-                    &status_label,
-                );
+                refresh_pagination(&text_view, &buffer, &pagination, &overlay, &bands, &state, &status_label);
             }
         ));
         window.add_action(&action);
@@ -1796,15 +1714,7 @@ fn build_window(app: &adw::Application) {
         #[weak]
         overlay,
         #[strong]
-        break_line_widgets,
-        #[weak]
-        header_band,
-        #[strong]
-        header_band_y,
-        #[weak]
-        footer_band,
-        #[strong]
-        footer_band_y,
+        bands,
         #[strong]
         state,
         move |_| {
@@ -1819,19 +1729,56 @@ fn build_window(app: &adw::Application) {
             update_status_bar(&buffer, &pagination, &status_label);
             refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
-            refresh_pagination(
-                &text_view,
-                &buffer,
-                &pagination,
-                &overlay,
-                &break_line_widgets,
-                &header_band,
-                &header_band_y,
-                &footer_band,
-                &footer_band_y,
-                &state,
-                &status_label,
-            );
+            refresh_pagination(&text_view, &buffer, &pagination, &overlay, &bands, &state, &status_label);
+        }
+    ));
+
+    // Cabeçalho/rodapé são editados direto nas bandas sobre a página, não
+    // por diálogo: cada tecla nos campos atualiza `state` e reagenda a
+    // paginação (que, entre outras coisas, reflete o novo texto nas bandas
+    // só-leitura do meio do documento — ver `sync_page_bands`). O guard de
+    // "só troca se mudou" em `sync_page_bands` evita que isso reposicione o
+    // cursor no próprio campo enquanto o usuário ainda está digitando nele.
+    bands.header_entry.connect_changed(glib::clone!(
+        #[weak]
+        text_view,
+        #[weak]
+        buffer,
+        #[strong]
+        pagination,
+        #[weak]
+        overlay,
+        #[strong]
+        bands,
+        #[strong]
+        state,
+        #[weak]
+        status_label,
+        move |entry| {
+            let text = entry.text().to_string();
+            state.borrow_mut().header = if text.is_empty() { None } else { Some(text) };
+            refresh_pagination(&text_view, &buffer, &pagination, &overlay, &bands, &state, &status_label);
+        }
+    ));
+    bands.footer_entry.connect_changed(glib::clone!(
+        #[weak]
+        text_view,
+        #[weak]
+        buffer,
+        #[strong]
+        pagination,
+        #[weak]
+        overlay,
+        #[strong]
+        bands,
+        #[strong]
+        state,
+        #[weak]
+        status_label,
+        move |entry| {
+            let text = entry.text().to_string();
+            state.borrow_mut().footer = if text.is_empty() { None } else { Some(text) };
+            refresh_pagination(&text_view, &buffer, &pagination, &overlay, &bands, &state, &status_label);
         }
     ));
 

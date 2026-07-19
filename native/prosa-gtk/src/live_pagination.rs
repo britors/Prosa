@@ -61,11 +61,14 @@ pub const MARGIN_RIGHT_PX: i32 = 76;
 /// a última página e a barra de status.
 pub const PAGE_GAP_PX: i32 = 32;
 
-/// Altura reservada pra cabeçalho/rodapé em tela, convertida de
+/// Altura reservada pra cabeçalho/rodapé em tela — baseada em
 /// `header_height_pt`/`footer_height_pt` (`print::PageLayout::academic_a4`,
-/// 24pt) pra pixels a 96dpi — mesma proporção usada no resto deste módulo.
-pub const HEADER_BAND_HEIGHT_PX: i32 = 32;
-pub const FOOTER_BAND_HEIGHT_PX: i32 = 32;
+/// 24pt, ~32px a 96dpi), arredondada um pouco pra cima porque aqui essas
+/// bandas são widgets interativos de verdade (`GtkEntry`, editáveis direto
+/// na tela — ver `main.rs`/`sync_page_bands`), não só uma linha de texto
+/// desenhada como no PDF, e precisam de espaço pro padding interno do GTK.
+pub const HEADER_BAND_HEIGHT_PX: i32 = 36;
+pub const FOOTER_BAND_HEIGHT_PX: i32 = 36;
 
 /// Altura de conteúdo disponível por página, descontando cabeçalho (só se
 /// `has_header`) e rodapé (sempre — a numeração de página ocupa esse espaço
