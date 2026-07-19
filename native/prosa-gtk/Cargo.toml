@@ -4,7 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Casca nativa GTK4 + libadwaita do Prosa (MVP: editor básico e abrir/salvar .prosa)."
+description = "Editor de texto nativo GTK4 + libadwaita, com IA assistida, wikilinks, bibliografia e histórico de versões."
+homepage = "https://github.com/britors/Prosa"
+repository = "https://github.com/britors/Prosa"
 
 [[bin]]
 name = "prosa"
@@ -21,3 +23,41 @@ cairo = { package = "cairo-rs", version = "0.20" }
 enchant = "0.3"
 regex = "1"
 serde_json = "1"
+
+# Empacotamento binário (`cargo generate-rpm`/`cargo deb`, rodados na release
+# do GitHub Actions) — o binário `prosa` recebe o nome de pacote `prosa` nos
+# três formatos, mesmo o crate se chamando `prosa-gtk`.
+[package.metadata.generate-rpm]
+name = "prosa"
+assets = [
+    { source = "target/release/prosa", dest = "/usr/bin/prosa", mode = "755" },
+    { source = "data/br.com.rodrigobrito.Prosa.Native.desktop", dest = "/usr/share/applications/br.com.rodrigobrito.Prosa.Native.desktop", mode = "644" },
+    { source = "data/icons/hicolor/48x48/apps/br.com.rodrigobrito.Prosa.Native.png", dest = "/usr/share/icons/hicolor/48x48/apps/br.com.rodrigobrito.Prosa.Native.png", mode = "644" },
+    { source = "data/icons/hicolor/64x64/apps/br.com.rodrigobrito.Prosa.Native.png", dest = "/usr/share/icons/hicolor/64x64/apps/br.com.rodrigobrito.Prosa.Native.png", mode = "644" },
+    { source = "data/icons/hicolor/128x128/apps/br.com.rodrigobrito.Prosa.Native.png", dest = "/usr/share/icons/hicolor/128x128/apps/br.com.rodrigobrito.Prosa.Native.png", mode = "644" },
+    { source = "data/icons/hicolor/256x256/apps/br.com.rodrigobrito.Prosa.Native.png", dest = "/usr/share/icons/hicolor/256x256/apps/br.com.rodrigobrito.Prosa.Native.png", mode = "644" },
+]
+# Sem `requires` explícito de propósito: `--auto-req auto` (padrão) usa
+# `/usr/lib/rpm/find-requires` do próprio sistema onde o pacote é gerado —
+# isso já produz os nomes corretos de dependência (gtk4/libadwaita/enchant2)
+# tanto pro Fedora quanto pro openSUSE sem precisar de duas listas manuais.
+
+[package.metadata.deb]
+name = "prosa"
+maintainer = "Rodrigo Brito <rodrigo@w3ti.com.br>"
+copyright = "2026, Rodrigo Brito <rodrigo@w3ti.com.br>"
+license-file = ["../../LICENSE", "0"]
+extended-description = "Editor de texto nativo desktop para Linux/GNOME, construído em Rust sobre GTK4 e libadwaita."
+section = "text"
+priority = "optional"
+assets = [
+    ["target/release/prosa", "usr/bin/", "755"],
+    ["data/br.com.rodrigobrito.Prosa.Native.desktop", "usr/share/applications/", "644"],
+    ["data/icons/hicolor/48x48/apps/br.com.rodrigobrito.Prosa.Native.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["data/icons/hicolor/64x64/apps/br.com.rodrigobrito.Prosa.Native.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["data/icons/hicolor/128x128/apps/br.com.rodrigobrito.Prosa.Native.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["data/icons/hicolor/256x256/apps/br.com.rodrigobrito.Prosa.Native.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+]
+# `cargo-deb` já faz o mesmo tipo de detecção automática de dependências via
+# `ldd`/shared libraries do binário (`depends = "$auto"` é o padrão), então
+# também sem lista manual de `Depends:` aqui.

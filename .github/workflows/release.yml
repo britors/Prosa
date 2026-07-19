@@ -1,0 +1,88 @@
+# Prosa — Editor de Texto
+# Copyright (C) 2026 Rodrigo Brito
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Compila o binário nativo (Rust + GTK4), gera os pacotes .deb e .rpm e
+# publica um Release no GitHub quando uma tag "v*" é enviada.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Build Linux (.deb/.rpm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependências do sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-4-dev libadwaita-1-dev \
+            libpango1.0-dev libcairo2-dev \
+            libenchant-2-dev \
+            rpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      - name: Instalar ferramentas de empacotamento
+        run: cargo install cargo-generate-rpm cargo-deb
+
+      - name: Compilar (release)
+        run: cargo build --release --workspace
+
+      - name: Gerar pacote .rpm
+        run: cargo generate-rpm -p prosa-gtk
+
+      - name: Gerar pacote .deb
+        run: cargo deb -p prosa-gtk --no-build
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            target/generate-rpm/*.rpm
+            target/debian/*.deb
+
+  publish:
+    name: Publish Release
+    needs: [linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: Display structure of downloaded files
+        run: ls -R all-artifacts
+
+      - name: Create and Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            all-artifacts/*.deb
+            all-artifacts/*.rpm
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
