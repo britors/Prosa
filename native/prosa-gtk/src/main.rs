@@ -18,6 +18,7 @@ mod outline;
 mod print;
 mod save_format;
 mod spellcheck;
+mod template_dialog;
 mod wikilink;
 
 use std::cell::{Cell, RefCell};
@@ -335,6 +336,37 @@ fn open_document_at_path(
     }
 }
 
+/// Substitui o buffer pelo conteúdo de `template` (ou por um documento
+/// vazio, se `None` — "Em branco") e reseta o estado do documento como
+/// novo, sem caminho. Igual ao `open_document_at_path`, mas partindo de um
+/// template em vez de um arquivo em disco.
+fn apply_new_document(
+    buffer: &gtk::TextBuffer,
+    title_widget: &adw::WindowTitle,
+    state: &Rc<RefCell<DocumentState>>,
+    loading_document: &Rc<Cell<bool>>,
+    backlinks: &BacklinksPanel,
+    template: Option<prosa_doc::templates::DocumentTemplate>,
+) {
+    let content = template.as_ref().map(|t| t.content.clone()).unwrap_or_else(prosa_doc::TipTapNode::empty_doc);
+    let title = template.as_ref().map(|t| t.name.to_string()).unwrap_or_else(|| "Sem título".to_string());
+    let format = template.as_ref().and_then(|t| SaveFormat::from_extension(t.preferred_format)).unwrap_or(SaveFormat::Prosa);
+
+    loading_document.set(true);
+    load_doc_into_buffer(buffer, &content);
+    loading_document.set(false);
+
+    title_widget.set_subtitle(&title);
+    *state.borrow_mut() = DocumentState {
+        path: None,
+        metadata: DocumentMetadata { title, author: whoami_fallback(), created_at: now_iso(), modified_at: now_iso() },
+        header: None,
+        footer: None,
+        format,
+    };
+    backlinks.refresh(None);
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -446,6 +478,8 @@ fn build_window(app: &adw::Application) {
 
     let title_widget = adw::WindowTitle::new("Prosa", "Sem título");
 
+    let new_button = gtk::Button::from_icon_name("document-new-symbolic");
+    new_button.set_tooltip_text(Some("Novo documento"));
     let open_button = gtk::Button::from_icon_name("document-open-symbolic");
     open_button.set_tooltip_text(Some("Abrir (.prosa ou .docx)"));
     let save_button = gtk::Button::from_icon_name("media-floppy-symbolic");
@@ -510,6 +544,7 @@ fn build_window(app: &adw::Application) {
     // separados uns dos outros.
     let file_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     file_group.add_css_class("linked");
+    file_group.append(&new_button);
     file_group.append(&open_button);
     file_group.append(&save_button);
 
@@ -1239,6 +1274,41 @@ fn build_window(app: &adw::Application) {
                     move || {
                         update_status_bar(&buffer, &pagination, &status_label);
                         sync_break_lines(&overlay, &break_line_widgets, &pagination.break_points_buffer_y());
+                    }
+                ),
+            );
+        }
+    ));
+
+    new_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[weak]
+        title_widget,
+        #[strong]
+        state,
+        #[strong]
+        loading_document,
+        #[strong]
+        backlinks,
+        move |_| {
+            template_dialog::show_template_picker(
+                &window,
+                glib::clone!(
+                    #[weak]
+                    buffer,
+                    #[weak]
+                    title_widget,
+                    #[strong]
+                    state,
+                    #[strong]
+                    loading_document,
+                    #[strong]
+                    backlinks,
+                    move |template| {
+                        apply_new_document(&buffer, &title_widget, &state, &loading_document, &backlinks, template);
                     }
                 ),
             );

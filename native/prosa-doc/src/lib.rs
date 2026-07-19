@@ -15,6 +15,7 @@ pub mod bibliography;
 pub mod docx;
 pub mod odt;
 pub mod rtf;
+pub mod templates;
 pub mod wikilink;
 pub mod workspace;
 mod xml_util;
