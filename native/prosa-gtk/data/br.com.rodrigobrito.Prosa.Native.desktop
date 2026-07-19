@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Prosa
+Comment=Editor de texto nativo — suas ideias, bem escritas
+Exec=prosa %f
+Icon=br.com.rodrigobrito.Prosa.Native
+Terminal=false
+Categories=Office;WordProcessor;
+StartupWMClass=br.com.rodrigobrito.Prosa.Native

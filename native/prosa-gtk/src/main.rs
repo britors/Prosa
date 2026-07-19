@@ -10,13 +10,16 @@
 mod ai_ui;
 mod find_replace;
 mod formatting;
+mod graph_view;
 mod live_pagination;
 mod outline;
 mod print;
+mod save_format;
 mod spellcheck;
+mod wikilink;
 
 use std::cell::{Cell, RefCell};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use adw::prelude::*;
@@ -25,6 +28,7 @@ use prosa_doc::{docx, odt, rtf};
 use prosa_doc::{DocumentMetadata, ProsaFile};
 
 use find_replace::{FindReplace, SearchOptions};
+use save_format::SaveFormat;
 use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_heading_level, setup_heading_tags, setup_mark_tags, toggle_mark};
 use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
@@ -40,6 +44,70 @@ struct DocumentState {
     /// usados (como texto puro) na exportação para PDF.
     header: Option<String>,
     footer: Option<String>,
+    /// Formato do `path` atual (se houver). Some salva silenciosamente nesse
+    /// formato de novo; sem `path` ainda, o botão Salvar pergunta o formato
+    /// (ver `save_format::show_format_picker`), igual à versão Electron.
+    format: SaveFormat,
+}
+
+/// Painel lateral de backlinks: documentos, dentro da pasta de workspace
+/// escolhida na sessão (ver `prosa_doc::workspace`), que referenciam o
+/// documento atualmente aberto via `[[wikilink]]`. `workspace_root` não é
+/// persistido — dura só a sessão, igual decidido pra essa primeira versão.
+#[derive(Clone)]
+struct BacklinksPanel {
+    workspace_root: Rc<RefCell<Option<PathBuf>>>,
+    workspace_label: gtk::Label,
+    list: gtk::ListBox,
+    paths: Rc<RefCell<Vec<PathBuf>>>,
+}
+
+impl BacklinksPanel {
+    fn clear_list(&self) {
+        while let Some(row) = self.list.row_at_index(0) {
+            self.list.remove(&row);
+        }
+        self.paths.borrow_mut().clear();
+    }
+
+    fn append_info_row(&self, text: &str) {
+        let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).margin_start(8).margin_end(8).margin_top(6).margin_bottom(6).css_classes(["dim-label"]).build();
+        self.list.append(&label);
+    }
+
+    /// Recalcula e redesenha a lista de backlinks para `current_path` (o
+    /// documento aberto no momento). Roda a varredura da pasta inteira do
+    /// zero a cada chamada — sem cache/índice persistido, igual à versão
+    /// Electron (`workspace.ts`).
+    fn refresh(&self, current_path: Option<&Path>) {
+        self.clear_list();
+
+        let Some(root) = self.workspace_root.borrow().clone() else {
+            self.workspace_label.set_text("Nenhuma pasta de workspace selecionada.");
+            return;
+        };
+        self.workspace_label.set_text(&format!("Workspace: {}", root.display()));
+
+        let Some(current_path) = current_path else {
+            self.append_info_row("Salve o documento pra ver backlinks.");
+            return;
+        };
+
+        let docs = prosa_doc::workspace::scan_workspace(&root);
+        let relations = prosa_doc::workspace::relations_for(&root, current_path, &docs);
+
+        if relations.backlinks.is_empty() {
+            self.append_info_row("Nenhum documento referencia este ainda.");
+            return;
+        }
+
+        let mut paths = self.paths.borrow_mut();
+        for doc in &relations.backlinks {
+            let label = gtk::Label::builder().label(&doc.title).xalign(0.0).margin_start(8).margin_end(8).margin_top(4).margin_bottom(4).build();
+            self.list.append(&label);
+            paths.push(doc.path.clone());
+        }
+    }
 }
 
 fn now_iso() -> String {
@@ -60,6 +128,7 @@ fn new_document_state() -> DocumentState {
         },
         header: None,
         footer: None,
+        format: SaveFormat::Prosa,
     }
 }
 
@@ -222,6 +291,48 @@ fn sync_break_lines(overlay: &gtk::Overlay, break_line_widgets: &Rc<RefCell<Vec<
     overlay.queue_allocate();
 }
 
+/// Abre um documento (`.prosa`/`.docx`/`.odt`/`.rtf`) num caminho já
+/// conhecido, carregando-o no buffer e atualizando o estado — compartilhado
+/// pelo botão "Abrir" e pelo clique numa linha do painel de backlinks.
+fn open_document_at_path(
+    window: &adw::ApplicationWindow,
+    buffer: &gtk::TextBuffer,
+    title_widget: &adw::WindowTitle,
+    state: &Rc<RefCell<DocumentState>>,
+    loading_document: &Rc<Cell<bool>>,
+    backlinks: &BacklinksPanel,
+    path: PathBuf,
+) {
+    let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+
+    let opened = match extension.as_str() {
+        "docx" | "odt" | "rtf" => read_foreign_document(&path, &extension).map(|content| {
+            let now = now_iso();
+            let metadata =
+                DocumentMetadata { title: file_stem_title(&path), author: String::new(), created_at: now.clone(), modified_at: now };
+            (content, metadata, None, None)
+        }),
+        _ => ProsaFile::load(&path).map_err(|e| e.to_string()).map(|f| (f.content, f.metadata, f.header, f.footer)),
+    };
+
+    match opened {
+        Ok((content, metadata, header, footer)) => {
+            loading_document.set(true);
+            load_doc_into_buffer(buffer, &content);
+            loading_document.set(false);
+            title_widget.set_subtitle(&metadata.title);
+            let format = SaveFormat::from_extension(&extension).unwrap_or(SaveFormat::Prosa);
+            *state.borrow_mut() = DocumentState { path: Some(path.clone()), metadata, header, footer, format };
+            backlinks.refresh(Some(&path));
+        }
+        Err(message) => {
+            let alert = adw::AlertDialog::new(Some("Não foi possível abrir o documento"), Some(&message));
+            alert.add_response("ok", "OK");
+            alert.present(Some(window));
+        }
+    }
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -259,11 +370,17 @@ fn build_window(app: &adw::Application) {
         .width_request(live_pagination::PAGE_WIDTH_PX)
         .hexpand(false)
         .halign(gtk::Align::Center)
+        // Mesmo respiro (cor da mesa) que separa duas páginas, mas pela
+        // metade, entre o topo da área rolável e a primeira página, e entre
+        // a última página e a barra de status.
+        .margin_top(live_pagination::PAGE_GAP_PX / 2)
+        .margin_bottom(live_pagination::PAGE_GAP_PX / 2)
         .build();
     text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
     setup_heading_tags(&buffer);
+    wikilink::setup_wikilink_tag(&buffer);
 
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -295,7 +412,7 @@ fn build_window(app: &adw::Application) {
             // contrário o indicador cobre a barra de rolagem, que fica
             // fora dessa faixa.
             let x = ((overlay.width() - live_pagination::PAGE_WIDTH_PX) / 2).max(0);
-            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, 32))
+            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, live_pagination::PAGE_GAP_PX))
         }
     ));
 
@@ -319,13 +436,18 @@ fn build_window(app: &adw::Application) {
     status_label.add_css_class("dim-label");
 
     let state = Rc::new(RefCell::new(new_document_state()));
+    // `load_doc_into_buffer` insere o documento inteiro de uma vez — sem essa
+    // guarda, qualquer "[[...]]" literal (texto de fontes que não usam a
+    // convenção de wikilink) viraria link sozinho só de abrir o arquivo. A
+    // detecção deve valer só pra quem está digitando, não pra carga em massa.
+    let loading_document = Rc::new(Cell::new(false));
 
     let title_widget = adw::WindowTitle::new("Prosa", "Sem título");
 
     let open_button = gtk::Button::from_icon_name("document-open-symbolic");
     open_button.set_tooltip_text(Some("Abrir (.prosa ou .docx)"));
-    let save_button = gtk::Button::from_icon_name("document-save-symbolic");
-    save_button.set_tooltip_text(Some("Salvar (.prosa)"));
+    let save_button = gtk::Button::from_icon_name("media-floppy-symbolic");
+    save_button.set_tooltip_text(Some("Salvar"));
 
     let bold_button = gtk::Button::from_icon_name("format-text-bold-symbolic");
     bold_button.set_tooltip_text(Some("Negrito (Ctrl+B)"));
@@ -335,9 +457,12 @@ fn build_window(app: &adw::Application) {
     underline_button.set_tooltip_text(Some("Sublinhado (Ctrl+U)"));
     let strike_button = gtk::Button::from_icon_name("format-text-strikethrough-symbolic");
     strike_button.set_tooltip_text(Some("Tachado"));
-    let superscript_button = gtk::Button::from_icon_name("format-text-superscript-symbolic");
+    // Sem ícone simbólico padrão pra sobrescrito/subscrito no tema Adwaita —
+    // rótulo de texto, mesmo padrão já usado nos botões da barra de
+    // localizar/substituir ("Aa", ".*", "Palavra").
+    let superscript_button = gtk::Button::with_label("x²");
     superscript_button.set_tooltip_text(Some("Sobrescrito"));
-    let subscript_button = gtk::Button::from_icon_name("format-text-subscript-symbolic");
+    let subscript_button = gtk::Button::with_label("x₂");
     subscript_button.set_tooltip_text(Some("Subscrito"));
 
     let heading_menu = gio::Menu::new();
@@ -346,9 +471,12 @@ fn build_window(app: &adw::Application) {
     heading_menu.append(Some("Título 3"), Some("win.heading-3"));
     heading_menu.append(Some("Parágrafo normal"), Some("win.heading-none"));
     let heading_menu_button =
-        gtk::MenuButton::builder().icon_name("format-text-larger-symbolic").tooltip_text("Título do parágrafo").menu_model(&heading_menu).build();
+        gtk::MenuButton::builder().label("H").tooltip_text("Título do parágrafo").menu_model(&heading_menu).build();
 
     let outline_toggle_button = gtk::ToggleButton::builder().icon_name("view-list-symbolic").tooltip_text("Painel de tópicos").build();
+    let backlinks_toggle_button = gtk::ToggleButton::builder().icon_name("insert-link-symbolic").tooltip_text("Backlinks").build();
+    let graph_button = gtk::Button::from_icon_name("network-workgroup-symbolic");
+    graph_button.set_tooltip_text(Some("Grafo de conexões"));
 
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
@@ -364,34 +492,44 @@ fn build_window(app: &adw::Application) {
     ai_menu.append_section(None, &ai_settings_section);
     let ai_menu_button = gtk::MenuButton::builder().label("IA").tooltip_text("Ações de IA").menu_model(&ai_menu).build();
 
-    let export_pdf_button = gtk::Button::from_icon_name("document-export-symbolic");
+    // "document-export-symbolic" não existe no tema Adwaita padrão — o botão
+    // aciona a exportação via GtkPrintOperation (print.rs), então o ícone de
+    // impressora é o correto semanticamente, além de existir de fato.
+    let export_pdf_button = gtk::Button::from_icon_name("document-print-symbolic");
     export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
 
-    let export_menu = gio::Menu::new();
-    export_menu.append(Some("Word (.docx)"), Some("win.export-docx"));
-    export_menu.append(Some("OpenDocument (.odt)"), Some("win.export-odt"));
-    export_menu.append(Some("Rich Text (.rtf)"), Some("win.export-rtf"));
-    let export_menu_button = gtk::MenuButton::builder()
-        .icon_name("view-more-symbolic")
-        .tooltip_text("Exportar como...")
-        .menu_model(&export_menu)
-        .build();
+    // Grupos "linked" (mesmo padrão HIG do GNOME de agrupar botões
+    // relacionados numa pílula só) em vez de uma fileira flat de itens
+    // soltos: arquivo, formatação de texto e navegação/IA ficam visualmente
+    // separados uns dos outros.
+    let file_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    file_group.add_css_class("linked");
+    file_group.append(&open_button);
+    file_group.append(&save_button);
+
+    let format_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    format_group.add_css_class("linked");
+    format_group.append(&bold_button);
+    format_group.append(&italic_button);
+    format_group.append(&underline_button);
+    format_group.append(&strike_button);
+    format_group.append(&superscript_button);
+    format_group.append(&subscript_button);
+    format_group.append(&heading_menu_button);
+
+    let nav_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    nav_group.add_css_class("linked");
+    nav_group.append(&outline_toggle_button);
+    nav_group.append(&backlinks_toggle_button);
+    nav_group.append(&graph_button);
+    nav_group.append(&ai_menu_button);
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
-    header_bar.pack_start(&open_button);
-    header_bar.pack_start(&save_button);
+    header_bar.pack_start(&file_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
-    header_bar.pack_start(&bold_button);
-    header_bar.pack_start(&italic_button);
-    header_bar.pack_start(&underline_button);
-    header_bar.pack_start(&strike_button);
-    header_bar.pack_start(&superscript_button);
-    header_bar.pack_start(&subscript_button);
-    header_bar.pack_start(&heading_menu_button);
+    header_bar.pack_start(&format_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
-    header_bar.pack_start(&outline_toggle_button);
-    header_bar.pack_start(&ai_menu_button);
-    header_bar.pack_end(&export_menu_button);
+    header_bar.pack_start(&nav_group);
     header_bar.pack_end(&export_pdf_button);
 
     // Barra de localizar/substituir: escondida por padrão, revelada com
@@ -452,6 +590,40 @@ fn build_window(app: &adw::Application) {
     let outline_revealer =
         gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideRight).reveal_child(false).child(&outline_scrolled).build();
 
+    // Painel de backlinks: documentos (dentro da pasta de workspace
+    // escolhida na sessão) que referenciam o documento atual via
+    // `[[wikilink]]`. Escondido por padrão, revelado pelo botão da toolbar.
+    let workspace_label = gtk::Label::builder()
+        .label("Nenhuma pasta de workspace selecionada.")
+        .xalign(0.0)
+        .wrap(true)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .css_classes(["dim-label"])
+        .build();
+    let choose_workspace_button =
+        gtk::Button::builder().label("Escolher pasta...").margin_start(8).margin_end(8).margin_top(4).margin_bottom(8).build();
+    let backlinks_list = gtk::ListBox::new();
+    backlinks_list.add_css_class("navigation-sidebar");
+    backlinks_list.set_selection_mode(gtk::SelectionMode::None);
+
+    let backlinks_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    backlinks_box.append(&workspace_label);
+    backlinks_box.append(&choose_workspace_button);
+    backlinks_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    backlinks_box.append(&backlinks_list);
+    let backlinks_scrolled = gtk::ScrolledWindow::builder().child(&backlinks_box).vexpand(true).width_request(240).build();
+    let backlinks_revealer =
+        gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideLeft).reveal_child(false).child(&backlinks_scrolled).build();
+
+    let backlinks = BacklinksPanel {
+        workspace_root: Rc::new(RefCell::new(None)),
+        workspace_label: workspace_label.clone(),
+        list: backlinks_list.clone(),
+        paths: Rc::new(RefCell::new(Vec::new())),
+    };
+
     // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
     // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
     // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
@@ -465,6 +637,8 @@ fn build_window(app: &adw::Application) {
     main_split.append(&outline_revealer);
     main_split.append(&gtk::Separator::new(gtk::Orientation::Vertical));
     main_split.append(&content_box);
+    main_split.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    main_split.append(&backlinks_revealer);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
@@ -514,6 +688,113 @@ fn build_window(app: &adw::Application) {
         #[weak]
         outline_revealer,
         move |button| outline_revealer.set_reveal_child(button.is_active())
+    ));
+
+    backlinks_toggle_button.connect_toggled(glib::clone!(
+        #[weak]
+        backlinks_revealer,
+        #[strong]
+        backlinks,
+        #[strong]
+        state,
+        move |button| {
+            let active = button.is_active();
+            backlinks_revealer.set_reveal_child(active);
+            if active {
+                backlinks.refresh(state.borrow().path.as_deref());
+            }
+        }
+    ));
+
+    choose_workspace_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        backlinks,
+        #[strong]
+        state,
+        move |_| {
+            let dialog = gtk::FileDialog::builder().title("Escolher pasta do workspace").modal(true).build();
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                window,
+                #[strong]
+                backlinks,
+                #[strong]
+                state,
+                async move {
+                    let Ok(folder) = dialog.select_folder_future(Some(&window)).await else { return };
+                    let Some(path) = folder.path() else { return };
+                    *backlinks.workspace_root.borrow_mut() = Some(path);
+                    backlinks.refresh(state.borrow().path.as_deref());
+                }
+            ));
+        }
+    ));
+
+    backlinks_list.connect_row_activated(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[weak]
+        title_widget,
+        #[strong]
+        state,
+        #[strong]
+        loading_document,
+        #[strong]
+        backlinks,
+        move |_, row| {
+            if let Some(path) = backlinks.paths.borrow().get(row.index() as usize).cloned() {
+                open_document_at_path(&window, &buffer, &title_widget, &state, &loading_document, &backlinks, path);
+            }
+        }
+    ));
+
+    graph_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[weak]
+        title_widget,
+        #[strong]
+        state,
+        #[strong]
+        loading_document,
+        #[strong]
+        backlinks,
+        move |_| {
+            let Some(root) = backlinks.workspace_root.borrow().clone() else {
+                let alert = adw::AlertDialog::new(
+                    Some("Nenhum workspace selecionado"),
+                    Some("Escolha uma pasta de workspace no painel de backlinks antes de abrir o grafo."),
+                );
+                alert.add_response("ok", "OK");
+                alert.present(Some(&window));
+                return;
+            };
+            graph_view::open_graph_window(
+                &window,
+                root,
+                glib::clone!(
+                    #[weak]
+                    window,
+                    #[weak]
+                    buffer,
+                    #[weak]
+                    title_widget,
+                    #[strong]
+                    state,
+                    #[strong]
+                    loading_document,
+                    #[strong]
+                    backlinks,
+                    move |path| open_document_at_path(&window, &buffer, &title_widget, &state, &loading_document, &backlinks, path)
+                ),
+            );
+        }
     ));
 
     outline_list.connect_row_activated(glib::clone!(
@@ -908,7 +1189,17 @@ fn build_window(app: &adw::Application) {
         outline_list,
         #[strong]
         outline_lines,
+        #[strong]
+        loading_document,
         move |_| {
+            if !loading_document.get() {
+                wikilink::linkify_pending(&buffer);
+            }
+            // Acompanha o cursor ao digitar — sem isso, digitar perto do fim
+            // da área visível não rola a tela sozinho (o comportamento
+            // automático do GtkTextView não é confiável dentro do
+            // GtkOverlay/margens customizadas da folha).
+            text_view.scroll_mark_onscreen(&buffer.get_insert());
             update_status_bar(&buffer, &pagination, &status_label);
             refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
@@ -944,6 +1235,10 @@ fn build_window(app: &adw::Application) {
         title_widget,
         #[strong]
         state,
+        #[strong]
+        loading_document,
+        #[strong]
+        backlinks,
         move |_| {
             let dialog = gtk::FileDialog::builder()
                 .title("Abrir documento")
@@ -965,46 +1260,27 @@ fn build_window(app: &adw::Application) {
                 title_widget,
                 #[strong]
                 state,
+                #[strong]
+                loading_document,
+                #[strong]
+                backlinks,
                 async move {
                     let file = match dialog.open_future(Some(&window)).await {
                         Ok(file) => file,
                         Err(_) => return, // cancelado pelo usuário
                     };
                     let Some(path) = file.path() else { return };
-                    let extension =
-                        path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
-
-                    let opened = match extension.as_str() {
-                        "docx" | "odt" | "rtf" => read_foreign_document(&path, &extension).map(|content| {
-                            let now = now_iso();
-                            let metadata = DocumentMetadata {
-                                title: file_stem_title(&path),
-                                author: String::new(),
-                                created_at: now.clone(),
-                                modified_at: now,
-                            };
-                            (content, metadata, None, None)
-                        }),
-                        _ => ProsaFile::load(&path).map_err(|e| e.to_string()).map(|f| (f.content, f.metadata, f.header, f.footer)),
-                    };
-
-                    match opened {
-                        Ok((content, metadata, header, footer)) => {
-                            load_doc_into_buffer(&buffer, &content);
-                            title_widget.set_subtitle(&metadata.title);
-                            *state.borrow_mut() = DocumentState { path: Some(path), metadata, header, footer };
-                        }
-                        Err(message) => {
-                            let alert = adw::AlertDialog::new(Some("Não foi possível abrir o documento"), Some(&message));
-                            alert.add_response("ok", "OK");
-                            alert.present(Some(&window));
-                        }
-                    }
+                    open_document_at_path(&window, &buffer, &title_widget, &state, &loading_document, &backlinks, path);
                 }
             ));
         }
     ));
 
+    // "Salvar" espelha `DocumentPersistenceController.save` do Electron:
+    // documento já tem caminho -> grava direto, sem perguntar de novo, no
+    // mesmo formato de sempre; documento novo (sem caminho ainda) -> pergunta
+    // o formato primeiro (`save_format::show_format_picker`), só depois abre
+    // o seletor de arquivo.
     save_button.connect_clicked(glib::clone!(
         #[weak]
         window,
@@ -1014,72 +1290,60 @@ fn build_window(app: &adw::Application) {
         title_widget,
         #[strong]
         state,
+        #[strong]
+        backlinks,
         move |_| {
-            let existing_path = state.borrow().path.clone();
-
-            let finish_save = glib::clone!(
-                #[weak]
-                window,
-                #[weak]
-                buffer,
-                #[weak]
-                title_widget,
-                #[strong]
-                state,
-                move |path: PathBuf| {
-                    let mut current = state.borrow_mut();
-                    current.metadata.modified_at = now_iso();
-                    let prosa_file = ProsaFile {
-                        version: 1,
-                        content: doc_from_buffer(&buffer),
-                        metadata: current.metadata.clone(),
-                        notes: None,
-                        header: current.header.clone(),
-                        footer: current.footer.clone(),
-                    };
-                    match prosa_file.save(&path) {
-                        Ok(()) => {
-                            title_widget.set_subtitle(&current.metadata.title);
-                            current.path = Some(path);
-                        }
-                        Err(err) => {
-                            drop(current);
-                            let alert = adw::AlertDialog::new(
-                                Some("Não foi possível salvar o documento"),
-                                Some(&err.to_string()),
-                            );
-                            alert.add_response("ok", "OK");
-                            alert.present(Some(&window));
-                        }
-                    }
-                }
-            );
-
-            if let Some(path) = existing_path {
-                finish_save(path);
+            let existing = state.borrow().path.clone();
+            if let Some(path) = existing {
+                let format = state.borrow().format;
+                write_document(&window, &buffer, &title_widget, &state, &backlinks, path, format);
                 return;
             }
 
-            let dialog = gtk::FileDialog::builder()
-                .title("Salvar documento Prosa")
-                .modal(true)
-                .initial_name("Sem título.prosa")
-                .build();
-            let filters = gio::ListStore::new::<gtk::FileFilter>();
-            filters.append(&prosa_file_filter());
-            dialog.set_filters(Some(&filters));
+            save_format::show_format_picker(
+                &window,
+                glib::clone!(
+                    #[weak]
+                    window,
+                    #[weak]
+                    buffer,
+                    #[weak]
+                    title_widget,
+                    #[strong]
+                    state,
+                    #[strong]
+                    backlinks,
+                    move |format: SaveFormat| {
+                        let default_name = format!("{}.{}", state.borrow().metadata.title, format.extension());
+                        let dialog = gtk::FileDialog::builder()
+                            .title("Salvar como")
+                            .modal(true)
+                            .initial_name(default_name)
+                            .build();
+                        let filters = gio::ListStore::new::<gtk::FileFilter>();
+                        filters.append(&file_filter_for_format(format));
+                        dialog.set_filters(Some(&filters));
 
-            glib::spawn_future_local(glib::clone!(
-                #[weak]
-                window,
-                async move {
-                    if let Ok(file) = dialog.save_future(Some(&window)).await {
-                        if let Some(path) = file.path() {
-                            finish_save(path);
-                        }
+                        glib::spawn_future_local(glib::clone!(
+                            #[weak]
+                            window,
+                            #[weak]
+                            buffer,
+                            #[weak]
+                            title_widget,
+                            #[strong]
+                            state,
+                            #[strong]
+                            backlinks,
+                            async move {
+                                let Ok(file) = dialog.save_future(Some(&window)).await else { return };
+                                let Some(path) = file.path() else { return };
+                                write_document(&window, &buffer, &title_widget, &state, &backlinks, path, format);
+                            }
+                        ));
                     }
-                }
-            ));
+                ),
+            );
         }
     ));
 
@@ -1139,45 +1403,6 @@ fn build_window(app: &adw::Application) {
         }
     ));
 
-    for (action_name, format_label, extension, filter, write_fn) in [
-        (
-            "export-docx",
-            "Word (.docx)",
-            "docx",
-            docx_file_filter(),
-            Rc::new(|doc: &prosa_doc::TipTapNode| docx::write_docx(doc).map_err(|e| e.to_string()))
-                as Rc<dyn Fn(&prosa_doc::TipTapNode) -> Result<Vec<u8>, String>>,
-        ),
-        (
-            "export-odt",
-            "OpenDocument (.odt)",
-            "odt",
-            odt_file_filter(),
-            Rc::new(|doc: &prosa_doc::TipTapNode| odt::write_odt(doc).map_err(|e| e.to_string())),
-        ),
-        (
-            "export-rtf",
-            "Rich Text (.rtf)",
-            "rtf",
-            rtf_file_filter(),
-            Rc::new(|doc: &prosa_doc::TipTapNode| Ok(rtf::write_rtf(doc))),
-        ),
-    ] {
-        let action = gio::SimpleAction::new(action_name, None);
-        action.connect_activate(glib::clone!(
-            #[weak]
-            window,
-            #[weak]
-            buffer,
-            #[strong]
-            state,
-            move |_, _| {
-                spawn_export(window.clone(), buffer.clone(), state.clone(), format_label, extension, filter.clone(), write_fn.clone());
-            }
-        ));
-        window.add_action(&action);
-    }
-
     let ai_settings_action = gio::SimpleAction::new("ai-settings", None);
     ai_settings_action.connect_activate(glib::clone!(
         #[weak]
@@ -1208,47 +1433,67 @@ fn build_window(app: &adw::Application) {
     window.present();
 }
 
-/// Diálogo de "salvar como" + escrita do documento num formato de
-/// exportação (docx/odt/rtf), compartilhado pelas três ações de menu.
-fn spawn_export(
-    window: adw::ApplicationWindow,
-    buffer: gtk::TextBuffer,
-    state: Rc<RefCell<DocumentState>>,
-    format_label: &'static str,
-    extension: &'static str,
-    filter: gtk::FileFilter,
-    write_fn: Rc<dyn Fn(&prosa_doc::TipTapNode) -> Result<Vec<u8>, String>>,
+fn file_filter_for_format(format: SaveFormat) -> gtk::FileFilter {
+    match format {
+        SaveFormat::Prosa => prosa_file_filter(),
+        SaveFormat::Docx => docx_file_filter(),
+        SaveFormat::Odt => odt_file_filter(),
+        SaveFormat::Rtf => rtf_file_filter(),
+    }
+}
+
+/// Serializa o buffer no formato escolhido e grava em `path`; em caso de
+/// sucesso, esse formato e caminho passam a ser os "atuais" do documento
+/// (próximo Ctrl+S grava direto neles, sem perguntar de novo).
+fn write_document(
+    window: &adw::ApplicationWindow,
+    buffer: &gtk::TextBuffer,
+    title_widget: &adw::WindowTitle,
+    state: &Rc<RefCell<DocumentState>>,
+    backlinks: &BacklinksPanel,
+    path: PathBuf,
+    format: SaveFormat,
 ) {
-    let default_name = format!("{}.{extension}", state.borrow().metadata.title);
-    let dialog = gtk::FileDialog::builder()
-        .title(format!("Exportar {format_label}"))
-        .modal(true)
-        .initial_name(default_name)
-        .build();
-    let filters = gio::ListStore::new::<gtk::FileFilter>();
-    filters.append(&filter);
-    dialog.set_filters(Some(&filters));
+    let doc = doc_from_buffer(buffer);
+    let mut current = state.borrow_mut();
+    current.metadata.modified_at = now_iso();
 
-    glib::spawn_future_local(glib::clone!(
-        #[weak]
-        window,
-        #[weak]
-        buffer,
-        async move {
-            let Ok(file) = dialog.save_future(Some(&window)).await else { return };
-            let Some(path) = file.path() else { return };
-
-            let doc = doc_from_buffer(&buffer);
-            let result = write_fn(&doc).and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()));
-
-            if let Err(message) = result {
-                let alert =
-                    adw::AlertDialog::new(Some(&format!("Não foi possível exportar como {format_label}")), Some(&message));
-                alert.add_response("ok", "OK");
-                alert.present(Some(&window));
-            }
+    let result: Result<(), String> = match format {
+        SaveFormat::Prosa => {
+            let prosa_file = ProsaFile {
+                version: 1,
+                content: doc,
+                metadata: current.metadata.clone(),
+                notes: None,
+                header: current.header.clone(),
+                footer: current.footer.clone(),
+            };
+            prosa_file.save(&path).map_err(|e| e.to_string())
         }
-    ));
+        SaveFormat::Docx => {
+            docx::write_docx(&doc).map_err(|e| e.to_string()).and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()))
+        }
+        SaveFormat::Odt => {
+            odt::write_odt(&doc).map_err(|e| e.to_string()).and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()))
+        }
+        SaveFormat::Rtf => std::fs::write(&path, rtf::write_rtf(&doc)).map_err(|e| e.to_string()),
+    };
+
+    match result {
+        Ok(()) => {
+            title_widget.set_subtitle(&current.metadata.title);
+            current.path = Some(path.clone());
+            current.format = format;
+            drop(current);
+            backlinks.refresh(Some(&path));
+        }
+        Err(err) => {
+            drop(current);
+            let alert = adw::AlertDialog::new(Some("Não foi possível salvar o documento"), Some(&err));
+            alert.add_response("ok", "OK");
+            alert.present(Some(window));
+        }
+    }
 }
 
 /// Por padrão, libadwaita já segue claro/escuro do sistema (via portal
@@ -1297,5 +1542,9 @@ mod tests {
         crate::find_replace::tests::replace_current_only_changes_the_current_match();
         crate::find_replace::tests::replace_all_handles_different_length_replacement_without_corruption();
         crate::find_replace::tests::clear_removes_highlights_and_resets_state();
+        crate::wikilink::tests::typing_closing_brackets_converts_to_wikilink();
+        crate::wikilink::tests::converts_multiple_pending_links_in_one_pass();
+        crate::wikilink::tests::leaves_unclosed_brackets_untouched();
+        crate::wikilink::tests::cursor_after_match_shifts_back_by_removed_brackets();
     }
 }

@@ -1538,6 +1538,7 @@ name = "prosa-doc"
 version = "0.1.0"
 dependencies = [
  "keyring",
+ "percent-encoding",
  "quick-xml",
  "reqwest",
  "serde",

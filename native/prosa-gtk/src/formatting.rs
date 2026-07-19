@@ -15,7 +15,10 @@
 
 use gtk::prelude::*;
 use gtk::{TextBuffer, TextIter, TextTag};
+use prosa_doc::wikilink::wiki_href;
 use prosa_doc::{Mark, TipTapNode};
+
+use crate::wikilink::WIKILINK_TAG;
 
 /// Nomes de mark suportados, iguais aos tipos registrados no editor Electron.
 pub const MARK_NAMES: [&str; 6] = ["bold", "italic", "underline", "strike", "superscript", "subscript"];
@@ -206,12 +209,15 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
         .tags()
         .iter()
         .filter_map(|tag| tag.name().map(|n| n.to_string()))
-        .filter(|name| MARK_NAMES.contains(&name.as_str()))
+        .filter(|name| MARK_NAMES.contains(&name.as_str()) || name == WIKILINK_TAG)
         .collect();
     names.sort();
     names
 }
 
+/// Constrói a mark de cada nome ativo sobre `text`. A wikilink não tem
+/// alias/texto-visível separado do alvo (ver `wikilink.rs`) — o `href` é
+/// sempre recalculado a partir do próprio texto marcado.
 fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
     let marks = if mark_names.is_empty() {
         None
@@ -219,7 +225,10 @@ fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
         Some(
             mark_names
                 .iter()
-                .map(|kind| Mark { kind: kind.clone(), attrs: None })
+                .map(|kind| {
+                    let attrs = if kind == WIKILINK_TAG { Some(serde_json::json!({ "href": wiki_href(text) })) } else { None };
+                    Mark { kind: kind.clone(), attrs }
+                })
                 .collect(),
         )
     };

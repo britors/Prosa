@@ -55,6 +55,12 @@ pub const MARGIN_BOTTOM_PX: i32 = 94;
 pub const MARGIN_LEFT_PX: i32 = 76;
 pub const MARGIN_RIGHT_PX: i32 = 76;
 
+/// Altura do indicador de quebra entre páginas (cor da "mesa" por cima da
+/// folha) — reaproveitada como a margem externa da própria folha, pra sobrar
+/// o mesmo respiro entre o topo da área rolável e a primeira página, e entre
+/// a última página e a barra de status.
+pub const PAGE_GAP_PX: i32 = 32;
+
 const PAGE_CONTENT_HEIGHT_PX: i32 = PAGE_HEIGHT_PX - MARGIN_TOP_PX - MARGIN_BOTTOM_PX;
 
 /// Estado vivo da paginação: os pontos de quebra (em coordenadas de buffer,

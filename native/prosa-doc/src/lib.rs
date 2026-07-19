@@ -14,6 +14,8 @@ pub mod ai;
 pub mod docx;
 pub mod odt;
 pub mod rtf;
+pub mod wikilink;
+pub mod workspace;
 mod xml_util;
 
 /// Duas invocações concorrentes de `soffice --headless` disputam o lock do
