@@ -1540,6 +1540,7 @@ dependencies = [
  "keyring",
  "percent-encoding",
  "quick-xml",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

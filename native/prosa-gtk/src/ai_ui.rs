@@ -178,26 +178,47 @@ pub fn run_action(window: &adw::ApplicationWindow, buffer: &gtk::TextBuffer, pro
         let _ = tx.send(outcome);
     });
 
+    let waiting_dialog = show_waiting_dialog(window);
+
     glib::idle_add_local(glib::clone!(
         #[weak]
         window,
         #[weak]
         buffer,
+        #[strong]
+        waiting_dialog,
         #[upgrade_or]
         glib::ControlFlow::Break,
         move || match rx.try_recv() {
             Ok(Ok(result)) => {
+                waiting_dialog.force_close();
                 show_result_dialog(&window, &buffer, start_offset, end_offset, &result.text);
                 glib::ControlFlow::Break
             }
             Ok(Err(message)) => {
+                waiting_dialog.force_close();
                 show_message(&window, "Não foi possível concluir a ação de IA", &message);
                 glib::ControlFlow::Break
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                waiting_dialog.force_close();
+                glib::ControlFlow::Break
+            }
         }
     ));
+}
+
+/// Diálogo de espera exibido enquanto a chamada de IA está em andamento
+/// (roda numa thread separada — ver `run_action`). Sem botão de fechar: não
+/// há como cancelar de verdade uma requisição de rede já em curso, então em
+/// vez de fingir que dá, o diálogo só desaparece sozinho quando a resposta
+/// (ou erro) chega.
+fn show_waiting_dialog(window: &adw::ApplicationWindow) -> adw::AlertDialog {
+    let spinner = gtk::Spinner::builder().spinning(true).width_request(32).height_request(32).halign(gtk::Align::Center).margin_top(12).margin_bottom(12).build();
+    let dialog = adw::AlertDialog::builder().heading("Aguardando a IA...").body("Isso pode levar alguns segundos.").extra_child(&spinner).build();
+    dialog.present(Some(window));
+    dialog
 }
 
 fn show_result_dialog(window: &adw::ApplicationWindow, buffer: &gtk::TextBuffer, start_offset: i32, end_offset: i32, result_text: &str) {

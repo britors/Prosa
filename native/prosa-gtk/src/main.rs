@@ -8,6 +8,8 @@
 //! para Rust + GTK4").
 
 mod ai_ui;
+mod bibliography_ui;
+mod citation;
 mod find_replace;
 mod formatting;
 mod graph_view;
@@ -477,6 +479,10 @@ fn build_window(app: &adw::Application) {
     let backlinks_toggle_button = gtk::ToggleButton::builder().icon_name("insert-link-symbolic").tooltip_text("Backlinks").build();
     let graph_button = gtk::Button::from_icon_name("network-workgroup-symbolic");
     graph_button.set_tooltip_text(Some("Grafo de conexões"));
+    // Sem ícone simbólico de "livro/bibliografia" no tema Adwaita — rótulo
+    // de texto, mesmo padrão de "H"/"Aa"/"IA" já usado no resto da barra.
+    let bibliography_button = gtk::Button::with_label("Bib");
+    bibliography_button.set_tooltip_text(Some("Bibliografia"));
 
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
@@ -522,6 +528,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&outline_toggle_button);
     nav_group.append(&backlinks_toggle_button);
     nav_group.append(&graph_button);
+    nav_group.append(&bibliography_button);
     nav_group.append(&ai_menu_button);
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
@@ -794,6 +801,18 @@ fn build_window(app: &adw::Application) {
                     move |path| open_document_at_path(&window, &buffer, &title_widget, &state, &loading_document, &backlinks, path)
                 ),
             );
+        }
+    ));
+
+    bibliography_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[weak]
+        buffer,
+        #[strong]
+        backlinks,
+        move |_| {
+            bibliography_ui::open_bibliography_dialog(&window, &buffer, &backlinks.workspace_root);
         }
     ));
 
@@ -1546,5 +1565,8 @@ mod tests {
         crate::wikilink::tests::converts_multiple_pending_links_in_one_pass();
         crate::wikilink::tests::leaves_unclosed_brackets_untouched();
         crate::wikilink::tests::cursor_after_match_shifts_back_by_removed_brackets();
+        crate::citation::tests::citation_tag_is_created_once_and_reused();
+        crate::citation::tests::cite_key_from_tag_name_extracts_or_rejects();
+        crate::citation::tests::apply_citation_round_trips_with_display_text_different_from_key();
     }
 }

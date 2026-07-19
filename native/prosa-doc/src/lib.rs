@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub mod ai;
+pub mod bibliography;
 pub mod docx;
 pub mod odt;
 pub mod rtf;

@@ -18,6 +18,7 @@ use gtk::{TextBuffer, TextIter, TextTag};
 use prosa_doc::wikilink::wiki_href;
 use prosa_doc::{Mark, TipTapNode};
 
+use crate::citation;
 use crate::wikilink::WIKILINK_TAG;
 
 /// Nomes de mark suportados, iguais aos tipos registrados no editor Electron.
@@ -209,7 +210,7 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
         .tags()
         .iter()
         .filter_map(|tag| tag.name().map(|n| n.to_string()))
-        .filter(|name| MARK_NAMES.contains(&name.as_str()) || name == WIKILINK_TAG)
+        .filter(|name| MARK_NAMES.contains(&name.as_str()) || name == WIKILINK_TAG || name.starts_with(citation::TAG_PREFIX))
         .collect();
     names.sort();
     names
@@ -217,7 +218,9 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
 
 /// Constrói a mark de cada nome ativo sobre `text`. A wikilink não tem
 /// alias/texto-visível separado do alvo (ver `wikilink.rs`) — o `href` é
-/// sempre recalculado a partir do próprio texto marcado.
+/// sempre recalculado a partir do próprio texto marcado. A citação é o
+/// oposto: o texto visível é livre, então a `citeKey` vem do próprio nome
+/// da tag (`citation:<citeKey>`, ver `citation.rs`), não do texto.
 fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
     let marks = if mark_names.is_empty() {
         None
@@ -225,9 +228,14 @@ fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
         Some(
             mark_names
                 .iter()
-                .map(|kind| {
-                    let attrs = if kind == WIKILINK_TAG { Some(serde_json::json!({ "href": wiki_href(text) })) } else { None };
-                    Mark { kind: kind.clone(), attrs }
+                .map(|name| {
+                    if name == WIKILINK_TAG {
+                        Mark { kind: WIKILINK_TAG.to_string(), attrs: Some(serde_json::json!({ "href": wiki_href(text) })) }
+                    } else if let Some(cite_key) = citation::cite_key_from_tag_name(name) {
+                        Mark { kind: "citation".to_string(), attrs: Some(serde_json::json!({ "citeKey": cite_key })) }
+                    } else {
+                        Mark { kind: name.clone(), attrs: None }
+                    }
                 })
                 .collect(),
         )
@@ -301,7 +309,16 @@ fn insert_node(buffer: &TextBuffer, node: &TipTapNode) {
             let start = buffer.iter_at_offset(start_offset);
             let end = buffer.end_iter();
             for mark in marks {
-                if let Some(tag) = buffer.tag_table().lookup(&mark.kind) {
+                let tag = if mark.kind == "citation" {
+                    mark.attrs
+                        .as_ref()
+                        .and_then(|attrs| attrs.get("citeKey"))
+                        .and_then(|v| v.as_str())
+                        .map(|cite_key| citation::citation_tag(buffer, cite_key))
+                } else {
+                    buffer.tag_table().lookup(&mark.kind)
+                };
+                if let Some(tag) = tag {
                     buffer.apply_tag(&tag, &start, &end);
                 }
             }
