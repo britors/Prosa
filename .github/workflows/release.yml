@@ -58,8 +58,8 @@ jobs:
         with:
           name: linux-artifacts
           path: |
-            target/generate-rpm/*.rpm
-            target/debian/*.deb
+            native/target/generate-rpm/*.rpm
+            native/target/debian/*.deb
 
   publish:
     name: Publish Release
