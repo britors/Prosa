@@ -33,7 +33,7 @@ use prosa_doc::{version_history, DocumentMetadata, ProsaFile};
 
 use find_replace::{FindReplace, SearchOptions};
 use save_format::SaveFormat;
-use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_heading_level, setup_heading_tags, setup_mark_tags, toggle_mark};
+use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_heading_level, set_line_alignment, setup_align_tags, setup_heading_tags, setup_mark_tags, toggle_mark};
 use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
 
@@ -450,6 +450,7 @@ fn build_window(app: &adw::Application) {
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
     setup_heading_tags(&buffer);
+    setup_align_tags(&buffer);
     wikilink::setup_wikilink_tag(&buffer);
 
     let scrolled = gtk::ScrolledWindow::builder()
@@ -545,6 +546,19 @@ fn build_window(app: &adw::Application) {
     let heading_menu_button =
         gtk::MenuButton::builder().label("H").tooltip_text("Título do parágrafo").menu_model(&heading_menu).build();
 
+    // Alinhamento de parágrafo: grupo próprio de botões simples (não
+    // `ToggleButton`) — mesmo padrão de negrito/itálico/etc, sem tentar
+    // sincronizar um estado "ativo" com a posição do cursor (o menu de
+    // título ao lado também não faz isso).
+    let align_left_button = gtk::Button::from_icon_name("format-justify-left-symbolic");
+    align_left_button.set_tooltip_text(Some("Alinhar à esquerda"));
+    let align_center_button = gtk::Button::from_icon_name("format-justify-center-symbolic");
+    align_center_button.set_tooltip_text(Some("Centralizar"));
+    let align_right_button = gtk::Button::from_icon_name("format-justify-right-symbolic");
+    align_right_button.set_tooltip_text(Some("Alinhar à direita"));
+    let align_justify_button = gtk::Button::from_icon_name("format-justify-fill-symbolic");
+    align_justify_button.set_tooltip_text(Some("Justificar"));
+
     let outline_toggle_button = gtk::ToggleButton::builder().icon_name("view-list-symbolic").tooltip_text("Painel de tópicos").build();
     let backlinks_toggle_button = gtk::ToggleButton::builder().icon_name("insert-link-symbolic").tooltip_text("Backlinks").build();
     let graph_button = gtk::Button::from_icon_name("network-workgroup-symbolic");
@@ -596,6 +610,13 @@ fn build_window(app: &adw::Application) {
     format_group.append(&subscript_button);
     format_group.append(&heading_menu_button);
 
+    let align_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    align_group.add_css_class("linked");
+    align_group.append(&align_left_button);
+    align_group.append(&align_center_button);
+    align_group.append(&align_right_button);
+    align_group.append(&align_justify_button);
+
     let nav_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     nav_group.add_css_class("linked");
     nav_group.append(&outline_toggle_button);
@@ -609,6 +630,8 @@ fn build_window(app: &adw::Application) {
     header_bar.pack_start(&file_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&format_group);
+    header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_start(&align_group);
     // `nav_group` (tópicos/backlinks/grafo/bibliografia/IA) foi movido do
     // lado esquerdo (antes do título) pro direito (depois do título) a
     // pedido do usuário — primeira chamada de `pack_end` fica mais perto do
@@ -767,6 +790,27 @@ fn build_window(app: &adw::Application) {
         #[weak]
         buffer,
         move |_| toggle_mark(&buffer, "subscript")
+    ));
+
+    align_left_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| set_line_alignment(&buffer, current_line(&buffer), None)
+    ));
+    align_center_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| set_line_alignment(&buffer, current_line(&buffer), Some("center"))
+    ));
+    align_right_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| set_line_alignment(&buffer, current_line(&buffer), Some("right"))
+    ));
+    align_justify_button.connect_clicked(glib::clone!(
+        #[weak]
+        buffer,
+        move |_| set_line_alignment(&buffer, current_line(&buffer), Some("justify"))
     ));
 
     outline_toggle_button.connect_toggled(glib::clone!(
@@ -1710,6 +1754,8 @@ mod tests {
         crate::formatting::tests::heading_round_trips_with_level();
         crate::formatting::tests::heading_levels_above_three_are_clamped_down();
         crate::formatting::tests::set_heading_level_toggles_between_paragraph_and_heading();
+        crate::formatting::tests::alignment_round_trips_and_is_orthogonal_to_heading();
+        crate::formatting::tests::set_line_alignment_toggles_between_values_and_back_to_left();
         crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();
         crate::outline::tests::ignores_lines_without_heading();
         crate::outline::tests::empty_document_has_no_outline();

@@ -10,8 +10,11 @@
 //! uma tag de **linha inteira** (não uma mark inline): `prosa-heading-N`,
 //! mutuamente exclusivas entre si, com tamanho/peso de fonte maiores.
 //! Níveis 4-6 vindos de um arquivo existente são achatados pro nível 3
-//! (mesmo padrão "melhor esforço" do resto do MVP). Tabelas, imagens,
-//! listas continuam fora de escopo.
+//! (mesmo padrão "melhor esforço" do resto do MVP). Alinhamento de
+//! parágrafo (`textAlign`: `left`/`center`/`right`/`justify`) segue a mesma
+//! ideia de tag de linha inteira, ortogonal ao título — um `heading` pode
+//! estar centralizado, por exemplo. Tabelas, imagens, listas continuam
+//! fora de escopo.
 
 use gtk::prelude::*;
 use gtk::{TextBuffer, TextIter, TextTag};
@@ -26,6 +29,17 @@ pub const MARK_NAMES: [&str; 6] = ["bold", "italic", "underline", "strike", "sup
 
 /// Nomes das tags de título, na ordem do nível (índice 0 = nível 1).
 pub const HEADING_TAG_NAMES: [&str; 3] = ["prosa-heading-1", "prosa-heading-2", "prosa-heading-3"];
+
+/// Alinhamento de parágrafo, uma tag de **linha inteira** também (mesma
+/// abordagem dos títulos): mutuamente exclusivas entre si, e a ausência de
+/// qualquer uma delas significa alinhamento à esquerda — não existe tag
+/// "prosa-align-left" porque esquerda já é o padrão do `GtkTextView` (mesmo
+/// truque de "None = caso comum" usado em `HEADING_TAG_NAMES`). Espelha o
+/// atributo `textAlign` da extensão `TextAlign` do TipTap no Electron
+/// (`src/renderer/editor/editor.ts`), aplicável tanto a `paragraph` quanto a
+/// `heading`.
+const ALIGN_VALUES: [&str; 3] = ["center", "right", "justify"];
+const ALIGN_TAG_NAMES: [&str; 3] = ["prosa-align-center", "prosa-align-right", "prosa-align-justify"];
 
 /// Escapa texto para uso dentro de Pango markup (`set_markup`).
 fn escape_markup(text: &str) -> String {
@@ -128,6 +142,42 @@ pub fn setup_heading_tags(buffer: &TextBuffer) {
     for (name, scale) in HEADING_TAG_NAMES.iter().zip([1.8, 1.5, 1.25]) {
         let tag = TextTag::builder().name(*name).scale(scale).weight(700).build();
         table.add(&tag);
+    }
+}
+
+/// Cria e registra as três tags de alinhamento (centro/direita/justificado)
+/// — a propriedade `justification` da `GtkTextTag` já faz o `GtkTextView`
+/// renderizar o layout de fato, não é só cosmético.
+pub fn setup_align_tags(buffer: &TextBuffer) {
+    let table = buffer.tag_table();
+    let justifications = [gtk::Justification::Center, gtk::Justification::Right, gtk::Justification::Fill];
+    for (name, justification) in ALIGN_TAG_NAMES.iter().zip(justifications) {
+        let tag = TextTag::builder().name(*name).justification(justification).build();
+        table.add(&tag);
+    }
+}
+
+/// Alinhamento da linha (`None` = esquerda, o padrão).
+pub fn align_at_line(buffer: &TextBuffer, line: i32) -> Option<&'static str> {
+    let Some(start) = buffer.iter_at_line(line) else { return None };
+    let table = buffer.tag_table();
+    ALIGN_TAG_NAMES.iter().position(|name| table.lookup(name).is_some_and(|tag| start.has_tag(&tag))).map(|index| ALIGN_VALUES[index])
+}
+
+/// Define (ou remove, se `align` for `None`/desconhecido) o alinhamento da
+/// linha inteira. Mesma limitação de linha vazia que `set_heading_level`.
+pub fn set_line_alignment(buffer: &TextBuffer, line: i32, align: Option<&str>) {
+    let (start, end) = line_range(buffer, line);
+    let table = buffer.tag_table();
+    for name in ALIGN_TAG_NAMES {
+        if let Some(tag) = table.lookup(name) {
+            buffer.remove_tag(&tag, &start, &end);
+        }
+    }
+    if let Some(index) = align.and_then(|align| ALIGN_VALUES.iter().position(|v| *v == align)) {
+        if let Some(tag) = table.lookup(ALIGN_TAG_NAMES[index]) {
+            buffer.apply_tag(&tag, &start, &end);
+        }
     }
 }
 
@@ -254,7 +304,15 @@ fn paragraph_from_line(buffer: &TextBuffer, line: i32) -> TipTapNode {
     let (start, end) = line_range(buffer, line);
     let level = heading_level_at_line(buffer, line);
     let kind = if level.is_some() { "heading" } else { "paragraph" }.to_string();
-    let attrs = level.map(|l| serde_json::json!({ "level": l }));
+
+    let mut attrs_map = serde_json::Map::new();
+    if let Some(level) = level {
+        attrs_map.insert("level".to_string(), serde_json::json!(level));
+    }
+    if let Some(align) = align_at_line(buffer, line) {
+        attrs_map.insert("textAlign".to_string(), serde_json::json!(align));
+    }
+    let attrs = if attrs_map.is_empty() { None } else { Some(serde_json::Value::Object(attrs_map)) };
 
     if start == end {
         return TipTapNode { kind, attrs, ..Default::default() };
@@ -347,6 +405,9 @@ pub fn load_doc_into_buffer(buffer: &TextBuffer, doc: &TipTapNode) {
             if block.kind == "heading" {
                 let level = block.attrs.as_ref().and_then(|attrs| attrs.get("level")).and_then(|v| v.as_u64()).unwrap_or(1);
                 set_heading_level(buffer, index as i32, Some(level.clamp(1, 3) as u8));
+            }
+            if let Some(align) = block.attrs.as_ref().and_then(|attrs| attrs.get("textAlign")).and_then(|v| v.as_str()) {
+                set_line_alignment(buffer, index as i32, Some(align));
             }
         }
     }
@@ -508,5 +569,59 @@ pub(crate) mod tests {
 
         set_heading_level(&buffer, 0, None);
         assert_eq!(heading_level_at_line(&buffer, 0), None, "deve voltar a parágrafo normal");
+    }
+
+    pub(crate) fn alignment_round_trips_and_is_orthogonal_to_heading() {
+        let buffer = TextBuffer::new(None);
+        setup_mark_tags(&buffer);
+        setup_heading_tags(&buffer);
+        setup_align_tags(&buffer);
+
+        let original = TipTapNode {
+            kind: "doc".to_string(),
+            content: Some(vec![
+                TipTapNode {
+                    kind: "heading".to_string(),
+                    attrs: Some(serde_json::json!({ "level": 1, "textAlign": "center" })),
+                    content: Some(vec![text_node("Título centralizado", &[])]),
+                    ..Default::default()
+                },
+                TipTapNode {
+                    kind: "paragraph".to_string(),
+                    attrs: Some(serde_json::json!({ "textAlign": "justify" })),
+                    content: Some(vec![text_node("parágrafo justificado", &[])]),
+                    ..Default::default()
+                },
+                TipTapNode {
+                    kind: "paragraph".to_string(),
+                    content: Some(vec![text_node("parágrafo padrão, sem textAlign", &[])]),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+
+        load_doc_into_buffer(&buffer, &original);
+        assert_eq!(align_at_line(&buffer, 0), Some("center"));
+        assert_eq!(align_at_line(&buffer, 1), Some("justify"));
+        assert_eq!(align_at_line(&buffer, 2), None, "sem textAlign no original, deve continuar sem tag (esquerda)");
+
+        let rebuilt = doc_from_buffer(&buffer);
+        assert_eq!(rebuilt, original);
+    }
+
+    pub(crate) fn set_line_alignment_toggles_between_values_and_back_to_left() {
+        let buffer = TextBuffer::new(None);
+        setup_align_tags(&buffer);
+        buffer.set_text("uma linha de texto");
+
+        set_line_alignment(&buffer, 0, Some("right"));
+        assert_eq!(align_at_line(&buffer, 0), Some("right"));
+
+        set_line_alignment(&buffer, 0, Some("center"));
+        assert_eq!(align_at_line(&buffer, 0), Some("center"), "deve trocar de alinhamento, não acumular tags");
+
+        set_line_alignment(&buffer, 0, None);
+        assert_eq!(align_at_line(&buffer, 0), None, "deve voltar ao padrão (esquerda)");
     }
 }
