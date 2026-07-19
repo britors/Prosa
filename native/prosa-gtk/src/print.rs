@@ -64,19 +64,6 @@ impl PageLayout {
     }
 }
 
-/// Monta o texto do rodapé de uma página: `{footer}    —    Página N de
-/// Total` (ou só a numeração, se não houver texto de rodapé definido). A
-/// numeração é sempre incluída — compartilhado entre a exportação de PDF e a
-/// pré-visualização ao vivo no editor (`main.rs`), pra manter os dois
-/// consistentes.
-pub fn footer_line(footer_text: Option<&str>, page_number: usize, total_pages: usize) -> String {
-    let page_number_text = format!("Página {page_number} de {total_pages}");
-    match footer_text {
-        Some(footer) if !footer.is_empty() => format!("{footer}    —    {page_number_text}"),
-        _ => page_number_text,
-    }
-}
-
 /// Remove tags HTML de forma simplista (o cabeçalho/rodapé do `.prosa` é
 /// HTML vindo da versão Electron; aqui extraímos só o texto, sem formatação).
 fn strip_html(input: &str) -> String {
@@ -211,11 +198,15 @@ pub fn export_to_pdf(
                 );
             }
 
-            let footer_text_line = footer_line(footer_text.as_deref(), (page_nr + 1) as usize, print_state.breaks.len());
+            let page_number_text = format!("Página {} de {}", page_nr + 1, print_state.breaks.len());
+            let footer_line = match &footer_text {
+                Some(footer) => format!("{footer}    —    {page_number_text}"),
+                None => page_number_text,
+            };
             draw_band(
                 &cr,
                 context,
-                &footer_text_line,
+                &footer_line,
                 page.margin_left_pt,
                 page.height_pt - page.margin_bottom_pt - page.footer_height_pt,
                 page.content_width(),
@@ -236,17 +227,6 @@ pub fn export_to_pdf(
 pub(crate) mod tests {
     use super::*;
     use prosa_doc::Mark;
-
-    #[test]
-    fn footer_line_always_includes_page_numbering() {
-        assert_eq!(footer_line(None, 1, 3), "Página 1 de 3");
-        assert_eq!(footer_line(Some(""), 1, 3), "Página 1 de 3");
-    }
-
-    #[test]
-    fn footer_line_prefixes_custom_text_before_numbering() {
-        assert_eq!(footer_line(Some("Confidencial"), 2, 5), "Confidencial    —    Página 2 de 5");
-    }
 
     fn text_node(text: &str) -> TipTapNode {
         TipTapNode { kind: "text".to_string(), text: Some(text.to_string()), ..Default::default() }
