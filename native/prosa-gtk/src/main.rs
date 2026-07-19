@@ -11,6 +11,7 @@ mod ai_ui;
 mod bibliography_ui;
 mod citation;
 mod find_replace;
+mod font_style;
 mod formatting;
 mod graph_view;
 mod live_pagination;
@@ -570,6 +571,24 @@ fn build_window(app: &adw::Application) {
     let history_button = gtk::Button::from_icon_name("document-open-recent-symbolic");
     history_button.set_tooltip_text(Some("Histórico de versões"));
 
+    // Família e tamanho de fonte: dois seletores independentes, igual ao
+    // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
+    // famílias vem direto do Pango (`font_style::system_font_families`) em
+    // vez de precisar de um IPC pra consultar fontes do sistema.
+    let font_families = Rc::new(font_style::system_font_families());
+    let font_family_refs: Vec<&str> = font_families.iter().map(String::as_str).collect();
+    let font_family_dropdown = gtk::DropDown::from_strings(&font_family_refs);
+    font_family_dropdown.set_enable_search(true);
+    font_family_dropdown.set_tooltip_text(Some("Família da fonte"));
+
+    let font_size_labels: Rc<Vec<String>> = Rc::new(font_style::FONT_SIZES.iter().map(|size| size.to_string()).collect());
+    let font_size_refs: Vec<&str> = font_size_labels.iter().map(String::as_str).collect();
+    let font_size_dropdown = gtk::DropDown::from_strings(&font_size_refs);
+    font_size_dropdown.set_tooltip_text(Some("Tamanho da fonte"));
+    if let Some(default_index) = font_style::FONT_SIZES.iter().position(|size| *size == 12) {
+        font_size_dropdown.set_selected(default_index as u32);
+    }
+
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
     let ai_menu = gio::Menu::new();
@@ -626,19 +645,30 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&history_button);
     nav_group.append(&ai_menu_button);
 
+    let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    font_group.add_css_class("linked");
+    font_group.append(&font_family_dropdown);
+    font_group.append(&font_size_dropdown);
+
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
     header_bar.pack_start(&file_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&format_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&align_group);
-    // `nav_group` (tópicos/backlinks/grafo/bibliografia/IA) foi movido do
-    // lado esquerdo (antes do título) pro direito (depois do título) a
-    // pedido do usuário — primeira chamada de `pack_end` fica mais perto do
-    // título, as seguintes vão se afastando em direção à borda.
+    // Confirmado empiricamente (não documentado nos headers do GTK): pra
+    // `pack_end`, cada chamada nova entra mais perto do título do que as
+    // anteriores — a *última* chamada acaba encostada nele, a *primeira*
+    // fica na borda direita da janela. `nav_group` (tópicos/backlinks/
+    // grafo/bibliografia/histórico/IA) foi movido do lado esquerdo (antes
+    // do título) pro direito a pedido do usuário; `font_group` (fonte/
+    // tamanho), pedido logo em seguida na mesma sessão, entra ainda mais
+    // perto do título do que `nav_group`.
     header_bar.pack_end(&export_pdf_button);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&nav_group);
+    header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_end(&font_group);
 
     // Barra de localizar/substituir: escondida por padrão, revelada com
     // Ctrl+F. Um único bloco cobrindo busca e substituição (em vez das
@@ -811,6 +841,32 @@ fn build_window(app: &adw::Application) {
         #[weak]
         buffer,
         move |_| set_line_alignment(&buffer, current_line(&buffer), Some("justify"))
+    ));
+
+    // Aplicam sobre a seleção atual (não a linha inteira, ao contrário de
+    // título/alinhamento) — se nada estiver selecionado, `apply_font_style`
+    // simplesmente não faz nada, mesma guarda usada em `citation::apply_citation`.
+    font_family_dropdown.connect_selected_notify(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        font_families,
+        move |dropdown| {
+            if let Some(family) = font_families.get(dropdown.selected() as usize) {
+                font_style::apply_font_style(&buffer, Some(family), None);
+            }
+        }
+    ));
+    font_size_dropdown.connect_selected_notify(glib::clone!(
+        #[weak]
+        buffer,
+        #[strong]
+        font_size_labels,
+        move |dropdown| {
+            if let Some(size) = font_size_labels.get(dropdown.selected() as usize) {
+                font_style::apply_font_style(&buffer, None, Some(size));
+            }
+        }
     ));
 
     outline_toggle_button.connect_toggled(glib::clone!(
@@ -1773,5 +1829,8 @@ mod tests {
         crate::citation::tests::citation_tag_is_created_once_and_reused();
         crate::citation::tests::cite_key_from_tag_name_extracts_or_rejects();
         crate::citation::tests::apply_citation_round_trips_with_display_text_different_from_key();
+        crate::font_style::tests::family_tag_is_created_once_and_reused();
+        crate::font_style::tests::tag_name_extraction_round_trips();
+        crate::font_style::tests::apply_font_style_combines_into_single_text_style_mark();
     }
 }

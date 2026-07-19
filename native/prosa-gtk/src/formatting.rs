@@ -22,6 +22,7 @@ use prosa_doc::wikilink::wiki_href;
 use prosa_doc::{Mark, TipTapNode};
 
 use crate::citation;
+use crate::font_style;
 use crate::wikilink::WIKILINK_TAG;
 
 /// Nomes de mark suportados, iguais aos tipos registrados no editor Electron.
@@ -260,7 +261,13 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
         .tags()
         .iter()
         .filter_map(|tag| tag.name().map(|n| n.to_string()))
-        .filter(|name| MARK_NAMES.contains(&name.as_str()) || name == WIKILINK_TAG || name.starts_with(citation::TAG_PREFIX))
+        .filter(|name| {
+            MARK_NAMES.contains(&name.as_str())
+                || name == WIKILINK_TAG
+                || name.starts_with(citation::TAG_PREFIX)
+                || name.starts_with(font_style::FAMILY_PREFIX)
+                || name.starts_with(font_style::SIZE_PREFIX)
+        })
         .collect();
     names.sort();
     names
@@ -270,30 +277,45 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
 /// alias/texto-visível separado do alvo (ver `wikilink.rs`) — o `href` é
 /// sempre recalculado a partir do próprio texto marcado. A citação é o
 /// oposto: o texto visível é livre, então a `citeKey` vem do próprio nome
-/// da tag (`citation:<citeKey>`, ver `citation.rs`), não do texto.
+/// da tag (`citation:<citeKey>`, ver `citation.rs`), não do texto. Família
+/// e tamanho de fonte (`font_style.rs`) são o caso mais atípico: duas tags
+/// independentes que se recombinam numa única mark `textStyle` — igual ao
+/// Electron, onde `FontFamily`/`FontSize` são duas extensões TipTap
+/// escrevendo no mesmo tipo de mark.
 fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
-    let marks = if mark_names.is_empty() {
-        None
-    } else {
-        Some(
-            mark_names
-                .iter()
-                .map(|name| {
-                    if name == WIKILINK_TAG {
-                        Mark { kind: WIKILINK_TAG.to_string(), attrs: Some(serde_json::json!({ "href": wiki_href(text) })) }
-                    } else if let Some(cite_key) = citation::cite_key_from_tag_name(name) {
-                        Mark { kind: "citation".to_string(), attrs: Some(serde_json::json!({ "citeKey": cite_key })) }
-                    } else {
-                        Mark { kind: name.clone(), attrs: None }
-                    }
-                })
-                .collect(),
-        )
-    };
+    let mut font_family: Option<&str> = None;
+    let mut font_size: Option<&str> = None;
+    let mut marks: Vec<Mark> = Vec::new();
+
+    for name in mark_names {
+        if let Some(family) = font_style::family_from_tag_name(name) {
+            font_family = Some(family);
+        } else if let Some(size) = font_style::size_from_tag_name(name) {
+            font_size = Some(size);
+        } else if name == WIKILINK_TAG {
+            marks.push(Mark { kind: WIKILINK_TAG.to_string(), attrs: Some(serde_json::json!({ "href": wiki_href(text) })) });
+        } else if let Some(cite_key) = citation::cite_key_from_tag_name(name) {
+            marks.push(Mark { kind: "citation".to_string(), attrs: Some(serde_json::json!({ "citeKey": cite_key })) });
+        } else {
+            marks.push(Mark { kind: name.clone(), attrs: None });
+        }
+    }
+
+    if font_family.is_some() || font_size.is_some() {
+        let mut attrs = serde_json::Map::new();
+        if let Some(family) = font_family {
+            attrs.insert("fontFamily".to_string(), serde_json::json!(family));
+        }
+        if let Some(size) = font_size {
+            attrs.insert("fontSize".to_string(), serde_json::json!(format!("{size}pt")));
+        }
+        marks.push(Mark { kind: "textStyle".to_string(), attrs: Some(serde_json::Value::Object(attrs)) });
+    }
+
     TipTapNode {
         kind: "text".to_string(),
         text: Some(text.to_string()),
-        marks,
+        marks: if marks.is_empty() { None } else { Some(marks) },
         ..Default::default()
     }
 }
@@ -367,17 +389,32 @@ fn insert_node(buffer: &TextBuffer, node: &TipTapNode) {
             let start = buffer.iter_at_offset(start_offset);
             let end = buffer.end_iter();
             for mark in marks {
-                let tag = if mark.kind == "citation" {
-                    mark.attrs
-                        .as_ref()
-                        .and_then(|attrs| attrs.get("citeKey"))
-                        .and_then(|v| v.as_str())
-                        .map(|cite_key| citation::citation_tag(buffer, cite_key))
-                } else {
-                    buffer.tag_table().lookup(&mark.kind)
-                };
-                if let Some(tag) = tag {
-                    buffer.apply_tag(&tag, &start, &end);
+                match mark.kind.as_str() {
+                    "citation" => {
+                        if let Some(tag) =
+                            mark.attrs.as_ref().and_then(|attrs| attrs.get("citeKey")).and_then(|v| v.as_str()).map(|cite_key| citation::citation_tag(buffer, cite_key))
+                        {
+                            buffer.apply_tag(&tag, &start, &end);
+                        }
+                    }
+                    // `textStyle` pode carregar família e/ou tamanho — até
+                    // duas tags pra uma mark só, diferente de todas as
+                    // outras (sempre 1:1). Ver `font_style.rs`.
+                    "textStyle" => {
+                        let attrs = mark.attrs.as_ref();
+                        if let Some(family) = attrs.and_then(|a| a.get("fontFamily")).and_then(|v| v.as_str()) {
+                            buffer.apply_tag(&font_style::family_tag(buffer, family), &start, &end);
+                        }
+                        if let Some(size) = attrs.and_then(|a| a.get("fontSize")).and_then(|v| v.as_str()) {
+                            let size_pt = size.strip_suffix("pt").unwrap_or(size);
+                            buffer.apply_tag(&font_style::size_tag(buffer, size_pt), &start, &end);
+                        }
+                    }
+                    _ => {
+                        if let Some(tag) = buffer.tag_table().lookup(&mark.kind) {
+                            buffer.apply_tag(&tag, &start, &end);
+                        }
+                    }
                 }
             }
         }
