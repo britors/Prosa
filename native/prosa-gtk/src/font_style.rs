@@ -91,6 +91,57 @@ pub fn system_font_families() -> Vec<String> {
     names
 }
 
+/// Seleção atual, ou (se não houver seleção) um "intervalo" de largura zero
+/// no cursor — usado tanto pra aplicar quanto pra ler o família/tamanho
+/// ativos.
+fn selection_or_cursor(buffer: &TextBuffer) -> (TextIter, TextIter) {
+    buffer.selection_bounds().unwrap_or_else(|| {
+        let iter = buffer.iter_at_offset(buffer.cursor_position());
+        (iter.clone(), iter)
+    })
+}
+
+/// Valor (só a parte depois do prefixo) da tag com nome `prefix<valor>` na
+/// posição `iter`, se houver.
+fn tag_value_at(iter: &TextIter, prefix: &str) -> Option<String> {
+    iter.tags().iter().find_map(|tag| tag.name().and_then(|name| name.strip_prefix(prefix).map(str::to_string)))
+}
+
+/// Valor da tag `prefix<valor>` uniforme por todo o intervalo `[start, end)`
+/// (ou só na posição, se `start == end`) — `None` se não houver tag em
+/// algum ponto, ou se o valor mudar no meio do intervalo (seleção com mais
+/// de uma família/tamanho misturados).
+fn uniform_tag_value(start: &TextIter, end: &TextIter, prefix: &str) -> Option<String> {
+    let first = tag_value_at(start, prefix)?;
+    if start == end {
+        return Some(first);
+    }
+    let mut iter = start.clone();
+    while &iter < end {
+        if tag_value_at(&iter, prefix).as_deref() != Some(first.as_str()) {
+            return None;
+        }
+        if !iter.forward_char() {
+            break;
+        }
+    }
+    Some(first)
+}
+
+/// Família ativa na seleção atual (ou no cursor, sem seleção) — `None` se
+/// não houver família explícita, ou se a seleção misturar mais de uma.
+pub fn active_family(buffer: &TextBuffer) -> Option<String> {
+    let (start, end) = selection_or_cursor(buffer);
+    uniform_tag_value(&start, &end, FAMILY_PREFIX)
+}
+
+/// Tamanho ativo (só o número) na seleção atual — mesma regra de
+/// `active_family`.
+pub fn active_size(buffer: &TextBuffer) -> Option<String> {
+    let (start, end) = selection_or_cursor(buffer);
+    uniform_tag_value(&start, &end, SIZE_PREFIX)
+}
+
 /// Aplica família e/ou tamanho sobre a seleção atual — `None` em qualquer
 /// um dos dois significa "não mexe nesse atributo" (o outro pode continuar
 /// sendo aplicado sozinho).
@@ -140,6 +191,9 @@ pub fn build_family_picker(buffer: &TextBuffer, families: &[String]) -> gtk::Men
     });
 
     let list_view = gtk::ListView::new(Some(selection), Some(factory));
+    // Padrão do `GtkListView` exige duplo clique (ou Enter) pra ativar —
+    // nada acontecia com um clique só, o que parecia "a família não muda".
+    list_view.set_single_click_activate(true);
     let scrolled = gtk::ScrolledWindow::builder().child(&list_view).min_content_height(280).min_content_width(220).build();
 
     let search_entry = gtk::SearchEntry::builder().placeholder_text("Buscar fonte...").build();
@@ -224,5 +278,50 @@ pub(crate) mod tests {
         let attrs = mark.attrs.as_ref().unwrap();
         assert_eq!(attrs.get("fontFamily").and_then(|v| v.as_str()), Some("Georgia"));
         assert_eq!(attrs.get("fontSize").and_then(|v| v.as_str()), Some("14pt"), "tamanho deve serializar com sufixo 'pt', igual ao Electron");
+    }
+
+    pub(crate) fn active_family_and_size_are_none_without_any_tag() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("sem estilo nenhum");
+        buffer.select_range(&buffer.iter_at_offset(0), &buffer.iter_at_offset(4));
+        assert_eq!(active_family(&buffer), None);
+        assert_eq!(active_size(&buffer), None);
+    }
+
+    pub(crate) fn active_family_and_size_reflect_uniform_selection() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("texto uniforme");
+        buffer.select_range(&buffer.iter_at_offset(0), &buffer.iter_at_offset(5)); // "texto"
+        apply_font_style(&buffer, Some("Georgia"), Some("14"));
+
+        assert_eq!(active_family(&buffer).as_deref(), Some("Georgia"));
+        assert_eq!(active_size(&buffer).as_deref(), Some("14"));
+    }
+
+    pub(crate) fn active_family_and_size_are_none_when_selection_mixes_values() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("Georgia e Arial");
+        buffer.select_range(&buffer.iter_at_offset(0), &buffer.iter_at_offset(7)); // "Georgia"
+        apply_font_style(&buffer, Some("Georgia"), Some("14"));
+        buffer.select_range(&buffer.iter_at_offset(10), &buffer.iter_at_offset(15)); // "Arial"
+        apply_font_style(&buffer, Some("Arial"), Some("18"));
+
+        // seleção cobrindo os dois trechos com famílias/tamanhos diferentes
+        buffer.select_range(&buffer.iter_at_offset(0), &buffer.iter_at_offset(15));
+        assert_eq!(active_family(&buffer), None, "seleção com mais de uma família deve ficar em branco");
+        assert_eq!(active_size(&buffer), None, "seleção com mais de um tamanho deve ficar em branco");
+    }
+
+    pub(crate) fn active_family_reflects_cursor_position_without_selection() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("texto estilizado");
+        buffer.select_range(&buffer.iter_at_offset(0), &buffer.iter_at_offset(5));
+        apply_font_style(&buffer, Some("Georgia"), None);
+
+        buffer.place_cursor(&buffer.iter_at_offset(2)); // dentro de "texto", sem seleção
+        assert_eq!(active_family(&buffer).as_deref(), Some("Georgia"));
+
+        buffer.place_cursor(&buffer.iter_at_offset(10)); // fora do trecho estilizado
+        assert_eq!(active_family(&buffer), None);
     }
 }

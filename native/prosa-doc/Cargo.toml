@@ -17,3 +17,4 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 percent-encoding = "2"
 regex = "1"
 similar = "2"
+notify-debouncer-full = "0.3"

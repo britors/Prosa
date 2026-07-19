@@ -15,6 +15,7 @@ pub mod bibliography;
 pub mod docx;
 pub mod odt;
 pub mod rtf;
+pub mod sync_watcher;
 pub mod templates;
 pub mod version_history;
 pub mod wikilink;

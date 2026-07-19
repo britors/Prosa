@@ -19,6 +19,7 @@ mod outline;
 mod print;
 mod save_format;
 mod spellcheck;
+mod sync_ui;
 mod template_dialog;
 mod version_history_ui;
 mod wikilink;
@@ -30,7 +31,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use prosa_doc::{docx, odt, rtf};
-use prosa_doc::{version_history, DocumentMetadata, ProsaFile};
+use prosa_doc::{sync_watcher, version_history, DocumentMetadata, ProsaFile};
 
 use find_replace::{FindReplace, SearchOptions};
 use save_format::SaveFormat;
@@ -404,6 +405,29 @@ fn restore_version(
     backlinks.refresh(Some(path));
 }
 
+/// (Re)inicia o `sync_watcher` pra `root` — descarta o observador anterior
+/// primeiro (dropar o `Watcher` já para a observação), depois cria um novo
+/// se `root` for `Some`. Mesmo padrão do `setupSyncWatcher` original:
+/// idempotente, seguro de chamar de novo a qualquer momento (escolher outra
+/// pasta, desativar).
+fn restart_sync_watcher(handle: &Rc<RefCell<Option<sync_watcher::Watcher>>>, tx: &std::sync::mpsc::Sender<sync_watcher::SyncEvent>, root: Option<PathBuf>) {
+    *handle.borrow_mut() = None;
+    let Some(root) = root else { return };
+    match sync_watcher::start_watching(&root, tx.clone()) {
+        Ok(watcher) => *handle.borrow_mut() = Some(watcher),
+        Err(err) => eprintln!("aviso: não foi possível observar a pasta de sincronização ({}): {err}", root.display()),
+    }
+}
+
+/// Caminho "canonicalizado, com fallback pro original se falhar" — usado
+/// pra comparar o caminho de um evento externo com o do documento aberto
+/// sem depender de igualdade de string bruta (frágil entre plataformas,
+/// forma como o Electron original comparava). Falha de canonicalização é
+/// esperada pra eventos de remoção (o arquivo já não existe mais).
+fn canonical_or_self(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// Lê um documento em formato estrangeiro (`docx`/`odt`/`rtf`) pela extensão.
 fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<prosa_doc::TipTapNode, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -570,6 +594,8 @@ fn build_window(app: &adw::Application) {
     bibliography_button.set_tooltip_text(Some("Bibliografia"));
     let history_button = gtk::Button::from_icon_name("document-open-recent-symbolic");
     history_button.set_tooltip_text(Some("Histórico de versões"));
+    let sync_button = gtk::Button::from_icon_name("folder-remote-symbolic");
+    sync_button.set_tooltip_text(Some("Sincronização"));
 
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
@@ -580,13 +606,21 @@ fn build_window(app: &adw::Application) {
     let font_families = font_style::system_font_families();
     let font_family_button = font_style::build_family_picker(&buffer, &font_families);
 
-    let font_size_labels: Rc<Vec<String>> = Rc::new(font_style::FONT_SIZES.iter().map(|size| size.to_string()).collect());
+    // Índice 0 é um marcador "em branco" (nenhum tamanho definido, ou
+    // seleção com mais de um tamanho misturado) — os tamanhos de verdade
+    // começam no índice 1, ver `sync_font_pickers` mais abaixo.
+    let mut font_size_entries: Vec<String> = vec!["—".to_string()];
+    font_size_entries.extend(font_style::FONT_SIZES.iter().map(|size| size.to_string()));
+    let font_size_labels: Rc<Vec<String>> = Rc::new(font_size_entries);
     let font_size_refs: Vec<&str> = font_size_labels.iter().map(String::as_str).collect();
     let font_size_dropdown = gtk::DropDown::from_strings(&font_size_refs);
     font_size_dropdown.set_tooltip_text(Some("Tamanho da fonte"));
-    if let Some(default_index) = font_style::FONT_SIZES.iter().position(|size| *size == 12) {
-        font_size_dropdown.set_selected(default_index as u32);
-    }
+
+    // Suprime o `connect_selected_notify` do tamanho quando *nós* mudamos a
+    // seleção pra refletir o estado atual (ver abaixo) — sem isso, sincronizar
+    // a UI reaplicaria um tamanho sobre a seleção só por causa da própria
+    // sincronização.
+    let syncing_font_ui = Rc::new(Cell::new(false));
 
     let ai_provider: ai_ui::AiSelectedProvider = Rc::new(Cell::new(prosa_doc::ai::AiProvider::OpenAi));
 
@@ -642,6 +676,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&graph_button);
     nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
+    nav_group.append(&sync_button);
     nav_group.append(&ai_menu_button);
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -761,6 +796,17 @@ fn build_window(app: &adw::Application) {
         paths: Rc::new(RefCell::new(Vec::new())),
     };
 
+    // Pasta de sincronização (`sync_watcher`) — conceito à parte do
+    // workspace acima: destinada a serviços externos (Dropbox/Drive), não
+    // ao escaneio de wikilinks. Session-only, mesma decisão do workspace
+    // root (sem persistência de configurações no app nativo ainda).
+    let sync_root: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
+    let sync_watcher_handle: Rc<RefCell<Option<sync_watcher::Watcher>>> = Rc::new(RefCell::new(None));
+    let sync_guard: Rc<RefCell<sync_watcher::SelfWriteGuard>> = Rc::new(RefCell::new(sync_watcher::SelfWriteGuard::default()));
+    let (sync_tx, sync_rx) = std::sync::mpsc::channel::<sync_watcher::SyncEvent>();
+
+    let toast_overlay = adw::ToastOverlay::new();
+
     // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
     // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
     // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
@@ -782,13 +828,15 @@ fn build_window(app: &adw::Application) {
     toolbar_view.add_top_bar(&find_bar_revealer);
     toolbar_view.set_content(Some(&main_split));
 
+    toast_overlay.set_child(Some(&toolbar_view));
+
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Prosa")
         .default_width(900)
         .default_height(700)
         .maximized(true)
-        .content(&toolbar_view)
+        .content(&toast_overlay)
         .build();
 
     bold_button.connect_clicked(glib::clone!(
@@ -854,12 +902,48 @@ fn build_window(app: &adw::Application) {
         buffer,
         #[strong]
         font_size_labels,
+        #[strong]
+        syncing_font_ui,
         move |dropdown| {
-            if let Some(size) = font_size_labels.get(dropdown.selected() as usize) {
+            if syncing_font_ui.get() {
+                return;
+            }
+            let index = dropdown.selected() as usize;
+            if index == 0 {
+                return; // marcador "em branco", não é um tamanho de verdade
+            }
+            if let Some(size) = font_size_labels.get(index) {
                 font_style::apply_font_style(&buffer, None, Some(size));
             }
         }
     ));
+
+    // Ao mover o cursor ou mudar a seleção, reflete a família/tamanho ativos
+    // nos dois seletores — em branco se a seleção misturar mais de um
+    // (`font_style::active_family`/`active_size` já fazem essa checagem).
+    buffer.connect_notify_local(
+        Some("cursor-position"),
+        glib::clone!(
+            #[weak]
+            font_family_button,
+            #[weak]
+            font_size_dropdown,
+            #[strong]
+            font_size_labels,
+            #[strong]
+            syncing_font_ui,
+            move |buffer, _| {
+                let family = font_style::active_family(buffer);
+                font_family_button.set_label(family.as_deref().unwrap_or("Fonte"));
+
+                let size = font_style::active_size(buffer);
+                let index = size.and_then(|value| font_size_labels.iter().position(|label| *label == value)).unwrap_or(0);
+                syncing_font_ui.set(true);
+                font_size_dropdown.set_selected(index as u32);
+                syncing_font_ui.set(false);
+            }
+        ),
+    );
 
     outline_toggle_button.connect_toggled(glib::clone!(
         #[weak]
@@ -1021,6 +1105,27 @@ fn build_window(app: &adw::Application) {
                 }
             ));
             version_history_ui::open_version_history_dialog(&window, &buffer, path, on_restore);
+        }
+    ));
+
+    sync_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        sync_root,
+        #[strong]
+        sync_watcher_handle,
+        #[strong]
+        sync_tx,
+        move |_| {
+            let on_change: Rc<dyn Fn(Option<PathBuf>)> = Rc::new(glib::clone!(
+                #[strong]
+                sync_watcher_handle,
+                #[strong]
+                sync_tx,
+                move |root: Option<PathBuf>| restart_sync_watcher(&sync_watcher_handle, &sync_tx, root)
+            ));
+            sync_ui::open_sync_settings_dialog(&window, &sync_root, on_change);
         }
     ));
 
@@ -1554,11 +1659,13 @@ fn build_window(app: &adw::Application) {
         state,
         #[strong]
         backlinks,
+        #[strong]
+        sync_guard,
         move |_| {
             let existing = state.borrow().path.clone();
             if let Some(path) = existing {
                 let format = state.borrow().format;
-                write_document(&window, &buffer, &title_widget, &state, &backlinks, path, format);
+                write_document(&window, &buffer, &title_widget, &state, &backlinks, &sync_guard, path, format);
                 return;
             }
 
@@ -1575,6 +1682,8 @@ fn build_window(app: &adw::Application) {
                     state,
                     #[strong]
                     backlinks,
+                    #[strong]
+                    sync_guard,
                     move |format: SaveFormat| {
                         let default_name = format!("{}.{}", state.borrow().metadata.title, format.extension());
                         let dialog = gtk::FileDialog::builder()
@@ -1597,10 +1706,12 @@ fn build_window(app: &adw::Application) {
                             state,
                             #[strong]
                             backlinks,
+                            #[strong]
+                            sync_guard,
                             async move {
                                 let Ok(file) = dialog.save_future(Some(&window)).await else { return };
                                 let Some(path) = file.path() else { return };
-                                write_document(&window, &buffer, &title_widget, &state, &backlinks, path, format);
+                                write_document(&window, &buffer, &title_widget, &state, &backlinks, &sync_guard, path, format);
                             }
                         ));
                     }
@@ -1692,6 +1803,82 @@ fn build_window(app: &adw::Application) {
         window.add_action(&action);
     }
 
+    // Drena os `SyncEvent`s do `sync_watcher` periodicamente — mais simples
+    // e robusto do que caçar uma API de canal específica do `glib` pra
+    // acordar só quando há evento (o intervalo curto já é barato: só
+    // esvazia um `mpsc::Receiver`, sem I/O). Só reage a mudanças no
+    // documento atualmente aberto; tudo mais na pasta de sincronização é
+    // ignorado, igual ao original.
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(400),
+        glib::clone!(
+            #[weak]
+            window,
+            #[weak]
+            buffer,
+            #[weak]
+            title_widget,
+            #[strong]
+            state,
+            #[strong]
+            loading_document,
+            #[strong]
+            backlinks,
+            #[strong]
+            sync_guard,
+            #[weak]
+            toast_overlay,
+            #[upgrade_or]
+            glib::ControlFlow::Break,
+            move || {
+                while let Ok(event) = sync_rx.try_recv() {
+                    if sync_guard.borrow_mut().should_ignore(&event.path) {
+                        continue;
+                    }
+                    let Some(current_path) = state.borrow().path.clone() else { continue };
+                    if canonical_or_self(&event.path) != canonical_or_self(&current_path) {
+                        continue;
+                    }
+                    let file_name = current_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+                    match event.kind {
+                        sync_watcher::SyncChangeKind::Modified => {
+                            let toast = adw::Toast::new(&format!("\"{file_name}\" foi alterado pela sincronização."));
+                            toast.set_button_label(Some("Recarregar"));
+                            toast.connect_button_clicked(glib::clone!(
+                                #[weak]
+                                window,
+                                #[weak]
+                                buffer,
+                                #[weak]
+                                title_widget,
+                                #[strong]
+                                state,
+                                #[strong]
+                                loading_document,
+                                #[strong]
+                                backlinks,
+                                #[strong]
+                                current_path,
+                                move |_| open_document_at_path(&window, &buffer, &title_widget, &state, &loading_document, &backlinks, current_path.clone())
+                            ));
+                            toast_overlay.add_toast(toast);
+                        }
+                        // Sem "recarregar" aqui — não há mais nada em disco
+                        // pra ler. O Electron original nem chegava a notar
+                        // exclusão externa (só tratava o evento `change` do
+                        // chokidar); avisar é uma melhoria deliberada, não
+                        // paridade.
+                        sync_watcher::SyncChangeKind::Removed => {
+                            toast_overlay.add_toast(adw::Toast::new(&format!("\"{file_name}\" foi removido pela sincronização.")));
+                        }
+                    }
+                }
+                glib::ControlFlow::Continue
+            }
+        ),
+    );
+
     window.present();
 }
 
@@ -1713,6 +1900,7 @@ fn write_document(
     title_widget: &adw::WindowTitle,
     state: &Rc<RefCell<DocumentState>>,
     backlinks: &BacklinksPanel,
+    sync_guard: &Rc<RefCell<sync_watcher::SelfWriteGuard>>,
     path: PathBuf,
     format: SaveFormat,
 ) {
@@ -1750,6 +1938,12 @@ fn write_document(
             let snapshot =
                 ProsaFile { version: 1, content: doc, metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone() };
             let _ = version_history::create_backup(&path, &snapshot, version_history::DEFAULT_KEEP_VERSIONS, now_iso());
+
+            // Marca o caminho como "acabamos de escrever nós mesmos" —
+            // sem isso o próprio `sync_watcher` reportaria esse save como
+            // se fosse uma mudança externa (mesmo `markSelfWrite` do
+            // original, chamado incondicionalmente após todo save).
+            sync_guard.borrow_mut().mark(&path);
 
             title_widget.set_subtitle(&current.metadata.title);
             current.path = Some(path.clone());
@@ -1824,5 +2018,9 @@ mod tests {
         crate::font_style::tests::family_tag_is_created_once_and_reused();
         crate::font_style::tests::tag_name_extraction_round_trips();
         crate::font_style::tests::apply_font_style_combines_into_single_text_style_mark();
+        crate::font_style::tests::active_family_and_size_are_none_without_any_tag();
+        crate::font_style::tests::active_family_and_size_reflect_uniform_selection();
+        crate::font_style::tests::active_family_and_size_are_none_when_selection_mixes_values();
+        crate::font_style::tests::active_family_reflects_cursor_position_without_selection();
     }
 }
