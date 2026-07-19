@@ -15,6 +15,7 @@
 //! `font-size:<n>`), e o round-trip buffer -> doc (`formatting.rs`) as
 //! recombina numa única mark `textStyle`.
 
+use gtk::gio::prelude::*;
 use gtk::prelude::*;
 use gtk::{TextBuffer, TextIter, TextTag, TextTagTable};
 
@@ -105,6 +106,92 @@ pub fn apply_font_style(buffer: &TextBuffer, family: Option<&str>, size_pt: Opti
         remove_tags_with_prefix(buffer, &table, &start, &end, SIZE_PREFIX);
         buffer.apply_tag(&size_tag(buffer, size_pt), &start, &end);
     }
+}
+
+/// Constrói o seletor de família como um `GtkMenuButton` com popover
+/// próprio (busca + lista filtrável), em vez do `GtkDropDown` com
+/// `enable_search`: o campo de busca desse último não recebe foco
+/// automático ao abrir o popover (limitação conhecida do GTK4), então
+/// digitar não filtra nada até o usuário clicar manualmente no campo —
+/// aqui o foco é garantido explicitamente em `popover.connect_show`.
+pub fn build_family_picker(buffer: &TextBuffer, families: &[String]) -> gtk::MenuButton {
+    let buffer = buffer.clone();
+    let family_refs: Vec<&str> = families.iter().map(String::as_str).collect();
+    let family_list = gtk::StringList::new(&family_refs);
+
+    let expression = gtk::PropertyExpression::new(gtk::StringObject::static_type(), gtk::Expression::NONE, "string");
+    let filter = gtk::StringFilter::new(Some(expression));
+    filter.set_match_mode(gtk::StringFilterMatchMode::Substring);
+    filter.set_ignore_case(true);
+
+    let filter_model = gtk::FilterListModel::new(Some(family_list), Some(filter.clone()));
+    let selection = gtk::SingleSelection::new(Some(filter_model));
+
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, list_item| {
+        let label = gtk::Label::builder().xalign(0.0).margin_start(6).margin_end(6).margin_top(2).margin_bottom(2).build();
+        list_item.downcast_ref::<gtk::ListItem>().expect("fábrica sempre entrega um ListItem").set_child(Some(&label));
+    });
+    factory.connect_bind(|_, list_item| {
+        let list_item = list_item.downcast_ref::<gtk::ListItem>().expect("fábrica sempre entrega um ListItem");
+        let Some(string_object) = list_item.item().and_downcast::<gtk::StringObject>() else { return };
+        let Some(label) = list_item.child().and_downcast::<gtk::Label>() else { return };
+        label.set_label(&string_object.string());
+    });
+
+    let list_view = gtk::ListView::new(Some(selection), Some(factory));
+    let scrolled = gtk::ScrolledWindow::builder().child(&list_view).min_content_height(280).min_content_width(220).build();
+
+    let search_entry = gtk::SearchEntry::builder().placeholder_text("Buscar fonte...").build();
+    search_entry.connect_search_changed(glib::clone!(
+        #[strong]
+        filter,
+        move |entry| filter.set_search(Some(&entry.text()))
+    ));
+
+    let popover_content =
+        gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(6).margin_bottom(6).margin_start(6).margin_end(6).build();
+    popover_content.append(&search_entry);
+    popover_content.append(&scrolled);
+
+    let popover = gtk::Popover::builder().child(&popover_content).build();
+    let menu_button = gtk::MenuButton::builder().label("Fonte").tooltip_text("Família da fonte").popover(&popover).build();
+
+    popover.connect_show(glib::clone!(
+        #[weak]
+        search_entry,
+        move |_| {
+            glib::idle_add_local_once(glib::clone!(
+                #[weak]
+                search_entry,
+                move || {
+                    search_entry.grab_focus();
+                }
+            ));
+        }
+    ));
+
+    list_view.connect_activate(glib::clone!(
+        #[weak]
+        buffer,
+        #[weak]
+        menu_button,
+        #[weak]
+        popover,
+        #[weak]
+        search_entry,
+        move |list_view, position| {
+            let Some(model) = list_view.model() else { return };
+            let Some(family) = model.item(position).and_downcast::<gtk::StringObject>() else { return };
+            let family = family.string();
+            apply_font_style(&buffer, Some(&family), None);
+            menu_button.set_label(&family);
+            search_entry.set_text("");
+            popover.popdown();
+        }
+    ));
+
+    menu_button
 }
 
 #[cfg(test)]

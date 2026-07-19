@@ -574,12 +574,11 @@ fn build_window(app: &adw::Application) {
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
     // famílias vem direto do Pango (`font_style::system_font_families`) em
-    // vez de precisar de um IPC pra consultar fontes do sistema.
-    let font_families = Rc::new(font_style::system_font_families());
-    let font_family_refs: Vec<&str> = font_families.iter().map(String::as_str).collect();
-    let font_family_dropdown = gtk::DropDown::from_strings(&font_family_refs);
-    font_family_dropdown.set_enable_search(true);
-    font_family_dropdown.set_tooltip_text(Some("Família da fonte"));
+    // vez de precisar de um IPC pra consultar fontes do sistema. O seletor
+    // de família é montado à mão (popover + busca + lista) em vez de um
+    // `GtkDropDown` — ver o comentário em `font_style::build_family_picker`.
+    let font_families = font_style::system_font_families();
+    let font_family_button = font_style::build_family_picker(&buffer, &font_families);
 
     let font_size_labels: Rc<Vec<String>> = Rc::new(font_style::FONT_SIZES.iter().map(|size| size.to_string()).collect());
     let font_size_refs: Vec<&str> = font_size_labels.iter().map(String::as_str).collect();
@@ -647,7 +646,7 @@ fn build_window(app: &adw::Application) {
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     font_group.add_css_class("linked");
-    font_group.append(&font_family_dropdown);
+    font_group.append(&font_family_button);
     font_group.append(&font_size_dropdown);
 
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
@@ -788,6 +787,7 @@ fn build_window(app: &adw::Application) {
         .title("Prosa")
         .default_width(900)
         .default_height(700)
+        .maximized(true)
         .content(&toolbar_view)
         .build();
 
@@ -843,20 +843,12 @@ fn build_window(app: &adw::Application) {
         move |_| set_line_alignment(&buffer, current_line(&buffer), Some("justify"))
     ));
 
-    // Aplicam sobre a seleção atual (não a linha inteira, ao contrário de
-    // título/alinhamento) — se nada estiver selecionado, `apply_font_style`
-    // simplesmente não faz nada, mesma guarda usada em `citation::apply_citation`.
-    font_family_dropdown.connect_selected_notify(glib::clone!(
-        #[weak]
-        buffer,
-        #[strong]
-        font_families,
-        move |dropdown| {
-            if let Some(family) = font_families.get(dropdown.selected() as usize) {
-                font_style::apply_font_style(&buffer, Some(family), None);
-            }
-        }
-    ));
+    // Tamanho aplica sobre a seleção atual (não a linha inteira, ao
+    // contrário de título/alinhamento) — se nada estiver selecionado,
+    // `apply_font_style` simplesmente não faz nada, mesma guarda usada em
+    // `citation::apply_citation`. Família é tratada dentro de
+    // `font_style::build_family_picker` (a ativação de um item da lista já
+    // aplica direto), não precisa de handler aqui.
     font_size_dropdown.connect_selected_notify(glib::clone!(
         #[weak]
         buffer,
