@@ -1927,6 +1927,7 @@ mod tests {
         crate::paged_editor::tests::empty_editor_has_one_complete_a4_page();
         crate::paged_editor::tests::pages_can_be_inserted_ordered_and_removed();
         crate::paged_editor::tests::overflow_and_underflow_repaginate_without_losing_text();
+        crate::paged_editor::tests::pages_share_tags_selection_cursor_and_undo_history();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
