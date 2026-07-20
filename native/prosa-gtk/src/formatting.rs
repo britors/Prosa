@@ -205,18 +205,9 @@ fn markup_for_node(node: &TipTapNode, out: &mut String) {
     }
 }
 
-/// Constrói Pango markup (`<b>`/`<i>`/`<u>`/`<s>`) a partir do `doc` TipTap,
-/// uma linha por bloco de nível superior — usado na exportação para PDF.
-pub fn markup_from_doc(doc: &TipTapNode) -> String {
+pub fn markup_from_block(block: &TipTapNode) -> String {
     let mut out = String::new();
-    if let Some(blocks) = &doc.content {
-        for (index, block) in blocks.iter().enumerate() {
-            if index > 0 {
-                out.push('\n');
-            }
-            markup_for_node(block, &mut out);
-        }
-    }
+    markup_for_node(block, &mut out);
     out
 }
 

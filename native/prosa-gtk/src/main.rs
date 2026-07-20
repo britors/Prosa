@@ -1749,6 +1749,7 @@ fn build_window(app: &adw::Application) {
                         &doc,
                         current.header.as_deref(),
                         current.footer.as_deref(),
+                        current.paged_editor.geometry(),
                     );
                     drop(current);
 
@@ -2023,6 +2024,8 @@ mod tests {
         crate::paged_editor::tests::repeated_large_document_layout_converges();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
+        crate::print::tests::shared_layout_applies_geometry_indents_and_tabs();
+        crate::print::tests::repeated_margin_changes_keep_shared_pagination_stable();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
         crate::find_replace::tests::navigation_wraps_around_circularly();
         crate::find_replace::tests::replace_current_only_changes_the_current_match();

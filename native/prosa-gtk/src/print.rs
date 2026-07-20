@@ -18,7 +18,6 @@ use gtk::prelude::*;
 use gtk::{glib, PrintContext, PrintOperation};
 use prosa_doc::TipTapNode;
 
-use crate::formatting::markup_from_doc;
 use crate::page_geometry::PageGeometry;
 use crate::pagination;
 
@@ -51,7 +50,7 @@ fn draw_band(cr: &cairo::Context, context: &PrintContext, text: &str, x: f64, y:
 }
 
 struct PrintState {
-    layout: pango::Layout,
+    layout: pagination::DocumentLayout,
     breaks: Vec<i32>,
 }
 
@@ -63,9 +62,10 @@ pub fn export_to_pdf(
     doc: &TipTapNode,
     header: Option<&str>,
     footer: Option<&str>,
+    geometry: PageGeometry,
 ) -> Result<(), glib::Error> {
-    let page = Rc::new(PageGeometry::academic_a4());
-    let markup = markup_from_doc(doc);
+    let page = Rc::new(geometry);
+    let doc = Rc::new(doc.clone());
     let header_text = header.map(strip_html).filter(|s| !s.is_empty());
     let footer_text = footer.map(strip_html).filter(|s| !s.is_empty());
 
@@ -73,7 +73,13 @@ pub fn export_to_pdf(
     op.set_export_filename(path);
     op.set_default_page_setup(Some(&{
         let setup = gtk::PageSetup::new();
-        setup.set_paper_size(&gtk::PaperSize::new(Some("iso_a4")));
+        setup.set_paper_size(&gtk::PaperSize::new_custom(
+            "prosa-page", "Prosa", page.width_mm, page.height_mm, gtk::Unit::Mm,
+        ));
+        setup.set_top_margin(0.0, gtk::Unit::Mm);
+        setup.set_bottom_margin(0.0, gtk::Unit::Mm);
+        setup.set_left_margin(0.0, gtk::Unit::Mm);
+        setup.set_right_margin(0.0, gtk::Unit::Mm);
         setup
     }));
 
@@ -85,10 +91,10 @@ pub fn export_to_pdf(
         #[strong]
         page,
         #[strong]
-        markup,
+        doc,
         move |op, _context| {
-            let layout = pagination::document_layout(&markup, *page);
-            let breaks = pagination::page_breaks(&layout, *page);
+            let layout = pagination::layout_document(&doc, *page);
+            let breaks = pagination::document_page_breaks(&layout, *page);
             op.set_n_pages(breaks.len() as i32);
             *state.borrow_mut() = Some(PrintState { layout, breaks });
         }
@@ -117,7 +123,12 @@ pub fn export_to_pdf(
             cr.rectangle(margin_left, content_top, page.usable_width_points(), content_height);
             cr.clip();
             cr.translate(margin_left, content_top - (top_pango as f64 / pango::SCALE as f64));
-            pangocairo::functions::show_layout(&cr, &print_state.layout);
+            for paragraph in &print_state.layout.paragraphs {
+                cr.save().ok();
+                cr.translate(paragraph.x_points, paragraph.y_pango as f64 / pango::SCALE as f64);
+                pangocairo::functions::show_layout(&cr, &paragraph.layout);
+                cr.restore().ok();
+            }
             cr.restore().ok();
 
             if let Some(text) = &header_text {
@@ -216,18 +227,17 @@ pub(crate) mod tests {
     pub(crate) fn export_produces_multi_page_pdf_with_pagination() {
         let window = gtk::Window::new();
         let doc = long_doc();
-        let geometry = PageGeometry::academic_a4();
-        let expected_pages = pagination::page_breaks(
-            &pagination::document_layout(&markup_from_doc(&doc), geometry),
-            geometry,
-        )
-        .len();
+        let mut geometry = PageGeometry::academic_a4();
+        geometry.margin_left_mm = 31.0;
+        geometry.margin_right_mm = 17.0;
+        geometry.margin_top_mm = 28.0;
+        let expected_pages = pagination::document_page_breaks(&pagination::layout_document(&doc, geometry), geometry).len();
 
         let dir = std::env::temp_dir().join(format!("prosa-print-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("saida.pdf");
 
-        export_to_pdf(&window, &path, &doc, Some("<p>Cabeçalho de teste</p>"), Some("<p>Rodapé de teste</p>"))
+        export_to_pdf(&window, &path, &doc, Some("<p>Cabeçalho de teste</p>"), Some("<p>Rodapé de teste</p>"), geometry)
             .expect("exportação deve ter sucesso");
 
         let bytes = std::fs::read(&path).expect("o arquivo PDF deve existir");
@@ -247,12 +257,8 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn page_breaks_split_when_content_overflows() {
-        let font_map = pangocairo::FontMap::new();
-        let context = font_map.create_context();
-        let layout = pango::Layout::new(&context);
-        layout.set_width(300 * pango::SCALE);
         let long_text = (0..40).map(|i| format!("linha número {i}")).collect::<Vec<_>>().join("\n");
-        layout.set_text(&long_text);
+        let doc = TipTapNode::doc_from_plain_text(&long_text);
 
         // Altura de conteúdo pequena o bastante para caber só algumas linhas por página.
         let mut geometry = PageGeometry::academic_a4();
@@ -261,8 +267,48 @@ pub(crate) mod tests {
             + geometry.footer_height_mm
             + geometry.margin_bottom_mm
             + 60.0 / 72.0 * 25.4;
-        let breaks = pagination::page_breaks(&layout, geometry);
+        let layout = pagination::layout_document(&doc, geometry);
+        let breaks = pagination::document_page_breaks(&layout, geometry);
         assert!(breaks.len() > 1, "40 linhas não devem caber todas numa página de 60pt de altura");
         assert_eq!(breaks[0], 0, "a primeira página sempre começa em y=0");
+    }
+
+    pub(crate) fn shared_layout_applies_geometry_indents_and_tabs() {
+        let doc = TipTapNode {
+            kind: "doc".to_string(),
+            content: Some(vec![TipTapNode {
+                kind: "paragraph".to_string(),
+                attrs: Some(serde_json::json!({
+                    "marginLeft": 24, "marginRight": 16, "firstLineIndent": 12,
+                    "tabStops": [{ "position": 48, "alignment": "right" }]
+                })),
+                content: Some(vec![text_node("coluna\tvalor")]),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let mut geometry = PageGeometry::academic_a4();
+        geometry.margin_left_mm = 30.0;
+        geometry.margin_right_mm = 15.0;
+        let laid_out = pagination::layout_document(&doc, geometry);
+        let paragraph = &laid_out.paragraphs[0];
+        assert!((paragraph.x_points - 18.0).abs() < 0.001);
+        assert_eq!(paragraph.layout.indent(), 9 * pango::SCALE);
+        assert_eq!(paragraph.layout.tabs().unwrap().tab(0), (pango::TabAlign::Right, 36 * pango::SCALE));
+        let expected_width = ((geometry.usable_width_points() - 30.0) * pango::SCALE as f64).round() as i32;
+        assert_eq!(paragraph.layout.width(), expected_width);
+    }
+
+    pub(crate) fn repeated_margin_changes_keep_shared_pagination_stable() {
+        let doc = long_doc();
+        for step in 0..20 {
+            let mut geometry = PageGeometry::academic_a4();
+            geometry.margin_left_mm = 10.0 + step as f64;
+            geometry.margin_right_mm = 29.0 - step as f64;
+            let first = pagination::document_page_breaks(&pagination::layout_document(&doc, geometry), geometry);
+            let second = pagination::document_page_breaks(&pagination::layout_document(&doc, geometry), geometry);
+            assert_eq!(first, second);
+            assert!(!first.is_empty());
+        }
     }
 }

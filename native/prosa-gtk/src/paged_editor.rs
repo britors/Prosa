@@ -316,10 +316,9 @@ impl PagedEditor {
             return;
         }
         let doc = formatting::doc_from_buffer(&self.buffer);
-        let markup = formatting::markup_from_doc(&doc);
         let geometry = self.geometry();
-        let layout = pagination::document_layout(&markup, geometry);
-        let required = pagination::page_breaks(&layout, geometry).len();
+        let layout = pagination::layout_document(&doc, geometry);
+        let required = pagination::document_page_breaks(&layout, geometry).len();
         while self.page_count() < required {
             self.insert_page(self.page_count());
         }
