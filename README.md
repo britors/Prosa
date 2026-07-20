@@ -80,6 +80,32 @@ editor atual.
 > Cobertura de atalhos ainda parcial — a maioria das ações (salvar, abrir,
 > títulos, alinhamento, etc.) por enquanto só está na barra de ferramentas.
 
+## 📦 Instalação
+
+Pacotes pré-compilados são publicados a cada release em
+[github.com/britors/Prosa/releases](https://github.com/britors/Prosa/releases)
+(`.deb`, `.rpm` e um `.zip` portátil pro Windows).
+
+**Linux — via gerenciador de pacotes (requer sudo)**, cobre Ubuntu/Debian
+(`.deb`), Fedora e openSUSE Leap (`.rpm`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/britors/Prosa/main/scripts/install.sh | sudo bash
+```
+
+**Linux — sem sudo, só pro usuário atual**, extrai o pacote da release e
+instala em `~/.local` (bibliotecas de sistema como GTK4/libadwaita/enchant2
+continuam sendo necessárias — o script avisa se alguma estiver faltando):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/britors/Prosa/main/scripts/install-user.sh | bash
+```
+
+**Windows**: baixe `prosa-windows-x86_64.zip` na página de
+[releases](https://github.com/britors/Prosa/releases/latest) e extraia em
+qualquer pasta — é portátil, não precisa de instalador. Rode
+`bin\prosa.exe`.
+
 ## 🚀 Como compilar e executar
 
 ### Pré-requisitos
