@@ -1,0 +1,130 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<!--
+  Copyright (C) 2017 Christopher R. Field.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!--
+  Gerado por `cargo wix init` e editado à mão pra instalação por usuário
+  (sem UAC — mesma escolha que a versão Electron antiga tinha com
+  `perMachine: false` no electron-builder/NSIS) e pra incluir o runtime
+  GTK4/libadwaita inteiro (DLLs + share/ + lib/), montado em `dist/` pelo
+  passo "Montar pacote portátil" do job `windows`
+  (.github/workflows/release.yml) e trazido aqui pelo `heat.exe`
+  (harvesting) — ver o fragmento `wix/dist-harvest.wxs`, gerado em CI, que
+  se referencia à `<Directory Id='APPLICATIONFOLDER'>` abaixo.
+-->
+
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <Product
+        Id='*'
+        Name='Prosa'
+        UpgradeCode='CFB1C09B-7C7B-4DAC-B79D-D93810B22E6A'
+        Manufacturer='Rodrigo Brito'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package Id='*'
+            Keywords='Installer'
+            Description='Editor de texto nativo GTK4 + libadwaita, com IA assistida, wikilinks, bibliografia e histórico de versões.'
+            Manufacturer='Rodrigo Brito'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perUser'
+            SummaryCodepage='1252'
+            />
+
+        <!-- Instalação por usuário: sem prompt de UAC, sem exigir admin. -->
+        <Property Id='MSIINSTALLPERUSER' Value='1' Secure='yes'/>
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
+        <Property Id='DiskPrompt' Value='Prosa Installation'/>
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <!-- LocalAppDataFolder (%LOCALAPPDATA%), não ProgramFiles: instalação por
+                 usuário, sem precisar de elevação. -->
+            <Directory Id='LocalAppDataFolder'>
+                <Directory Id='ProgramsFolder' Name='Programs'>
+                    <!-- Fica vazia aqui de propósito: o conteúdo real (bin/, share/,
+                         lib/ com o runtime GTK inteiro) é anexado por
+                         wix/dist-harvest.wxs, gerado em CI pelo heat.exe a partir de
+                         dist/ (ver comentário no topo do arquivo). -->
+                    <Directory Id='APPLICATIONFOLDER' Name='Prosa'/>
+                </Directory>
+            </Directory>
+
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='Prosa'/>
+            </Directory>
+        </Directory>
+
+        <DirectoryRef Id='ApplicationProgramsFolder'>
+            <Component Id='ApplicationShortcut' Guid='*'>
+                <Shortcut Id='ApplicationStartMenuShortcut'
+                    Name='Prosa'
+                    Description='Editor de texto nativo GTK4 + libadwaita'
+                    Target='[APPLICATIONFOLDER]bin\prosa.exe'
+                    WorkingDirectory='APPLICATIONFOLDER'
+                    Icon='ProductICO'/>
+                <RemoveFolder Id='CleanUpShortcut' Directory='ApplicationProgramsFolder' On='uninstall'/>
+                <RegistryValue Root='HKCU' Key='Software\Rodrigo Brito\Prosa' Name='installed' Type='integer' Value='1' KeyPath='yes'/>
+            </Component>
+        </DirectoryRef>
+
+        <Feature
+            Id='Binaries'
+            Title='Prosa'
+            Description='Instala o Prosa e o runtime GTK4/libadwaita necessário.'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Display='expand'
+            Absent='disallow'>
+
+            <!-- Todos os arquivos de dist/ (bin/, share/, lib/) — ver
+                 wix/dist-harvest.wxs, gerado em CI. -->
+            <ComponentGroupRef Id='DistComponents'/>
+            <ComponentRef Id='ApplicationShortcut'/>
+        </Feature>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
+
+        <!-- Caminho relativo ao cwd usado pelo `cargo wix` (raiz do
+             workspace, "native/"), não ao próprio wix/main.wxs — confirmado
+             empiricamente (candle/light rodam a partir de lá). -->
+        <Icon Id='ProductICO' SourceFile='prosa-gtk\data\icons\prosa.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/britors/Prosa'/>
+
+        <!-- WixUI_InstallDir: deixa escolher a pasta de instalação, sem tela de
+             EULA (mesmo espírito do `allowToChangeInstallationDirectory: true`
+             do NSIS antigo). As duas linhas de Publish abaixo pulam a tela de
+             licença que o dialog set inclui por padrão. -->
+        <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER'/>
+        <UI>
+            <UIRef Id='WixUI_InstallDir'/>
+            <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='InstallDirDlg' Order='2'>1</Publish>
+            <Publish Dialog='InstallDirDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='2'>1</Publish>
+        </UI>
+
+    </Product>
+
+</Wix>

@@ -169,6 +169,67 @@ jobs:
           name: windows-artifacts
           path: native/prosa-windows-x86_64.zip
 
+      # Instalador .msi (WiX Toolset v3, via cargo-wix) — complementa o .zip
+      # portátil acima com atalho no Menu Iniciar, entrada em
+      # "Adicionar/remover programas" e desinstalador. Instalação por
+      # usuário (sem UAC) — ver wix/main.wxs em prosa-gtk.
+      #
+      # Roda no shell nativo do runner (pwsh), não no MSYS2 do resto do
+      # job: o shell MSYS2 não herda o PATH completo do Windows (candle.exe
+      # e choco não são visíveis de lá — confirmado empiricamente), então
+      # usa um toolchain Rust nativo (msvc) só pra este trecho, separado do
+      # Rust do MSYS2/UCRT64 que compilou o prosa.exe.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Garantir WiX Toolset
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            Write-Host "WiX Toolset não encontrado no PATH — instalando via choco."
+            choco install wixtoolset -y --no-progress
+          }
+
+      - name: Instalar cargo-wix
+        shell: pwsh
+        run: cargo install cargo-wix
+
+      - name: Harvest do runtime (heat.exe) para o instalador
+        shell: pwsh
+        run: |
+          heat.exe dir dist `
+            -cg DistComponents -dr APPLICATIONFOLDER `
+            -gg -scom -sreg -sfrag -srd `
+            -out prosa-gtk\wix\dist-harvest.wxs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Gerar instalador .msi
+        shell: pwsh
+        run: |
+          # -b vincula o token "SourceDir" que o heat.exe usa (por padrão,
+          # sem -var) nos caminhos harvestados em dist-harvest.wxs — sem
+          # isso o light.exe não acha as DLLs.
+          #
+          # -sice:ICE38/-sice:ICE64 suprimem duas validações do WiX que
+          # partem do princípio de instalação por máquina (Program Files):
+          # ICE38 exige KeyPath de registro (não de arquivo) pra
+          # componentes no perfil do usuário; ICE64 exige que todo
+          # diretório no perfil do usuário conste na tabela RemoveFile.
+          # Trade-off aceito conscientemente pela instalação per-user (sem
+          # UAC) — o heat.exe harvesta ~1600 arquivos como componentes de
+          # arquivo simples, sem viabilidade de gerar KeyPath de registro
+          # por item; na prática, o efeito colateral é o desinstalador
+          # poder deixar diretórios vazios (não os arquivos em si, que são
+          # removidos normalmente).
+          cargo wix -p prosa-gtk --no-build --nocapture -L -b -L dist -L -sice:ICE38 -L -sice:ICE64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem target\wix\*.msi
+
+      - name: Upload Windows MSI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-artifact
+          path: native/target/wix/*.msi
+
   publish:
     name: Publish Release
     needs: [linux, windows]
@@ -190,6 +251,7 @@ jobs:
             all-artifacts/**/*.deb
             all-artifacts/**/*.rpm
             all-artifacts/**/*.zip
+            all-artifacts/**/*.msi
           draft: false
           prerelease: false
           generate_release_notes: true

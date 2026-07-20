@@ -61,3 +61,10 @@ assets = [
 # `cargo-deb` já faz o mesmo tipo de detecção automática de dependências via
 # `ldd`/shared libraries do binário (`depends = "$auto"` é o padrão), então
 # também sem lista manual de `Depends:` aqui.
+
+# Instalador Windows (.msi), gerado pelo `cargo wix` (job `windows` da
+# release do GitHub Actions) — usa wix/main.wxs + o fragmento
+# wix/dist-harvest.wxs, harvestado em CI a partir de dist/ (ver o passo
+# "Montar pacote portátil" em .github/workflows/release.yml).
+[package.metadata.wix]
+eula = false
