@@ -107,7 +107,10 @@
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
-        <Icon Id='ProductICO' SourceFile='..\data\icons\prosa.ico'/>
+        <!-- Caminho relativo ao cwd usado pelo `cargo wix` (raiz do
+             workspace, "native/"), não ao próprio wix/main.wxs — confirmado
+             empiricamente (candle/light rodam a partir de lá). -->
+        <Icon Id='ProductICO' SourceFile='prosa-gtk\data\icons\prosa.ico'/>
         <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
         <Property Id='ARPHELPLINK' Value='https://github.com/britors/Prosa'/>
 

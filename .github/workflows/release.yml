@@ -205,7 +205,10 @@ jobs:
       - name: Gerar instalador .msi
         shell: pwsh
         run: |
-          cargo wix -p prosa-gtk --no-build --nocapture
+          # -b vincula o token "SourceDir" que o heat.exe usa (por padrão,
+          # sem -var) nos caminhos harvestados em dist-harvest.wxs — sem
+          # isso o light.exe não acha as DLLs.
+          cargo wix -p prosa-gtk --no-build --nocapture -L -b -L dist
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem target\wix\*.msi
 
