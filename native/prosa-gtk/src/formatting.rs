@@ -51,6 +51,8 @@ pub enum TabKind { Left, Center, Right, Decimal }
 impl TabKind {
     pub fn code(self) -> char { match self { Self::Left => 'l', Self::Center => 'c', Self::Right => 'r', Self::Decimal => 'd' } }
     fn from_code(code: &str) -> Option<Self> { match code { "l" => Some(Self::Left), "c" => Some(Self::Center), "r" => Some(Self::Right), "d" => Some(Self::Decimal), _ => None } }
+    fn name(self) -> &'static str { match self { Self::Left => "left", Self::Center => "center", Self::Right => "right", Self::Decimal => "decimal" } }
+    fn from_name(name: &str) -> Option<Self> { match name { "left" => Some(Self::Left), "center" => Some(Self::Center), "right" => Some(Self::Right), "decimal" => Some(Self::Decimal), _ => None } }
     fn alignment(self) -> pango::TabAlign { match self { Self::Left => pango::TabAlign::Left, Self::Center => pango::TabAlign::Center, Self::Right => pango::TabAlign::Right, Self::Decimal => pango::TabAlign::Decimal } }
 }
 
@@ -459,6 +461,16 @@ fn paragraph_from_line(buffer: &TextBuffer, line: i32) -> TipTapNode {
     if let Some(align) = align_at_line(buffer, line) {
         attrs_map.insert("textAlign".to_string(), serde_json::json!(align));
     }
+    let indent = paragraph_indent_at_line(buffer, line);
+    if indent.left_px != 0 { attrs_map.insert("marginLeft".to_string(), serde_json::json!(indent.left_px)); }
+    if indent.right_px != 0 { attrs_map.insert("marginRight".to_string(), serde_json::json!(indent.right_px)); }
+    if indent.first_line_px != 0 { attrs_map.insert("firstLineIndent".to_string(), serde_json::json!(indent.first_line_px)); }
+    let tabs = paragraph_tabs_at_line(buffer, line);
+    if !tabs.is_empty() {
+        attrs_map.insert("tabStops".to_string(), serde_json::Value::Array(tabs.iter().map(|stop| {
+            serde_json::json!({ "position": stop.position_px, "alignment": stop.kind.name() })
+        }).collect()));
+    }
     let attrs = if attrs_map.is_empty() { None } else { Some(serde_json::Value::Object(attrs_map)) };
 
     if start == end {
@@ -578,6 +590,21 @@ pub fn load_doc_into_buffer(buffer: &TextBuffer, doc: &TipTapNode) {
             }
             if let Some(align) = block.attrs.as_ref().and_then(|attrs| attrs.get("textAlign")).and_then(|v| v.as_str()) {
                 set_line_alignment(buffer, index as i32, Some(align));
+            }
+            if let Some(attrs) = block.attrs.as_ref() {
+                let integer = |name: &str| attrs.get(name).and_then(|value| value.as_i64()).and_then(|value| i32::try_from(value).ok());
+                let indent = ParagraphIndent {
+                    left_px: integer("marginLeft").unwrap_or_default().clamp(0, 10_000),
+                    right_px: integer("marginRight").unwrap_or_default().clamp(0, 10_000),
+                    first_line_px: integer("firstLineIndent").unwrap_or_default().clamp(-10_000, 10_000),
+                };
+                set_paragraph_indent(buffer, index as i32, indent);
+                let tabs = attrs.get("tabStops").and_then(|value| value.as_array()).into_iter().flatten().filter_map(|value| {
+                    let position_px = value.get("position")?.as_i64().and_then(|value| i32::try_from(value).ok())?;
+                    let kind = TabKind::from_name(value.get("alignment")?.as_str()?)?;
+                    (position_px > 0 && position_px <= 10_000).then_some(TabStop { position_px, kind })
+                }).collect();
+                set_paragraph_tabs(buffer, index as i32, tabs);
             }
         }
     }
@@ -801,6 +828,61 @@ pub(crate) mod tests {
         set_paragraph_tabs(&buffer, 0, stops.clone());
         assert_eq!(paragraph_tabs_at_line(&buffer, 0), stops);
         set_paragraph_tabs(&buffer, 0, Vec::new());
+        assert!(paragraph_tabs_at_line(&buffer, 0).is_empty());
+    }
+
+    pub(crate) fn paragraph_layout_attributes_round_trip_exactly() {
+        let buffer = TextBuffer::new(None);
+        let original = TipTapNode {
+            kind: "doc".to_string(),
+            content: Some(vec![
+                TipTapNode {
+                    kind: "paragraph".to_string(),
+                    attrs: Some(serde_json::json!({
+                        "marginLeft": 24,
+                        "marginRight": 18,
+                        "firstLineIndent": -12,
+                        "tabStops": [
+                            { "position": 48, "alignment": "left" },
+                            { "position": 96, "alignment": "center" },
+                            { "position": 144, "alignment": "right" },
+                            { "position": 192, "alignment": "decimal" }
+                        ]
+                    })),
+                    content: Some(vec![text_node("um parágrafo com recuo misto", &[])]),
+                    ..Default::default()
+                },
+                TipTapNode {
+                    kind: "paragraph".to_string(),
+                    content: Some(vec![text_node("parágrafo sem atributos", &[])]),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        load_doc_into_buffer(&buffer, &original);
+        assert_eq!(doc_from_buffer(&buffer), original);
+    }
+
+    pub(crate) fn invalid_paragraph_layout_attributes_are_ignored_or_clamped() {
+        let buffer = TextBuffer::new(None);
+        let doc = TipTapNode {
+            kind: "doc".to_string(),
+            content: Some(vec![TipTapNode {
+                kind: "paragraph".to_string(),
+                attrs: Some(serde_json::json!({
+                    "marginLeft": -40,
+                    "marginRight": "inválido",
+                    "firstLineIndent": 999999,
+                    "tabStops": [{ "position": -1, "alignment": "left" }, { "position": 50, "alignment": "desconhecido" }]
+                })),
+                content: Some(vec![text_node("seguro", &[])]),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        load_doc_into_buffer(&buffer, &doc);
+        assert_eq!(paragraph_indent_at_line(&buffer, 0), ParagraphIndent { left_px: 0, right_px: 0, first_line_px: 10_000 });
         assert!(paragraph_tabs_at_line(&buffer, 0).is_empty());
     }
 

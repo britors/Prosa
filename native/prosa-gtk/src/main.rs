@@ -2006,6 +2006,8 @@ mod tests {
         crate::formatting::tests::alignment_round_trips_and_is_orthogonal_to_heading();
         crate::formatting::tests::paragraph_indent_applies_only_to_selected_line();
         crate::formatting::tests::paragraph_tabs_support_all_alignments_and_clear_to_default();
+        crate::formatting::tests::paragraph_layout_attributes_round_trip_exactly();
+        crate::formatting::tests::invalid_paragraph_layout_attributes_are_ignored_or_clamped();
         crate::formatting::tests::set_line_alignment_toggles_between_values_and_back_to_left();
         crate::formatting::tests::color_and_highlight_round_trip();
         crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();
