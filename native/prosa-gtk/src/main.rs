@@ -638,7 +638,7 @@ fn build_window(app: &adw::Application) {
     // aciona a exportação via GtkPrintOperation (print.rs), então o ícone de
     // impressora é o correto semanticamente, além de existir de fato.
     let export_pdf_button = gtk::Button::from_icon_name("document-print-symbolic");
-    export_pdf_button.set_tooltip_text(Some("Exportar PDF"));
+    export_pdf_button.set_tooltip_text(Some("Imprimir ou gerar PDF"));
 
     // Grupos "linked" (mesmo padrão HIG do GNOME de agrupar botões
     // relacionados numa pílula só) em vez de uma fileira flat de itens
@@ -1774,19 +1774,6 @@ fn build_window(app: &adw::Application) {
         #[strong]
         state,
         move |_| {
-            let default_name = format!("{}.pdf", state.borrow().metadata.title);
-            let dialog = gtk::FileDialog::builder()
-                .title("Exportar PDF")
-                .modal(true)
-                .initial_name(default_name)
-                .build();
-            let filters = gio::ListStore::new::<gtk::FileFilter>();
-            let pdf_filter = gtk::FileFilter::new();
-            pdf_filter.set_name(Some("PDF"));
-            pdf_filter.add_suffix("pdf");
-            filters.append(&pdf_filter);
-            dialog.set_filters(Some(&filters));
-
             glib::spawn_future_local(glib::clone!(
                 #[weak]
                 window,
@@ -1795,28 +1782,59 @@ fn build_window(app: &adw::Application) {
                 #[strong]
                 state,
                 async move {
-                    let Ok(file) = dialog.save_future(Some(&window)).await else { return };
-                    let Some(path) = file.path() else { return };
-
-                    let doc = doc_from_buffer(&buffer);
-                    let current = state.borrow();
-                    let result = print::export_to_pdf(
-                        &window,
-                        &path,
-                        &doc,
-                        current.header.as_deref(),
-                        current.footer.as_deref(),
-                        current.paged_editor.geometry(),
+                    let choice = adw::AlertDialog::new(
+                        Some("Imprimir documento"),
+                        Some("Escolha se deseja gerar um arquivo PDF ou enviar o documento para uma impressora."),
                     );
-                    drop(current);
+                    choice.add_response("cancel", "Cancelar");
+                    choice.add_response("pdf", "Gerar PDF");
+                    choice.add_response("print", "Imprimir");
+                    choice.set_close_response("cancel");
+                    choice.set_default_response(Some("print"));
+                    choice.set_response_appearance("print", adw::ResponseAppearance::Suggested);
 
-                    if let Err(err) = result {
-                        let alert = adw::AlertDialog::new(
-                            Some("Não foi possível exportar o PDF"),
-                            Some(&err.to_string()),
-                        );
-                        alert.add_response("ok", "OK");
-                        alert.present(Some(&window));
+                    match choice.choose_future(&window).await.as_str() {
+                        "pdf" => {
+                            let default_name = format!("{}.pdf", state.borrow().metadata.title);
+                            let dialog = gtk::FileDialog::builder()
+                                .title("Gerar PDF")
+                                .modal(true)
+                                .initial_name(default_name)
+                                .build();
+                            let filters = gio::ListStore::new::<gtk::FileFilter>();
+                            let pdf_filter = gtk::FileFilter::new();
+                            pdf_filter.set_name(Some("PDF"));
+                            pdf_filter.add_suffix("pdf");
+                            filters.append(&pdf_filter);
+                            dialog.set_filters(Some(&filters));
+                            let Ok(file) = dialog.save_future(Some(&window)).await else { return };
+                            let Some(path) = file.path() else { return };
+                            let doc = doc_from_buffer(&buffer);
+                            let current = state.borrow();
+                            let result = print::export_to_pdf(
+                                &window, &path, &doc, current.header.as_deref(), current.footer.as_deref(), current.paged_editor.geometry(),
+                            );
+                            drop(current);
+                            if let Err(err) = result {
+                                let alert = adw::AlertDialog::new(Some("Não foi possível gerar o PDF"), Some(&err.to_string()));
+                                alert.add_response("ok", "OK");
+                                alert.present(Some(&window));
+                            }
+                        }
+                        "print" => {
+                            let doc = doc_from_buffer(&buffer);
+                            let current = state.borrow();
+                            let result = print::print_document(
+                                &window, &doc, current.header.as_deref(), current.footer.as_deref(), current.paged_editor.geometry(),
+                            );
+                            drop(current);
+                            if let Err(err) = result {
+                                let alert = adw::AlertDialog::new(Some("Não foi possível imprimir"), Some(&err.to_string()));
+                                alert.add_response("ok", "OK");
+                                alert.present(Some(&window));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             ));

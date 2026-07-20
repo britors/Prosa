@@ -64,13 +64,36 @@ pub fn export_to_pdf(
     footer: Option<&str>,
     geometry: PageGeometry,
 ) -> Result<(), glib::Error> {
+    run_print_operation(window, Some(path), doc, header, footer, geometry, gtk::PrintOperationAction::Export)
+}
+
+/// Abre o diálogo nativo do sistema e imprime usando o mesmo layout do PDF.
+pub fn print_document(
+    window: &impl IsA<gtk::Window>,
+    doc: &TipTapNode,
+    header: Option<&str>,
+    footer: Option<&str>,
+    geometry: PageGeometry,
+) -> Result<(), glib::Error> {
+    run_print_operation(window, None, doc, header, footer, geometry, gtk::PrintOperationAction::PrintDialog)
+}
+
+fn run_print_operation(
+    window: &impl IsA<gtk::Window>,
+    export_path: Option<&Path>,
+    doc: &TipTapNode,
+    header: Option<&str>,
+    footer: Option<&str>,
+    geometry: PageGeometry,
+    action: gtk::PrintOperationAction,
+) -> Result<(), glib::Error> {
     let page = Rc::new(geometry);
     let doc = Rc::new(doc.clone());
     let header_text = header.map(strip_html).filter(|s| !s.is_empty());
     let footer_text = footer.map(strip_html).filter(|s| !s.is_empty());
 
     let op = PrintOperation::new();
-    op.set_export_filename(path);
+    if let Some(path) = export_path { op.set_export_filename(path); }
     op.set_default_page_setup(Some(&{
         let setup = gtk::PageSetup::new();
         setup.set_paper_size(&gtk::PaperSize::new_custom(
@@ -161,7 +184,7 @@ pub fn export_to_pdf(
         }
     ));
 
-    op.run(gtk::PrintOperationAction::Export, Some(window))?;
+    op.run(action, Some(window))?;
     Ok(())
 }
 
