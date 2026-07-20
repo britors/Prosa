@@ -471,7 +471,7 @@ fn build_window(app: &adw::Application) {
 
     let page_geometry = page_geometry::PageGeometry::academic_a4();
     let paged_editor = paged_editor::PagedEditor::new(page_geometry);
-    let page_rulers = page_rulers::PageRulers::new(&paged_editor, page_geometry);
+    let page_rulers = page_rulers::PageRulers::new(&paged_editor);
     let text_view = paged_editor.page(0).expect("PagedEditor sempre contém uma folha").text_view();
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);

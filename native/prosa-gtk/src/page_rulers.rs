@@ -1,5 +1,8 @@
 //! Réguas horizontal e vertical alinhadas à página A4 ativa.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use gtk::prelude::*;
 
 use crate::page_geometry::{PageGeometry, SCREEN_DPI};
@@ -13,7 +16,7 @@ pub struct PageRulers {
 }
 
 impl PageRulers {
-    pub fn new(editor: &PagedEditor, geometry: PageGeometry) -> Self {
+    pub fn new(editor: &PagedEditor) -> Self {
         let style_manager = adw::StyleManager::default();
         let horizontal = gtk::DrawingArea::builder().height_request(RULER_THICKNESS).hexpand(true).build();
         horizontal.add_css_class("prosa-ruler");
@@ -29,8 +32,9 @@ impl PageRulers {
         horizontal.set_draw_func({
             let hadjustment = hadjustment.clone();
             let style_manager = style_manager.clone();
+            let editor = editor.clone();
             move |_area, cr, width, height| {
-                draw_horizontal(cr, width, height, geometry, hadjustment.value(), style_manager.is_dark())
+                draw_horizontal(cr, width, height, editor.geometry(), hadjustment.value(), style_manager.is_dark())
             }
         });
         vertical.set_draw_func({
@@ -38,7 +42,7 @@ impl PageRulers {
             let editor = editor.clone();
             let style_manager = style_manager.clone();
             move |_area, cr, width, height| {
-                draw_vertical(cr, width, height, geometry, editor.active_page(), vadjustment.value(), style_manager.is_dark())
+                draw_vertical(cr, width, height, editor.geometry(), editor.active_page(), vadjustment.value(), style_manager.is_dark())
             }
         });
         style_manager.connect_dark_notify(glib::clone!(
@@ -67,6 +71,19 @@ impl PageRulers {
             vertical,
             move || vertical.queue_draw()
         ));
+        editor.connect_geometry_changed(glib::clone!(
+            #[weak]
+            horizontal,
+            #[weak]
+            vertical,
+            move |_| {
+                horizontal.queue_draw();
+                vertical.queue_draw();
+            }
+        ));
+
+        install_horizontal_drag(&horizontal, editor, &hadjustment);
+        install_vertical_drag(&vertical, editor, &vadjustment);
 
         let grid = gtk::Grid::new();
         grid.attach(&corner, 0, 0, 1, 1);
@@ -84,8 +101,159 @@ impl PageRulers {
     }
 }
 
+#[derive(Clone, Copy)]
+enum MarginHandle {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+#[derive(Clone, Copy)]
+struct MarginDrag {
+    handle: MarginHandle,
+    original: PageGeometry,
+}
+
+fn install_horizontal_drag(area: &gtk::DrawingArea, editor: &PagedEditor, adjustment: &gtk::Adjustment) {
+    area.set_tooltip_text(Some("Arraste os limites cinza para ajustar as margens esquerda e direita"));
+    let state: Rc<RefCell<Option<MarginDrag>>> = Rc::new(RefCell::new(None));
+    let drag = gtk::GestureDrag::new();
+    drag.connect_drag_begin({
+        let editor = editor.clone();
+        let adjustment = adjustment.clone();
+        let state = state.clone();
+        move |gesture, x, _| {
+            let geometry = editor.geometry();
+            let width = gesture.widget().map(|widget| widget.width()).unwrap_or_default();
+            let left = page_left(width, geometry.width_px(), adjustment.value());
+            let left_handle = left + PageGeometry::mm_to_pixels(geometry.margin_left_mm, SCREEN_DPI) as f64;
+            let right_handle = left + geometry.width_px() as f64
+                - PageGeometry::mm_to_pixels(geometry.margin_right_mm, SCREEN_DPI) as f64;
+            let handle = nearest_handle(x, [(left_handle, MarginHandle::Left), (right_handle, MarginHandle::Right)]);
+            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry });
+        }
+    });
+    drag.connect_drag_update({
+        let editor = editor.clone();
+        let state = state.clone();
+        move |_, offset_x, _| {
+            if let Some(drag) = *state.borrow() {
+                editor.preview_geometry(adjust_geometry(drag, pixels_to_mm(offset_x)));
+            }
+        }
+    });
+    drag.connect_drag_end({
+        let editor = editor.clone();
+        let state = state.clone();
+        move |_, offset_x, _| {
+            if let Some(drag) = state.borrow_mut().take() {
+                editor.commit_geometry(adjust_geometry(drag, pixels_to_mm(offset_x)));
+            }
+        }
+    });
+    area.add_controller(drag);
+}
+
+fn install_vertical_drag(area: &gtk::DrawingArea, editor: &PagedEditor, adjustment: &gtk::Adjustment) {
+    area.set_tooltip_text(Some("Arraste os limites cinza para ajustar as margens superior e inferior"));
+    let state: Rc<RefCell<Option<MarginDrag>>> = Rc::new(RefCell::new(None));
+    let drag = gtk::GestureDrag::new();
+    drag.connect_drag_begin({
+        let editor = editor.clone();
+        let adjustment = adjustment.clone();
+        let state = state.clone();
+        move |_, _, y| {
+            let geometry = editor.geometry();
+            let top = page_top(geometry, editor.active_page(), adjustment.value());
+            let top_handle = top + PageGeometry::mm_to_pixels(geometry.margin_top_mm, SCREEN_DPI) as f64;
+            let bottom_handle = top + geometry.height_px() as f64
+                - PageGeometry::mm_to_pixels(geometry.margin_bottom_mm, SCREEN_DPI) as f64;
+            let handle = nearest_handle(y, [(top_handle, MarginHandle::Top), (bottom_handle, MarginHandle::Bottom)]);
+            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry });
+        }
+    });
+    drag.connect_drag_update({
+        let editor = editor.clone();
+        let state = state.clone();
+        move |_, _, offset_y| {
+            if let Some(drag) = *state.borrow() {
+                editor.preview_geometry(adjust_geometry(drag, pixels_to_mm(offset_y)));
+            }
+        }
+    });
+    drag.connect_drag_end({
+        let editor = editor.clone();
+        let state = state.clone();
+        move |_, _, offset_y| {
+            if let Some(drag) = state.borrow_mut().take() {
+                editor.commit_geometry(adjust_geometry(drag, pixels_to_mm(offset_y)));
+            }
+        }
+    });
+    area.add_controller(drag);
+}
+
+fn nearest_handle<const N: usize>(position: f64, handles: [(f64, MarginHandle); N]) -> Option<MarginHandle> {
+    handles.into_iter().filter(|(coordinate, _)| (position - coordinate).abs() <= 10.0).min_by(|a, b| {
+        (position - a.0).abs().total_cmp(&(position - b.0).abs())
+    }).map(|(_, handle)| handle)
+}
+
+fn pixels_to_mm(pixels: f64) -> f64 {
+    pixels / SCREEN_DPI * 25.4
+}
+
+fn adjust_geometry(drag: MarginDrag, delta_mm: f64) -> PageGeometry {
+    let mut geometry = drag.original;
+    const MIN_MARGIN_MM: f64 = 5.0;
+    const MIN_BODY_WIDTH_MM: f64 = 50.0;
+    const MIN_BODY_HEIGHT_MM: f64 = 80.0;
+    match drag.handle {
+        MarginHandle::Left => {
+            geometry.margin_left_mm = (geometry.margin_left_mm + delta_mm).clamp(
+                MIN_MARGIN_MM,
+                geometry.width_mm - geometry.margin_right_mm - MIN_BODY_WIDTH_MM,
+            );
+        }
+        MarginHandle::Right => {
+            geometry.margin_right_mm = (geometry.margin_right_mm - delta_mm).clamp(
+                MIN_MARGIN_MM,
+                geometry.width_mm - geometry.margin_left_mm - MIN_BODY_WIDTH_MM,
+            );
+        }
+        MarginHandle::Top => {
+            geometry.margin_top_mm = (geometry.margin_top_mm + delta_mm).clamp(
+                MIN_MARGIN_MM,
+                geometry.height_mm
+                    - geometry.margin_bottom_mm
+                    - geometry.header_height_mm
+                    - geometry.footer_height_mm
+                    - MIN_BODY_HEIGHT_MM,
+            );
+        }
+        MarginHandle::Bottom => {
+            geometry.margin_bottom_mm = (geometry.margin_bottom_mm - delta_mm).clamp(
+                MIN_MARGIN_MM,
+                geometry.height_mm
+                    - geometry.margin_top_mm
+                    - geometry.header_height_mm
+                    - geometry.footer_height_mm
+                    - MIN_BODY_HEIGHT_MM,
+            );
+        }
+    }
+    geometry
+}
+
 fn page_left(viewport_width: i32, page_width: i32, scroll_x: f64) -> f64 {
     ((viewport_width - page_width).max(0) as f64 / 2.0) - scroll_x
+}
+
+fn page_top(geometry: PageGeometry, active_page: usize, scroll_y: f64) -> f64 {
+    let page_height = geometry.height_px() as f64;
+    let gap = PageGeometry::mm_to_pixels(geometry.page_gap_mm, SCREEN_DPI) as f64;
+    gap / 2.0 + active_page as f64 * (page_height + gap) - scroll_y
 }
 
 fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageGeometry, scroll_x: f64, dark: bool) {
@@ -114,8 +282,7 @@ fn draw_vertical(
 ) {
     let palette = RulerPalette::for_theme(dark);
     let page_height = geometry.height_px() as f64;
-    let gap = PageGeometry::mm_to_pixels(geometry.page_gap_mm, SCREEN_DPI) as f64;
-    let top = gap / 2.0 + active_page as f64 * (page_height + gap) - scroll_y;
+    let top = page_top(geometry, active_page, scroll_y);
     fill_color(cr, 0.0, 0.0, width as f64, height as f64, palette.outside);
     fill_color(cr, 0.0, top, width as f64, page_height, palette.paper);
     let margin_top = PageGeometry::mm_to_pixels(geometry.margin_top_mm, SCREEN_DPI) as f64;
@@ -193,5 +360,26 @@ mod tests {
         assert_eq!(page_left(1000, 794, 0.0), 103.0);
         assert_eq!(page_left(600, 794, 0.0), 0.0);
         assert_eq!(page_left(600, 794, 40.0), -40.0);
+    }
+
+    #[test]
+    fn dragged_margin_preserves_minimum_body_size() {
+        let original = PageGeometry::academic_a4();
+        let left = adjust_geometry(MarginDrag { handle: MarginHandle::Left, original }, 500.0);
+        assert!((left.usable_width_mm() - 50.0).abs() < 1e-9);
+        assert_eq!(left.margin_right_mm, original.margin_right_mm);
+
+        let top = adjust_geometry(MarginDrag { handle: MarginHandle::Top, original }, 500.0);
+        assert!((top.usable_height_mm() - 80.0).abs() < 1e-9);
+        assert_eq!(top.margin_bottom_mm, original.margin_bottom_mm);
+    }
+
+    #[test]
+    fn dragged_margin_never_becomes_smaller_than_five_millimeters() {
+        let original = PageGeometry::academic_a4();
+        let right = adjust_geometry(MarginDrag { handle: MarginHandle::Right, original }, 500.0);
+        let bottom = adjust_geometry(MarginDrag { handle: MarginHandle::Bottom, original }, 500.0);
+        assert_eq!(right.margin_right_mm, 5.0);
+        assert_eq!(bottom.margin_bottom_mm, 5.0);
     }
 }

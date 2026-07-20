@@ -14,9 +14,14 @@ pub struct PageSurface {
     root: gtk::Box,
     text_view: gtk::TextView,
     body_scrolled: gtk::ScrolledWindow,
+    top_spacer: gtk::Box,
+    header: gtk::Entry,
+    header_bottom_spacer: gtk::Box,
+    footer_row: gtk::Box,
+    bottom_spacer: gtk::Box,
     page_number: gtk::Label,
     index: Rc<Cell<usize>>,
-    body_height_px: i32,
+    body_height_px: Rc<Cell<i32>>,
 }
 
 impl PageSurface {
@@ -94,9 +99,14 @@ impl PageSurface {
             root,
             text_view,
             body_scrolled,
+            top_spacer,
+            header,
+            header_bottom_spacer,
+            footer_row,
+            bottom_spacer,
             page_number,
             index: Rc::new(Cell::new(index)),
-            body_height_px: body_height,
+            body_height_px: Rc::new(Cell::new(body_height)),
         };
         surface.sync_viewport();
         surface
@@ -113,8 +123,32 @@ impl PageSurface {
 
     fn sync_viewport(&self) {
         let adjustment = self.body_scrolled.vadjustment();
-        let value = self.index.get() as f64 * self.body_height_px as f64;
+        let value = self.index.get() as f64 * self.body_height_px.get() as f64;
         glib::idle_add_local_once(move || adjustment.set_value(value.min(adjustment.upper() - adjustment.page_size())));
+    }
+
+    fn apply_geometry(&self, geometry: PageGeometry) {
+        let body_width = PageGeometry::mm_to_pixels(geometry.usable_width_mm(), SCREEN_DPI);
+        let body_height = PageGeometry::mm_to_pixels(geometry.usable_height_mm(), SCREEN_DPI);
+        let margin_left = PageGeometry::mm_to_pixels(geometry.margin_left_mm, SCREEN_DPI);
+        let margin_right = PageGeometry::mm_to_pixels(geometry.margin_right_mm, SCREEN_DPI);
+        let header_spacing = PageGeometry::mm_to_pixels(geometry.margin_top_mm / 2.0, SCREEN_DPI);
+        self.root.set_size_request(geometry.width_px(), geometry.height_px());
+        self.text_view.set_width_request(body_width);
+        self.body_scrolled.set_size_request(body_width, body_height);
+        self.body_scrolled.set_margin_start(margin_left);
+        self.body_scrolled.set_margin_end(margin_right);
+        self.top_spacer.set_height_request(header_spacing);
+        self.header_bottom_spacer.set_height_request(header_spacing);
+        self.header.set_height_request(PageGeometry::mm_to_pixels(geometry.header_height_mm, SCREEN_DPI));
+        self.header.set_margin_start(margin_left);
+        self.header.set_margin_end(margin_right);
+        self.footer_row.set_height_request(PageGeometry::mm_to_pixels(geometry.footer_height_mm, SCREEN_DPI));
+        self.footer_row.set_margin_start(margin_left);
+        self.footer_row.set_margin_end(margin_right);
+        self.bottom_spacer.set_height_request(PageGeometry::mm_to_pixels(geometry.margin_bottom_mm, SCREEN_DPI));
+        self.body_height_px.set(body_height);
+        self.sync_viewport();
     }
 
     #[allow(dead_code)] // API pública do componente e apoio aos testes GTK.
@@ -129,7 +163,7 @@ impl PageSurface {
 
 #[derive(Clone)]
 pub struct PagedEditor {
-    geometry: PageGeometry,
+    geometry: Rc<Cell<PageGeometry>>,
     pages_box: gtk::Box,
     scrolled: gtk::ScrolledWindow,
     pages: Rc<RefCell<Vec<PageSurface>>>,
@@ -140,6 +174,7 @@ pub struct PagedEditor {
     debounce_source: Rc<RefCell<Option<glib::SourceId>>>,
     active_page: Rc<Cell<usize>>,
     active_page_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>>,
+    geometry_callbacks: Rc<RefCell<Vec<Rc<dyn Fn(PageGeometry)>>>>,
 }
 
 impl PagedEditor {
@@ -166,7 +201,7 @@ impl PagedEditor {
         let header_buffer = gtk::EntryBuffer::builder().build();
         let footer_buffer = gtk::EntryBuffer::builder().build();
         let editor = Self {
-            geometry,
+            geometry: Rc::new(Cell::new(geometry)),
             pages_box,
             scrolled,
             pages: Rc::new(RefCell::new(Vec::new())),
@@ -177,6 +212,7 @@ impl PagedEditor {
             debounce_source: Rc::new(RefCell::new(None)),
             active_page: Rc::new(Cell::new(0)),
             active_page_callbacks: Rc::new(RefCell::new(Vec::new())),
+            geometry_callbacks: Rc::new(RefCell::new(Vec::new())),
         };
         editor.insert_page(0);
         editor
@@ -188,6 +224,32 @@ impl PagedEditor {
 
     pub fn page_count(&self) -> usize {
         self.pages.borrow().len()
+    }
+
+    pub fn geometry(&self) -> PageGeometry {
+        self.geometry.get()
+    }
+
+    pub fn connect_geometry_changed(&self, callback: impl Fn(PageGeometry) + 'static) {
+        self.geometry_callbacks.borrow_mut().push(Rc::new(callback));
+    }
+
+    pub fn preview_geometry(&self, geometry: PageGeometry) {
+        self.geometry.set(geometry);
+        self.pages_box.set_spacing(PageGeometry::mm_to_pixels(geometry.page_gap_mm, SCREEN_DPI));
+        self.pages_box.set_margin_top(PageGeometry::mm_to_pixels(geometry.page_gap_mm / 2.0, SCREEN_DPI));
+        self.pages_box.set_margin_bottom(PageGeometry::mm_to_pixels(geometry.page_gap_mm / 2.0, SCREEN_DPI));
+        for page in self.pages.borrow().iter() {
+            page.apply_geometry(geometry);
+        }
+        for callback in self.geometry_callbacks.borrow().iter() {
+            callback(geometry);
+        }
+    }
+
+    pub fn commit_geometry(&self, geometry: PageGeometry) {
+        self.preview_geometry(geometry);
+        self.repaginate_now();
     }
 
     pub fn active_page(&self) -> usize {
@@ -251,8 +313,9 @@ impl PagedEditor {
         }
         let doc = formatting::doc_from_buffer(&self.buffer);
         let markup = formatting::markup_from_doc(&doc);
-        let layout = pagination::document_layout(&markup, self.geometry);
-        let required = pagination::page_breaks(&layout, self.geometry).len();
+        let geometry = self.geometry();
+        let layout = pagination::document_layout(&markup, geometry);
+        let required = pagination::page_breaks(&layout, geometry).len();
         while self.page_count() < required {
             self.insert_page(self.page_count());
         }
@@ -270,7 +333,7 @@ impl PagedEditor {
         let mut pages = self.pages.borrow_mut();
         let index = index.min(pages.len());
         let page = PageSurface::new(
-            self.geometry,
+            self.geometry(),
             &self.buffer,
             &self.header_buffer,
             &self.footer_buffer,
