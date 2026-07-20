@@ -172,34 +172,42 @@ jobs:
       # Instalador .msi (WiX Toolset v3, via cargo-wix) — complementa o .zip
       # portátil acima com atalho no Menu Iniciar, entrada em
       # "Adicionar/remover programas" e desinstalador. Instalação por
-      # usuário (sem UAC) — ver wix/main.wxs em prosa-gtk. Roda no mesmo
-      # shell MSYS2 do resto do job: o Rust do MSYS2 já está disponível
-      # aqui, e as ferramentas nativas do WiX (candle/light/heat) ficam
-      # acessíveis via PATH herdado do Windows.
+      # usuário (sem UAC) — ver wix/main.wxs em prosa-gtk.
+      #
+      # Roda no shell nativo do runner (pwsh), não no MSYS2 do resto do
+      # job: o shell MSYS2 não herda o PATH completo do Windows (candle.exe
+      # e choco não são visíveis de lá — confirmado empiricamente), então
+      # usa um toolchain Rust nativo (msvc) só pra este trecho, separado do
+      # Rust do MSYS2/UCRT64 que compilou o prosa.exe.
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Garantir WiX Toolset
+        shell: pwsh
         run: |
-          set -euo pipefail
-          if ! command -v candle.exe >/dev/null 2>&1; then
-            echo "WiX Toolset não encontrado no PATH — instalando via choco."
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            Write-Host "WiX Toolset não encontrado no PATH — instalando via choco."
             choco install wixtoolset -y --no-progress
-          fi
+          }
 
       - name: Instalar cargo-wix
+        shell: pwsh
         run: cargo install cargo-wix
 
       - name: Harvest do runtime (heat.exe) para o instalador
+        shell: pwsh
         run: |
-          set -euo pipefail
-          heat.exe dir dist \
-            -cg DistComponents -dr APPLICATIONFOLDER \
-            -gg -scom -sreg -sfrag -srd \
-            -out prosa-gtk/wix/dist-harvest.wxs
+          heat.exe dir dist `
+            -cg DistComponents -dr APPLICATIONFOLDER `
+            -gg -scom -sreg -sfrag -srd `
+            -out prosa-gtk\wix\dist-harvest.wxs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Gerar instalador .msi
+        shell: pwsh
         run: |
-          set -euo pipefail
           cargo wix -p prosa-gtk --no-build --nocapture
-          ls -la target/wix/*.msi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem target\wix\*.msi
 
       - name: Upload Windows MSI Artifact
         uses: actions/upload-artifact@v4
