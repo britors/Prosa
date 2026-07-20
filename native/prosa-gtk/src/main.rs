@@ -15,6 +15,7 @@ mod font_style;
 mod formatting;
 mod graph_view;
 mod outline;
+mod page_geometry;
 mod print;
 mod save_format;
 mod spellcheck;
@@ -38,15 +39,6 @@ use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_headin
 use spellcheck::{LiveSpellcheck, SpellChecker};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
-
-// Aparência temporária do editor contínuo. A paginação simulada foi removida
-// antes da entrada de `PageGeometry` e `PagedEditor` (epic #167).
-const CONTINUOUS_EDITOR_WIDTH_PX: i32 = 794;
-const CONTINUOUS_EDITOR_MARGIN_TOP_PX: i32 = 94;
-const CONTINUOUS_EDITOR_MARGIN_BOTTOM_PX: i32 = 94;
-const CONTINUOUS_EDITOR_MARGIN_LEFT_PX: i32 = 76;
-const CONTINUOUS_EDITOR_MARGIN_RIGHT_PX: i32 = 76;
-const CONTINUOUS_EDITOR_GAP_PX: i32 = 16;
 
 /// Conta palavras (separadas por espaço em branco) e frases (fim de frase
 /// `.`/`!`/`?`, tratando pontuação repetida como um único fim).
@@ -461,17 +453,37 @@ fn install_page_css() {
 fn build_window(app: &adw::Application) {
     install_page_css();
 
+    let page_geometry = page_geometry::PageGeometry::academic_a4();
+
     let text_view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::Word)
-        .top_margin(CONTINUOUS_EDITOR_MARGIN_TOP_PX)
-        .bottom_margin(CONTINUOUS_EDITOR_MARGIN_BOTTOM_PX)
-        .left_margin(CONTINUOUS_EDITOR_MARGIN_LEFT_PX)
-        .right_margin(CONTINUOUS_EDITOR_MARGIN_RIGHT_PX)
-        .width_request(CONTINUOUS_EDITOR_WIDTH_PX)
+        .top_margin(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.body_top_mm(),
+            page_geometry::SCREEN_DPI,
+        ))
+        .bottom_margin(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.margin_bottom_mm + page_geometry.footer_height_mm,
+            page_geometry::SCREEN_DPI,
+        ))
+        .left_margin(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.margin_left_mm,
+            page_geometry::SCREEN_DPI,
+        ))
+        .right_margin(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.margin_right_mm,
+            page_geometry::SCREEN_DPI,
+        ))
+        .width_request(page_geometry.width_px())
         .hexpand(false)
         .halign(gtk::Align::Center)
-        .margin_top(CONTINUOUS_EDITOR_GAP_PX)
-        .margin_bottom(CONTINUOUS_EDITOR_GAP_PX)
+        .margin_top(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.page_gap_mm / 2.0,
+            page_geometry::SCREEN_DPI,
+        ))
+        .margin_bottom(page_geometry::PageGeometry::mm_to_pixels(
+            page_geometry.page_gap_mm / 2.0,
+            page_geometry::SCREEN_DPI,
+        ))
         .build();
     text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();

@@ -19,50 +19,7 @@ use gtk::{glib, PrintContext, PrintOperation};
 use prosa_doc::TipTapNode;
 
 use crate::formatting::markup_from_doc;
-
-const PT_PER_IN: f64 = 72.0;
-const MM_PER_IN: f64 = 25.4;
-
-/// Geometria de página usada na exportação: dimensões e margens em pontos.
-pub struct PageLayout {
-    pub width_pt: f64,
-    pub height_pt: f64,
-    pub margin_top_pt: f64,
-    pub margin_bottom_pt: f64,
-    pub margin_left_pt: f64,
-    pub margin_right_pt: f64,
-    pub header_height_pt: f64,
-    pub footer_height_pt: f64,
-}
-
-impl PageLayout {
-    /// A4 com as margens do preset "academic" (mesmo default do `printToPDF`
-    /// na versão Electron — ver `src/main/export-service.ts`).
-    pub fn academic_a4() -> Self {
-        PageLayout {
-            width_pt: 210.0 / MM_PER_IN * PT_PER_IN,
-            height_pt: 297.0 / MM_PER_IN * PT_PER_IN,
-            margin_top_pt: 0.98 * PT_PER_IN,
-            margin_bottom_pt: 0.98 * PT_PER_IN,
-            margin_left_pt: 0.79 * PT_PER_IN,
-            margin_right_pt: 0.79 * PT_PER_IN,
-            header_height_pt: 24.0,
-            footer_height_pt: 24.0,
-        }
-    }
-
-    fn content_width(&self) -> f64 {
-        self.width_pt - self.margin_left_pt - self.margin_right_pt
-    }
-
-    fn content_top(&self, has_header: bool) -> f64 {
-        self.margin_top_pt + if has_header { self.header_height_pt } else { 0.0 }
-    }
-
-    fn content_height(&self, has_header: bool) -> f64 {
-        self.height_pt - self.content_top(has_header) - self.margin_bottom_pt - self.footer_height_pt
-    }
-}
+use crate::page_geometry::PageGeometry;
 
 /// Remove tags HTML de forma simplista (o cabeçalho/rodapé do `.prosa` é
 /// HTML vindo da versão Electron; aqui extraímos só o texto, sem formatação).
@@ -128,11 +85,10 @@ pub fn export_to_pdf(
     header: Option<&str>,
     footer: Option<&str>,
 ) -> Result<(), glib::Error> {
-    let page = Rc::new(PageLayout::academic_a4());
+    let page = Rc::new(PageGeometry::academic_a4());
     let markup = markup_from_doc(doc);
     let header_text = header.map(strip_html).filter(|s| !s.is_empty());
     let footer_text = footer.map(strip_html).filter(|s| !s.is_empty());
-    let has_header = header_text.is_some();
 
     let op = PrintOperation::new();
     op.set_export_filename(path);
@@ -154,8 +110,8 @@ pub fn export_to_pdf(
         move |op, context| {
             let layout = context.create_pango_layout();
             layout.set_markup(&markup);
-            layout.set_width((page.content_width() * pango::SCALE as f64) as i32);
-            let breaks = page_breaks(&layout, page.content_height(has_header));
+            layout.set_width((page.usable_width_points() * pango::SCALE as f64) as i32);
+            let breaks = page_breaks(&layout, page.usable_height_points());
             op.set_n_pages(breaks.len() as i32);
             *state.borrow_mut() = Some(PrintState { layout, breaks });
         }
@@ -175,14 +131,15 @@ pub fn export_to_pdf(
             let Some(print_state) = borrowed.as_ref() else { return };
             let cr = context.cairo_context();
 
-            let content_top = page.content_top(has_header);
-            let content_height = page.content_height(has_header);
+            let content_top = page.body_top_points();
+            let content_height = page.usable_height_points();
+            let margin_left = PageGeometry::mm_to_points(page.margin_left_mm);
             let top_pango = print_state.breaks[page_nr as usize];
 
             cr.save().ok();
-            cr.rectangle(page.margin_left_pt, content_top, page.content_width(), content_height);
+            cr.rectangle(margin_left, content_top, page.usable_width_points(), content_height);
             cr.clip();
-            cr.translate(page.margin_left_pt, content_top - (top_pango as f64 / pango::SCALE as f64));
+            cr.translate(margin_left, content_top - (top_pango as f64 / pango::SCALE as f64));
             pangocairo::functions::show_layout(&cr, &print_state.layout);
             cr.restore().ok();
 
@@ -191,9 +148,9 @@ pub fn export_to_pdf(
                     &cr,
                     context,
                     text,
-                    page.margin_left_pt,
-                    page.margin_top_pt,
-                    page.content_width(),
+                    margin_left,
+                    PageGeometry::mm_to_points(page.margin_top_mm),
+                    page.usable_width_points(),
                     pango::Alignment::Center,
                 );
             }
@@ -207,9 +164,10 @@ pub fn export_to_pdf(
                 &cr,
                 context,
                 &footer_line,
-                page.margin_left_pt,
-                page.height_pt - page.margin_bottom_pt - page.footer_height_pt,
-                page.content_width(),
+                margin_left,
+                page.height_points()
+                    - PageGeometry::mm_to_points(page.margin_bottom_mm + page.footer_height_mm),
+                page.usable_width_points(),
                 pango::Alignment::Center,
             );
         }
