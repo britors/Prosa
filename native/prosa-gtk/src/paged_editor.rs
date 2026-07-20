@@ -1,7 +1,8 @@
 //! Componente visual responsável pela coleção ordenada de folhas A4.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::prelude::*;
 
@@ -56,6 +57,8 @@ pub struct PagedEditor {
     pages_box: gtk::Box,
     scrolled: gtk::ScrolledWindow,
     pages: Rc<RefCell<Vec<PageSurface>>>,
+    repaginating: Rc<Cell<bool>>,
+    debounce_source: Rc<RefCell<Option<glib::SourceId>>>,
 }
 
 impl PagedEditor {
@@ -74,7 +77,14 @@ impl PagedEditor {
             .build();
         scrolled.add_css_class("prosa-desk");
 
-        let editor = Self { geometry, pages_box, scrolled, pages: Rc::new(RefCell::new(Vec::new())) };
+        let editor = Self {
+            geometry,
+            pages_box,
+            scrolled,
+            pages: Rc::new(RefCell::new(Vec::new())),
+            repaginating: Rc::new(Cell::new(false)),
+            debounce_source: Rc::new(RefCell::new(None)),
+        };
         editor.insert_page(0);
         editor
     }
@@ -90,6 +100,56 @@ impl PagedEditor {
 
     pub fn page(&self, index: usize) -> Option<PageSurface> {
         self.pages.borrow().get(index).cloned()
+    }
+
+    pub fn is_repaginating(&self) -> bool {
+        self.repaginating.get()
+    }
+
+    pub fn schedule_repaginate(&self, on_done: impl Fn() + 'static) {
+        if self.repaginating.get() {
+            return;
+        }
+        if let Some(source) = self.debounce_source.borrow_mut().take() {
+            source.remove();
+        }
+        let editor = self.clone();
+        let source = glib::timeout_add_local(Duration::from_millis(150), move || {
+            *editor.debounce_source.borrow_mut() = None;
+            editor.repaginate_now();
+            on_done();
+            glib::ControlFlow::Break
+        });
+        *self.debounce_source.borrow_mut() = Some(source);
+    }
+
+    fn combined_text(&self) -> String {
+        self.pages
+            .borrow()
+            .iter()
+            .map(|page| {
+                let buffer = page.buffer();
+                buffer.text(&buffer.start_iter(), &buffer.end_iter(), true).to_string()
+            })
+            .collect()
+    }
+
+    pub fn repaginate_now(&self) {
+        if self.repaginating.replace(true) {
+            return;
+        }
+        let text = self.combined_text();
+        let chunks = paginate_text(&text, self.geometry);
+        while self.page_count() < chunks.len() {
+            self.insert_page(self.page_count());
+        }
+        while self.page_count() > chunks.len().max(1) {
+            self.remove_page(self.page_count() - 1);
+        }
+        for (index, chunk) in chunks.iter().enumerate() {
+            self.page(index).unwrap().buffer().set_text(chunk);
+        }
+        self.repaginating.set(false);
     }
 
     /// Insere uma folha na posição solicitada (ou no fim, se exceder o total).
@@ -114,6 +174,43 @@ impl PagedEditor {
         self.pages_box.remove(&page.root);
         Some(page)
     }
+}
+
+fn paginate_text(text: &str, geometry: PageGeometry) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    let font_map = pangocairo::FontMap::new();
+    let context = font_map.create_context();
+    let layout = pango::Layout::new(&context);
+    layout.set_text(text);
+    layout.set_width(PageGeometry::mm_to_pixels(geometry.usable_width_mm(), SCREEN_DPI) * pango::SCALE);
+
+    let height_limit = PageGeometry::mm_to_pixels(geometry.usable_height_mm(), SCREEN_DPI) * pango::SCALE;
+    let mut starts = vec![0usize];
+    let mut height = 0i32;
+    let mut iter = layout.iter();
+    loop {
+        let Some(line) = iter.line_readonly() else { break };
+        let (_, logical) = line.extents();
+        if height > 0 && height + logical.height() > height_limit {
+            starts.push(line.start_index() as usize);
+            height = 0;
+        }
+        height += logical.height();
+        if !iter.next_line() {
+            break;
+        }
+    }
+
+    starts
+        .iter()
+        .enumerate()
+        .map(|(index, start)| {
+            let end = starts.get(index + 1).copied().unwrap_or(text.len());
+            text[*start..end].to_string()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -142,5 +239,22 @@ pub(crate) mod tests {
         assert_eq!(editor.page_count(), 2);
         assert!(editor.remove_page(1).is_some());
         assert!(editor.remove_page(0).is_none(), "a última folha não pode ser removida");
+    }
+
+    pub(crate) fn overflow_and_underflow_repaginate_without_losing_text() {
+        let editor = PagedEditor::new(PageGeometry::academic_a4());
+        let original = (0..2500).map(|index| format!("linha {index}\n")).collect::<String>();
+        editor.page(0).unwrap().buffer().set_text(&original);
+        editor.repaginate_now();
+        assert!(editor.page_count() > 1);
+        assert_eq!(editor.combined_text(), original);
+
+        editor.page(0).unwrap().buffer().set_text("curto");
+        for index in 1..editor.page_count() {
+            editor.page(index).unwrap().buffer().set_text("");
+        }
+        editor.repaginate_now();
+        assert_eq!(editor.page_count(), 1);
+        assert_eq!(editor.combined_text(), "curto");
     }
 }

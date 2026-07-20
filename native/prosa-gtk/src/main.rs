@@ -251,14 +251,15 @@ fn refresh_outline(buffer: &gtk::TextBuffer, outline_list: &gtk::ListBox, outlin
 
 /// Atualiza a barra de status do editor contínuo. A contagem de páginas só
 /// voltará quando houver folhas reais gerenciadas pelo `PagedEditor`.
-fn update_status_bar(buffer: &gtk::TextBuffer, label: &gtk::Label) {
+fn update_status_bar(buffer: &gtk::TextBuffer, pages: usize, label: &gtk::Label) {
     let (start, end) = buffer.bounds();
     let text = buffer.text(&start, &end, false);
     let (words, sentences) = count_words_and_sentences(&text);
     label.set_text(&format!(
-        "{words} palavra{} · {sentences} frase{}",
+        "{words} palavra{} · {sentences} frase{} · {pages} página{}",
         if words == 1 { "" } else { "s" },
         if sentences == 1 { "" } else { "s" },
+        if pages == 1 { "" } else { "s" },
     ));
 }
 
@@ -1094,13 +1095,15 @@ fn build_window(app: &adw::Application) {
             outline_lines,
             #[weak]
             status_label,
+            #[strong]
+            paged_editor,
             move |_, _| {
                 set_heading_level(&buffer, current_line(&buffer), level);
                 // Aplicar/remover a tag de título não dispara `changed` (só
                 // inserir/remover conteúdo faz isso), então o esboço precisa
                 // ser atualizado explicitamente.
                 refresh_outline(&buffer, &outline_list, &outline_lines);
-                update_status_bar(&buffer, &status_label);
+                update_status_bar(&buffer, paged_editor.page_count(), &status_label);
             }
         ));
         window.add_action(&action);
@@ -1426,7 +1429,7 @@ fn build_window(app: &adw::Application) {
     ));
     text_view.add_controller(right_click);
 
-    update_status_bar(&buffer, &status_label);
+    update_status_bar(&buffer, paged_editor.page_count(), &status_label);
     refresh_outline(&buffer, &outline_list, &outline_lines);
     buffer.connect_changed(glib::clone!(
         #[weak]
@@ -1443,6 +1446,8 @@ fn build_window(app: &adw::Application) {
         outline_lines,
         #[strong]
         loading_document,
+        #[strong]
+        paged_editor,
         move |_| {
             if !loading_document.get() {
                 wikilink::linkify_pending(&buffer);
@@ -1452,9 +1457,20 @@ fn build_window(app: &adw::Application) {
             // automático do GtkTextView não é confiável dentro do
             // GtkOverlay/margens customizadas da folha).
             text_view.scroll_mark_onscreen(&buffer.get_insert());
-            update_status_bar(&buffer, &status_label);
+            update_status_bar(&buffer, paged_editor.page_count(), &status_label);
             refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
+            if !paged_editor.is_repaginating() {
+                paged_editor.schedule_repaginate(glib::clone!(
+                    #[weak]
+                    buffer,
+                    #[weak]
+                    status_label,
+                    #[strong]
+                    paged_editor,
+                    move || update_status_bar(&buffer, paged_editor.page_count(), &status_label)
+                ));
+            }
         }
     ));
 
@@ -1910,6 +1926,7 @@ mod tests {
         crate::outline::tests::empty_document_has_no_outline();
         crate::paged_editor::tests::empty_editor_has_one_complete_a4_page();
         crate::paged_editor::tests::pages_can_be_inserted_ordered_and_removed();
+        crate::paged_editor::tests::overflow_and_underflow_repaginate_without_losing_text();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
