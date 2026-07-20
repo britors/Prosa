@@ -322,13 +322,13 @@ fn open_document_at_path(
             let now = now_iso();
             let metadata =
                 DocumentMetadata { title: file_stem_title(&path), author: String::new(), created_at: now.clone(), modified_at: now };
-            (content, metadata, None, None)
+            (content, metadata, None, None, None)
         }),
-        _ => ProsaFile::load(&path).map_err(|e| e.to_string()).map(|f| (f.content, f.metadata, f.header, f.footer)),
+        _ => ProsaFile::load(&path).map_err(|e| e.to_string()).map(|f| (f.content, f.metadata, f.header, f.footer, f.page_setup)),
     };
 
     match opened {
-        Ok((content, metadata, header, footer)) => {
+        Ok((content, metadata, header, footer, page_setup)) => {
             loading_document.set(true);
             load_doc_into_buffer(buffer, &content);
             loading_document.set(false);
@@ -336,6 +336,7 @@ fn open_document_at_path(
             let format = SaveFormat::from_extension(&extension).unwrap_or(SaveFormat::Prosa);
             let paged_editor = state.borrow().paged_editor.clone();
             paged_editor.set_header_footer(header.as_deref(), footer.as_deref());
+            paged_editor.commit_geometry(page_setup.map(page_geometry::PageGeometry::from_setup).unwrap_or_else(page_geometry::PageGeometry::academic_a4));
             *state.borrow_mut() = DocumentState { path: Some(path.clone()), metadata, header, footer, paged_editor, format };
             backlinks.refresh(Some(&path));
         }
@@ -367,6 +368,7 @@ fn apply_new_document(
     load_doc_into_buffer(buffer, &content);
     let paged_editor = state.borrow().paged_editor.clone();
     paged_editor.set_header_footer(None, None);
+    paged_editor.commit_geometry(page_geometry::PageGeometry::academic_a4());
     loading_document.set(false);
 
     title_widget.set_subtitle(&title);
@@ -398,13 +400,14 @@ fn restore_version(
 ) {
     let safety_snapshot = {
         let current = state.borrow();
-        ProsaFile { version: 1, content: doc_from_buffer(buffer), metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone() }
+        ProsaFile { version: 1, content: doc_from_buffer(buffer), metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone(), page_setup: Some(current.paged_editor.geometry().to_setup()) }
     };
     let _ = version_history::create_backup(path, &safety_snapshot, version_history::DEFAULT_KEEP_VERSIONS, now_iso());
 
     loading_document.set(true);
     load_doc_into_buffer(buffer, &restored.content);
     state.borrow().paged_editor.set_header_footer(restored.header.as_deref(), restored.footer.as_deref());
+    state.borrow().paged_editor.commit_geometry(restored.page_setup.map(page_geometry::PageGeometry::from_setup).unwrap_or_else(page_geometry::PageGeometry::academic_a4));
     loading_document.set(false);
 
     title_widget.set_subtitle(&restored.metadata.title);
@@ -1913,6 +1916,7 @@ fn write_document(
                 notes: None,
                 header: current.header.clone(),
                 footer: current.footer.clone(),
+                page_setup: Some(current.paged_editor.geometry().to_setup()),
             };
             prosa_file.save(&path).map_err(|e| e.to_string())
         }
@@ -1932,7 +1936,7 @@ fn write_document(
             // canônica `.prosa` do conteúdo — independe do formato de
             // exportação escolhido (docx/odt/rtf também acionam backup).
             let snapshot =
-                ProsaFile { version: 1, content: doc, metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone() };
+                ProsaFile { version: 1, content: doc, metadata: current.metadata.clone(), notes: None, header: current.header.clone(), footer: current.footer.clone(), page_setup: Some(current.paged_editor.geometry().to_setup()) };
             let _ = version_history::create_backup(&path, &snapshot, version_history::DEFAULT_KEEP_VERSIONS, now_iso());
 
             // Marca o caminho como "acabamos de escrever nós mesmos" —

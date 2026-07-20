@@ -33,6 +33,34 @@ impl PageGeometry {
         }
     }
 
+    pub fn from_setup(setup: prosa_doc::PageSetup) -> Self {
+        Self {
+            width_mm: setup.width_mm,
+            height_mm: setup.height_mm,
+            margin_top_mm: setup.margin_top_mm,
+            margin_bottom_mm: setup.margin_bottom_mm,
+            margin_left_mm: setup.margin_left_mm,
+            margin_right_mm: setup.margin_right_mm,
+            header_height_mm: setup.header_height_mm,
+            footer_height_mm: setup.footer_height_mm,
+            page_gap_mm: setup.page_gap_mm,
+        }
+    }
+
+    pub fn to_setup(self) -> prosa_doc::PageSetup {
+        prosa_doc::PageSetup {
+            width_mm: self.width_mm,
+            height_mm: self.height_mm,
+            margin_top_mm: self.margin_top_mm,
+            margin_bottom_mm: self.margin_bottom_mm,
+            margin_left_mm: self.margin_left_mm,
+            margin_right_mm: self.margin_right_mm,
+            header_height_mm: self.header_height_mm,
+            footer_height_mm: self.footer_height_mm,
+            page_gap_mm: self.page_gap_mm,
+        }
+    }
+
     pub fn usable_width_mm(self) -> f64 {
         self.width_mm - self.margin_left_mm - self.margin_right_mm
     }
@@ -118,5 +146,13 @@ mod tests {
         page.margin_left_mm += 10.0;
         assert!(PageGeometry::mm_to_pixels(page.usable_width_mm(), SCREEN_DPI) < old_body_px);
         assert!(PageGeometry::mm_to_points(page.usable_width_mm()) < old_body_pt);
+    }
+
+    #[test]
+    fn persisted_setup_round_trips_without_losing_geometry() {
+        let mut page = PageGeometry::academic_a4();
+        page.margin_left_mm = 31.5;
+        page.margin_bottom_mm = 18.25;
+        assert_eq!(PageGeometry::from_setup(page.to_setup()), page);
     }
 }

@@ -83,6 +83,21 @@ pub struct NoteEntry {
     pub text: String,
 }
 
+/// Geometria física da página, em milímetros.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageSetup {
+    pub width_mm: f64,
+    pub height_mm: f64,
+    pub margin_top_mm: f64,
+    pub margin_bottom_mm: f64,
+    pub margin_left_mm: f64,
+    pub margin_right_mm: f64,
+    pub header_height_mm: f64,
+    pub footer_height_mm: f64,
+    pub page_gap_mm: f64,
+}
+
 /// Estrutura do arquivo nativo `.prosa` (JSON).
 ///
 /// Espelha `ProsaFile` em `src/shared/types.ts`.
@@ -97,6 +112,8 @@ pub struct ProsaFile {
     pub header: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub footer: Option<String>,
+    #[serde(default, rename = "pageSetup", skip_serializing_if = "Option::is_none")]
+    pub page_setup: Option<PageSetup>,
 }
 
 /// Erros de leitura/escrita de um arquivo `.prosa`.
@@ -199,6 +216,7 @@ impl ProsaFile {
             notes: None,
             header: None,
             footer: None,
+            page_setup: None,
         }
     }
 
@@ -265,7 +283,18 @@ mod tests {
             "n1": { "id": "n1", "kind": "footnote", "text": "Nota de rodapé." }
         },
         "header": "<p>Cabeçalho</p>",
-        "footer": "<p>Rodapé</p>"
+        "footer": "<p>Rodapé</p>",
+        "pageSetup": {
+            "widthMm": 210.0,
+            "heightMm": 297.0,
+            "marginTopMm": 25.0,
+            "marginBottomMm": 20.0,
+            "marginLeftMm": 30.0,
+            "marginRightMm": 15.0,
+            "headerHeightMm": 8.0,
+            "footerHeightMm": 8.0,
+            "pageGapMm": 8.0
+        }
     }"#;
 
     #[test]
@@ -282,6 +311,7 @@ mod tests {
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.metadata.title, "Documento de teste");
         assert_eq!(parsed.header.as_deref(), Some("<p>Cabeçalho</p>"));
+        assert_eq!(parsed.page_setup.unwrap().margin_left_mm, 30.0);
         assert_eq!(parsed.notes.unwrap().get("n1").unwrap().text, "Nota de rodapé.");
     }
 
@@ -300,6 +330,7 @@ mod tests {
         let parsed = ProsaFile::from_str(data).expect("campos opcionais ausentes devem ser aceitos");
         assert!(parsed.notes.is_none());
         assert!(parsed.header.is_none());
+        assert!(parsed.page_setup.is_none());
     }
 
     #[test]

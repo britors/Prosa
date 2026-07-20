@@ -245,6 +245,7 @@ mod tests {
             notes: None,
             header: None,
             footer: None,
+            page_setup: None,
         };
         let path = dir.join(filename);
         file.save(&path).unwrap();

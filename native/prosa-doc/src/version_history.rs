@@ -186,6 +186,7 @@ mod tests {
             notes: None,
             header: None,
             footer: None,
+            page_setup: None,
         }
     }
 
