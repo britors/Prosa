@@ -55,16 +55,20 @@ impl PageSurface {
         root.set_valign(gtk::Align::Start);
         let margin_left = PageGeometry::mm_to_pixels(geometry.margin_left_mm, SCREEN_DPI);
         let margin_right = PageGeometry::mm_to_pixels(geometry.margin_right_mm, SCREEN_DPI);
+        let header_spacing = PageGeometry::mm_to_pixels(geometry.margin_top_mm / 2.0, SCREEN_DPI);
         let top_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        top_spacer.set_height_request(PageGeometry::mm_to_pixels(geometry.margin_top_mm, SCREEN_DPI));
+        top_spacer.set_height_request(header_spacing);
         root.append(&top_spacer);
 
-        let header = gtk::Entry::builder().buffer(header_buffer).placeholder_text("Cabeçalho").has_frame(false).build();
+        let header = gtk::Entry::builder().buffer(header_buffer).has_frame(false).build();
         header.add_css_class("prosa-header-footer");
         header.set_height_request(PageGeometry::mm_to_pixels(geometry.header_height_mm, SCREEN_DPI));
         header.set_margin_start(margin_left);
         header.set_margin_end(margin_right);
         root.append(&header);
+        let header_bottom_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        header_bottom_spacer.set_height_request(header_spacing);
+        root.append(&header_bottom_spacer);
 
         body_scrolled.set_margin_start(margin_left);
         body_scrolled.set_margin_end(margin_right);
@@ -74,7 +78,7 @@ impl PageSurface {
         footer_row.set_height_request(PageGeometry::mm_to_pixels(geometry.footer_height_mm, SCREEN_DPI));
         footer_row.set_margin_start(margin_left);
         footer_row.set_margin_end(margin_right);
-        let footer = gtk::Entry::builder().buffer(footer_buffer).placeholder_text("Rodapé").has_frame(false).hexpand(true).build();
+        let footer = gtk::Entry::builder().buffer(footer_buffer).has_frame(false).hexpand(true).build();
         footer.add_css_class("prosa-header-footer");
         let page_number = gtk::Label::new(None);
         page_number.add_css_class("dim-label");

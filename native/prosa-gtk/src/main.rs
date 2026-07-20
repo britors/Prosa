@@ -15,6 +15,7 @@ mod find_replace;
 mod font_style;
 mod formatting;
 mod graph_view;
+mod header_footer_ui;
 mod outline;
 mod page_geometry;
 mod paged_editor;
@@ -572,6 +573,8 @@ fn build_window(app: &adw::Application) {
     history_button.set_tooltip_text(Some("Histórico de versões"));
     let sync_button = gtk::Button::from_icon_name("folder-remote-symbolic");
     sync_button.set_tooltip_text(Some("Sincronização"));
+    let header_footer_button = gtk::Button::with_label("C/R");
+    header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
 
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
@@ -655,6 +658,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
     nav_group.append(&sync_button);
+    nav_group.append(&header_footer_button);
     nav_group.append(&ai_menu_button);
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -843,6 +847,24 @@ fn build_window(app: &adw::Application) {
         #[weak]
         buffer,
         move |_| toggle_mark(&buffer, "subscript")
+    ));
+    header_footer_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        paged_editor,
+        move |_| {
+            header_footer_ui::open_dialog(
+                &window,
+                paged_editor.header().as_deref(),
+                paged_editor.footer().as_deref(),
+                glib::clone!(
+                    #[strong]
+                    paged_editor,
+                    move |header, footer| paged_editor.set_header_footer(header.as_deref(), footer.as_deref())
+                ),
+            );
+        }
     ));
     text_color_button.connect_rgba_notify(glib::clone!(
         #[weak]
@@ -1842,6 +1864,16 @@ fn build_window(app: &adw::Application) {
     );
 
     window.present();
+    // Entradas de cabeçalho aparecem antes do corpo na árvore da página e,
+    // sem foco explícito, o GTK coloca o cursor nelas ao abrir a janela.
+    // A edição principal deve sempre começar no documento.
+    glib::idle_add_local_once(glib::clone!(
+        #[weak]
+        text_view,
+        move || {
+            text_view.grab_focus();
+        }
+    ));
 }
 
 fn file_filter_for_format(format: SaveFormat) -> gtk::FileFilter {
