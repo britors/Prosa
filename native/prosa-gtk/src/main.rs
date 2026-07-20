@@ -16,6 +16,7 @@ mod formatting;
 mod graph_view;
 mod outline;
 mod page_geometry;
+mod paged_editor;
 mod print;
 mod save_format;
 mod spellcheck;
@@ -442,7 +443,7 @@ fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<pros
 fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
-        "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
+        "box.prosa-page, textview.prosa-page-editor, textview.prosa-page-editor text { background-color: #ffffff; color: #1a1a1a; }\n\
          scrolledwindow.prosa-desk { background-color: #2e2e2e; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
@@ -454,50 +455,13 @@ fn build_window(app: &adw::Application) {
     install_page_css();
 
     let page_geometry = page_geometry::PageGeometry::academic_a4();
-
-    let text_view = gtk::TextView::builder()
-        .wrap_mode(gtk::WrapMode::Word)
-        .top_margin(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.body_top_mm(),
-            page_geometry::SCREEN_DPI,
-        ))
-        .bottom_margin(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.margin_bottom_mm + page_geometry.footer_height_mm,
-            page_geometry::SCREEN_DPI,
-        ))
-        .left_margin(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.margin_left_mm,
-            page_geometry::SCREEN_DPI,
-        ))
-        .right_margin(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.margin_right_mm,
-            page_geometry::SCREEN_DPI,
-        ))
-        .width_request(page_geometry.width_px())
-        .hexpand(false)
-        .halign(gtk::Align::Center)
-        .margin_top(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.page_gap_mm / 2.0,
-            page_geometry::SCREEN_DPI,
-        ))
-        .margin_bottom(page_geometry::PageGeometry::mm_to_pixels(
-            page_geometry.page_gap_mm / 2.0,
-            page_geometry::SCREEN_DPI,
-        ))
-        .build();
-    text_view.add_css_class("prosa-page");
+    let paged_editor = paged_editor::PagedEditor::new(page_geometry);
+    let text_view = paged_editor.page(0).expect("PagedEditor sempre contém uma folha").text_view();
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
     setup_heading_tags(&buffer);
     setup_align_tags(&buffer);
     wikilink::setup_wikilink_tag(&buffer);
-
-    let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .child(&text_view)
-        .vexpand(true)
-        .build();
-    scrolled.add_css_class("prosa-desk");
 
     let spellchecker = Rc::new(SpellChecker::new());
     let live_spellcheck = Rc::new(LiveSpellcheck::new(spellchecker.clone()));
@@ -787,7 +751,7 @@ fn build_window(app: &adw::Application) {
     // Mantém a barra de status fora da área rolável do editor.
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content_box.set_hexpand(true);
-    content_box.append(&scrolled);
+    content_box.append(&paged_editor.widget());
     content_box.append(&status_label);
 
     let main_split = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -1944,6 +1908,8 @@ mod tests {
         crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();
         crate::outline::tests::ignores_lines_without_heading();
         crate::outline::tests::empty_document_has_no_outline();
+        crate::paged_editor::tests::empty_editor_has_one_complete_a4_page();
+        crate::paged_editor::tests::pages_can_be_inserted_ordered_and_removed();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
