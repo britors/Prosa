@@ -43,6 +43,54 @@ pub const HEADING_TAG_NAMES: [&str; 3] = ["prosa-heading-1", "prosa-heading-2", 
 const ALIGN_VALUES: [&str; 3] = ["center", "right", "justify"];
 const ALIGN_TAG_NAMES: [&str; 3] = ["prosa-align-center", "prosa-align-right", "prosa-align-justify"];
 const INDENT_TAG_PREFIX: &str = "prosa-indent:";
+const TABS_TAG_PREFIX: &str = "prosa-tabs:";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabKind { Left, Center, Right, Decimal }
+
+impl TabKind {
+    pub fn code(self) -> char { match self { Self::Left => 'l', Self::Center => 'c', Self::Right => 'r', Self::Decimal => 'd' } }
+    fn from_code(code: &str) -> Option<Self> { match code { "l" => Some(Self::Left), "c" => Some(Self::Center), "r" => Some(Self::Right), "d" => Some(Self::Decimal), _ => None } }
+    fn alignment(self) -> pango::TabAlign { match self { Self::Left => pango::TabAlign::Left, Self::Center => pango::TabAlign::Center, Self::Right => pango::TabAlign::Right, Self::Decimal => pango::TabAlign::Decimal } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabStop { pub position_px: i32, pub kind: TabKind }
+
+pub fn paragraph_tabs_at_line(buffer: &TextBuffer, line: i32) -> Vec<TabStop> {
+    let Some(start) = buffer.iter_at_line(line) else { return Vec::new() };
+    start.tags().iter().find_map(|tag| {
+        let name = tag.name()?;
+        let encoded = name.strip_prefix(TABS_TAG_PREFIX)?;
+        Some(encoded.split(',').filter_map(|item| {
+            let (kind, position) = item.split_once('@')?;
+            Some(TabStop { kind: TabKind::from_code(kind)?, position_px: position.parse().ok()? })
+        }).collect())
+    }).unwrap_or_default()
+}
+
+pub fn set_paragraph_tabs(buffer: &TextBuffer, line: i32, mut stops: Vec<TabStop>) {
+    let (start, end) = line_range(buffer, line);
+    for tag in start.tags() {
+        if tag.name().is_some_and(|name| name.starts_with(TABS_TAG_PREFIX)) { buffer.remove_tag(&tag, &start, &end); }
+    }
+    stops.sort_by_key(|stop| stop.position_px);
+    stops.dedup_by_key(|stop| stop.position_px);
+    if stops.is_empty() || start == end { return; }
+    let encoded = stops.iter().map(|stop| format!("{}@{}", stop.kind.code(), stop.position_px)).collect::<Vec<_>>().join(",");
+    let name = format!("{TABS_TAG_PREFIX}{encoded}");
+    let tag = buffer.tag_table().lookup(&name).unwrap_or_else(|| {
+        let mut tabs = pango::TabArray::new(stops.len() as i32, true);
+        for (index, stop) in stops.iter().enumerate() {
+            tabs.set_tab(index as i32, stop.kind.alignment(), stop.position_px);
+            if stop.kind == TabKind::Decimal { tabs.set_decimal_point(index as i32, ','); }
+        }
+        let tag = TextTag::builder().name(&name).tabs(&tabs).build();
+        buffer.tag_table().add(&tag);
+        tag
+    });
+    buffer.apply_tag(&tag, &start, &end);
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ParagraphIndent {
@@ -287,6 +335,14 @@ pub fn set_heading_level(buffer: &TextBuffer, line: i32, level: Option<u8>) {
 /// Linha onde está o cursor — usado pelos botões de título da toolbar.
 pub fn current_line(buffer: &TextBuffer) -> i32 {
     buffer.iter_at_offset(buffer.cursor_position()).line()
+}
+
+pub fn selected_lines(buffer: &TextBuffer) -> Vec<i32> {
+    if let Some((start, end)) = buffer.selection_bounds() {
+        (start.line()..=end.line()).collect()
+    } else {
+        vec![current_line(buffer)]
+    }
 }
 
 /// Alterna uma mark sobre a seleção atual: aplica se algum trecho selecionado
@@ -731,6 +787,21 @@ pub(crate) mod tests {
         set_paragraph_indent(&buffer, 1, indent);
         assert_eq!(paragraph_indent_at_line(&buffer, 0), ParagraphIndent::default());
         assert_eq!(paragraph_indent_at_line(&buffer, 1), indent);
+    }
+
+    pub(crate) fn paragraph_tabs_support_all_alignments_and_clear_to_default() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("um\tdois\ttrês\tquatro");
+        let stops = vec![
+            TabStop { position_px: 40, kind: TabKind::Left },
+            TabStop { position_px: 80, kind: TabKind::Center },
+            TabStop { position_px: 120, kind: TabKind::Right },
+            TabStop { position_px: 160, kind: TabKind::Decimal },
+        ];
+        set_paragraph_tabs(&buffer, 0, stops.clone());
+        assert_eq!(paragraph_tabs_at_line(&buffer, 0), stops);
+        set_paragraph_tabs(&buffer, 0, Vec::new());
+        assert!(paragraph_tabs_at_line(&buffer, 0).is_empty());
     }
 
     pub(crate) fn set_line_alignment_toggles_between_values_and_back_to_left() {

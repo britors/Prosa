@@ -17,7 +17,7 @@ prosa-doc = { path = "../prosa-doc" }
 gtk = { package = "gtk4", version = "0.9", features = ["v4_12"] }
 adw = { package = "libadwaita", version = "0.7", features = ["v1_5"] }
 glib = "0.20"
-pango = "0.20"
+pango = { version = "0.20", features = ["v1_50"] }
 pangocairo = "0.20"
 cairo = { package = "cairo-rs", version = "0.20" }
 enchant = "0.3"
