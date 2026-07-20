@@ -18,6 +18,7 @@ mod graph_view;
 mod header_footer_ui;
 mod outline;
 mod page_geometry;
+mod page_rulers;
 mod paged_editor;
 mod pagination;
 mod print;
@@ -470,6 +471,7 @@ fn build_window(app: &adw::Application) {
 
     let page_geometry = page_geometry::PageGeometry::academic_a4();
     let paged_editor = paged_editor::PagedEditor::new(page_geometry);
+    let page_rulers = page_rulers::PageRulers::new(&paged_editor, page_geometry);
     let text_view = paged_editor.page(0).expect("PagedEditor sempre contém uma folha").text_view();
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
@@ -792,7 +794,7 @@ fn build_window(app: &adw::Application) {
     // Mantém a barra de status fora da área rolável do editor.
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content_box.set_hexpand(true);
-    content_box.append(&paged_editor.widget());
+    content_box.append(&page_rulers.widget());
     content_box.append(&status_label);
 
     let main_split = gtk::Box::new(gtk::Orientation::Horizontal, 0);

@@ -138,6 +138,8 @@ pub struct PagedEditor {
     footer_buffer: gtk::EntryBuffer,
     repaginating: Rc<Cell<bool>>,
     debounce_source: Rc<RefCell<Option<glib::SourceId>>>,
+    active_page: Rc<Cell<usize>>,
+    active_page_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>>,
 }
 
 impl PagedEditor {
@@ -173,6 +175,8 @@ impl PagedEditor {
             footer_buffer,
             repaginating: Rc::new(Cell::new(false)),
             debounce_source: Rc::new(RefCell::new(None)),
+            active_page: Rc::new(Cell::new(0)),
+            active_page_callbacks: Rc::new(RefCell::new(Vec::new())),
         };
         editor.insert_page(0);
         editor
@@ -184,6 +188,14 @@ impl PagedEditor {
 
     pub fn page_count(&self) -> usize {
         self.pages.borrow().len()
+    }
+
+    pub fn active_page(&self) -> usize {
+        self.active_page.get().min(self.page_count().saturating_sub(1))
+    }
+
+    pub fn connect_active_page_changed(&self, callback: impl Fn() + 'static) {
+        self.active_page_callbacks.borrow_mut().push(Rc::new(callback));
     }
 
     pub fn page(&self, index: usize) -> Option<PageSurface> {
@@ -264,6 +276,19 @@ impl PagedEditor {
             &self.footer_buffer,
             index,
         );
+        page.text_view.connect_has_focus_notify({
+            let active_page = self.active_page.clone();
+            let callbacks = self.active_page_callbacks.clone();
+            let page_index = page.index.clone();
+            move |view| {
+                if view.has_focus() {
+                    active_page.set(page_index.get());
+                    for callback in callbacks.borrow().iter() {
+                        callback();
+                    }
+                }
+            }
+        });
         let previous = index.checked_sub(1).and_then(|position| pages.get(position)).map(|page| page.root.clone());
         self.pages_box.insert_child_after(&page.root, previous.as_ref());
         pages.insert(index, page.clone());
