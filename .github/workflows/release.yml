@@ -106,13 +106,18 @@ jobs:
 
           # Coleta recursiva das DLLs do MSYS2 (ucrt64) usadas pelo binário,
           # ignorando DLLs de sistema do Windows (já presentes no SO, não
-          # redistribuíveis por nós).
+          # redistribuíveis por nós). `ldd` sai com status != 0 sempre que
+          # encontra alguma DLL "not found" — o que inclui as virtuais do
+          # ApiSet do Windows (`api-ms-win-*`/`ext-ms-win-*`, resolvidas pelo
+          # próprio SO em runtime, não são arquivos de verdade), então o
+          # `|| true` evita que isso mate o script via `pipefail`; o grep
+          # abaixo já filtra pra só considerar DLLs reais do ucrt64.
           declare -A seen
           queue=("$dist/bin/prosa.exe")
           while [ "${#queue[@]}" -gt 0 ]; do
             current="${queue[0]}"
             queue=("${queue[@]:1}")
-            deps=$(ldd "$current" | grep -i '/ucrt64/bin/' | awk '{print $3}')
+            deps=$(ldd "$current" | grep -i '/ucrt64/bin/' | awk '{print $3}' || true)
             for dep in $deps; do
               base=$(basename "$dep")
               if [ -z "${seen[$base]:-}" ]; then
@@ -143,7 +148,11 @@ jobs:
       - name: Validar dependências ausentes
         run: |
           set -euo pipefail
-          missing=$(ldd dist/bin/prosa.exe | grep -i "not found" || true)
+          # As DLLs virtuais do ApiSet do Windows (ver comentário no passo
+          # anterior) aparecem como "not found" no `ldd` mesmo resolvendo
+          # normalmente em runtime — excluídas aqui pra não gerar falso
+          # positivo na validação.
+          missing=$(ldd dist/bin/prosa.exe | grep -i "not found" | grep -viE 'api-ms-win-|ext-ms-win-' || true)
           if [ -n "$missing" ]; then
             echo "DLLs necessárias não encontradas no pacote:"
             echo "$missing"
