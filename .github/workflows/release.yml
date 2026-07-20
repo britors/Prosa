@@ -169,6 +169,44 @@ jobs:
           name: windows-artifacts
           path: native/prosa-windows-x86_64.zip
 
+      # Instalador .msi (WiX Toolset v3, via cargo-wix) — complementa o .zip
+      # portátil acima com atalho no Menu Iniciar, entrada em
+      # "Adicionar/remover programas" e desinstalador. Instalação por
+      # usuário (sem UAC) — ver wix/main.wxs em prosa-gtk. Roda no mesmo
+      # shell MSYS2 do resto do job: o Rust do MSYS2 já está disponível
+      # aqui, e as ferramentas nativas do WiX (candle/light/heat) ficam
+      # acessíveis via PATH herdado do Windows.
+      - name: Garantir WiX Toolset
+        run: |
+          set -euo pipefail
+          if ! command -v candle.exe >/dev/null 2>&1; then
+            echo "WiX Toolset não encontrado no PATH — instalando via choco."
+            choco install wixtoolset -y --no-progress
+          fi
+
+      - name: Instalar cargo-wix
+        run: cargo install cargo-wix
+
+      - name: Harvest do runtime (heat.exe) para o instalador
+        run: |
+          set -euo pipefail
+          heat.exe dir dist \
+            -cg DistComponents -dr APPLICATIONFOLDER \
+            -gg -scom -sreg -sfrag -srd \
+            -out prosa-gtk/wix/dist-harvest.wxs
+
+      - name: Gerar instalador .msi
+        run: |
+          set -euo pipefail
+          cargo wix -p prosa-gtk --no-build --nocapture
+          ls -la target/wix/*.msi
+
+      - name: Upload Windows MSI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-artifact
+          path: native/target/wix/*.msi
+
   publish:
     name: Publish Release
     needs: [linux, windows]
@@ -190,6 +228,7 @@ jobs:
             all-artifacts/**/*.deb
             all-artifacts/**/*.rpm
             all-artifacts/**/*.zip
+            all-artifacts/**/*.msi
           draft: false
           prerelease: false
           generate_release_notes: true
