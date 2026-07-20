@@ -10,6 +10,7 @@
 mod ai_ui;
 mod bibliography_ui;
 mod citation;
+mod color_style;
 mod find_replace;
 mod font_style;
 mod formatting;
@@ -531,6 +532,12 @@ fn build_window(app: &adw::Application) {
     superscript_button.set_tooltip_text(Some("Sobrescrito"));
     let subscript_button = gtk::Button::with_label("x₂");
     subscript_button.set_tooltip_text(Some("Subscrito"));
+    let text_color_button = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::builder().title("Cor do texto").build()));
+    text_color_button.set_tooltip_text(Some("Cor do texto selecionado"));
+    text_color_button.set_rgba(&gdk::RGBA::BLACK);
+    let highlight_button = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::builder().title("Cor do realce").build()));
+    highlight_button.set_tooltip_text(Some("Realçar texto selecionado"));
+    highlight_button.set_rgba(&gdk::RGBA::parse("#FFF59D").expect("cor padrão válida"));
 
     let heading_menu = gio::Menu::new();
     heading_menu.append(Some("Título 1"), Some("win.heading-1"));
@@ -629,6 +636,8 @@ fn build_window(app: &adw::Application) {
     format_group.append(&strike_button);
     format_group.append(&superscript_button);
     format_group.append(&subscript_button);
+    format_group.append(&text_color_button);
+    format_group.append(&highlight_button);
     format_group.append(&heading_menu_button);
 
     let align_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -834,6 +843,16 @@ fn build_window(app: &adw::Application) {
         #[weak]
         buffer,
         move |_| toggle_mark(&buffer, "subscript")
+    ));
+    text_color_button.connect_rgba_notify(glib::clone!(
+        #[weak]
+        buffer,
+        move |button| color_style::apply_color(&buffer, &button.rgba(), false)
+    ));
+    highlight_button.connect_rgba_notify(glib::clone!(
+        #[weak]
+        buffer,
+        move |button| color_style::apply_color(&buffer, &button.rgba(), true)
     ));
 
     align_left_button.connect_clicked(glib::clone!(
@@ -1948,6 +1967,7 @@ mod tests {
         crate::formatting::tests::set_heading_level_toggles_between_paragraph_and_heading();
         crate::formatting::tests::alignment_round_trips_and_is_orthogonal_to_heading();
         crate::formatting::tests::set_line_alignment_toggles_between_values_and_back_to_left();
+        crate::formatting::tests::color_and_highlight_round_trip();
         crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();
         crate::outline::tests::ignores_lines_without_heading();
         crate::outline::tests::empty_document_has_no_outline();

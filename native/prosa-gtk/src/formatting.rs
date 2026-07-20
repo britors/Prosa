@@ -22,6 +22,7 @@ use prosa_doc::wikilink::wiki_href;
 use prosa_doc::{Mark, TipTapNode};
 
 use crate::citation;
+use crate::color_style;
 use crate::font_style;
 use crate::wikilink::WIKILINK_TAG;
 
@@ -80,6 +81,18 @@ fn markup_for_node(node: &TipTapNode, out: &mut String) {
                     "subscript" => {
                         open.push_str(r#"<span rise="-6000" size="70%">"#);
                         close.insert_str(0, "</span>");
+                    }
+                    "textStyle" => {
+                        if let Some(color) = mark.attrs.as_ref().and_then(|attrs| attrs.get("color")).and_then(|value| value.as_str()) {
+                            open.push_str(&format!(r#"<span foreground="{}">"#, escape_markup(color)));
+                            close.insert_str(0, "</span>");
+                        }
+                    }
+                    "highlight" => {
+                        if let Some(color) = mark.attrs.as_ref().and_then(|attrs| attrs.get("color")).and_then(|value| value.as_str()) {
+                            open.push_str(&format!(r#"<span background="{}">"#, escape_markup(color)));
+                            close.insert_str(0, "</span>");
+                        }
                     }
                     _ => {}
                 }
@@ -267,6 +280,8 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
                 || name.starts_with(citation::TAG_PREFIX)
                 || name.starts_with(font_style::FAMILY_PREFIX)
                 || name.starts_with(font_style::SIZE_PREFIX)
+                || name.starts_with(color_style::FOREGROUND_PREFIX)
+                || name.starts_with(color_style::BACKGROUND_PREFIX)
         })
         .collect();
     names.sort();
@@ -285,6 +300,7 @@ fn active_mark_names(iter: &TextIter) -> Vec<String> {
 fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
     let mut font_family: Option<&str> = None;
     let mut font_size: Option<&str> = None;
+    let mut color: Option<&str> = None;
     let mut marks: Vec<Mark> = Vec::new();
 
     for name in mark_names {
@@ -296,18 +312,25 @@ fn text_node(text: &str, mark_names: &[String]) -> TipTapNode {
             marks.push(Mark { kind: WIKILINK_TAG.to_string(), attrs: Some(serde_json::json!({ "href": wiki_href(text) })) });
         } else if let Some(cite_key) = citation::cite_key_from_tag_name(name) {
             marks.push(Mark { kind: "citation".to_string(), attrs: Some(serde_json::json!({ "citeKey": cite_key })) });
+        } else if let Some(value) = color_style::color_from_tag_name(name) {
+            color = Some(value);
+        } else if let Some(value) = color_style::highlight_from_tag_name(name) {
+            marks.push(Mark { kind: "highlight".to_string(), attrs: Some(serde_json::json!({ "color": value })) });
         } else {
             marks.push(Mark { kind: name.clone(), attrs: None });
         }
     }
 
-    if font_family.is_some() || font_size.is_some() {
+    if font_family.is_some() || font_size.is_some() || color.is_some() {
         let mut attrs = serde_json::Map::new();
         if let Some(family) = font_family {
             attrs.insert("fontFamily".to_string(), serde_json::json!(family));
         }
         if let Some(size) = font_size {
             attrs.insert("fontSize".to_string(), serde_json::json!(format!("{size}pt")));
+        }
+        if let Some(color) = color {
+            attrs.insert("color".to_string(), serde_json::json!(color));
         }
         marks.push(Mark { kind: "textStyle".to_string(), attrs: Some(serde_json::Value::Object(attrs)) });
     }
@@ -408,6 +431,14 @@ fn insert_node(buffer: &TextBuffer, node: &TipTapNode) {
                         if let Some(size) = attrs.and_then(|a| a.get("fontSize")).and_then(|v| v.as_str()) {
                             let size_pt = size.strip_suffix("pt").unwrap_or(size);
                             buffer.apply_tag(&font_style::size_tag(buffer, size_pt), &start, &end);
+                        }
+                        if let Some(color) = attrs.and_then(|a| a.get("color")).and_then(|v| v.as_str()) {
+                            buffer.apply_tag(&color_style::color_tag(buffer, color), &start, &end);
+                        }
+                    }
+                    "highlight" => {
+                        if let Some(color) = mark.attrs.as_ref().and_then(|attrs| attrs.get("color")).and_then(|v| v.as_str()) {
+                            buffer.apply_tag(&color_style::highlight_tag(buffer, color), &start, &end);
                         }
                     }
                     _ => {
@@ -660,5 +691,26 @@ pub(crate) mod tests {
 
         set_line_alignment(&buffer, 0, None);
         assert_eq!(align_at_line(&buffer, 0), None, "deve voltar ao padrão (esquerda)");
+    }
+
+    pub(crate) fn color_and_highlight_round_trip() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("texto colorido");
+        let start = buffer.start_iter();
+        let end = buffer.end_iter();
+        buffer.apply_tag(&color_style::color_tag(&buffer, "#336699"), &start, &end);
+        buffer.apply_tag(&color_style::highlight_tag(&buffer, "#FFF59D"), &start, &end);
+
+        let doc = doc_from_buffer(&buffer);
+        let marks = doc.content.as_ref().unwrap()[0].content.as_ref().unwrap()[0].marks.as_ref().unwrap();
+        assert!(marks.iter().any(|mark| mark.kind == "textStyle" && mark.attrs.as_ref().unwrap()["color"] == "#336699"));
+        assert!(marks.iter().any(|mark| mark.kind == "highlight" && mark.attrs.as_ref().unwrap()["color"] == "#FFF59D"));
+
+        let restored = TextBuffer::new(None);
+        load_doc_into_buffer(&restored, &doc);
+        let iter = restored.iter_at_offset(2);
+        let names: Vec<String> = iter.tags().into_iter().filter_map(|tag| tag.name().map(|name| name.to_string())).collect();
+        assert!(names.iter().any(|name| name == "prosa-color:#336699"));
+        assert!(names.iter().any(|name| name == "prosa-highlight:#FFF59D"));
     }
 }
