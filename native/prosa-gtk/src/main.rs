@@ -17,6 +17,7 @@ mod graph_view;
 mod outline;
 mod page_geometry;
 mod paged_editor;
+mod pagination;
 mod print;
 mod save_format;
 mod spellcheck;

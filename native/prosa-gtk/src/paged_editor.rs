@@ -7,6 +7,7 @@ use std::time::Duration;
 use gtk::prelude::*;
 
 use crate::page_geometry::{PageGeometry, SCREEN_DPI};
+use crate::{formatting, pagination};
 
 #[derive(Clone)]
 pub struct PageSurface {
@@ -232,8 +233,10 @@ impl PagedEditor {
         if self.repaginating.replace(true) {
             return;
         }
-        let text = self.buffer.text(&self.buffer.start_iter(), &self.buffer.end_iter(), true);
-        let required = page_count_for_text(&text, self.geometry);
+        let doc = formatting::doc_from_buffer(&self.buffer);
+        let markup = formatting::markup_from_doc(&doc);
+        let layout = pagination::document_layout(&markup, self.geometry);
+        let required = pagination::page_breaks(&layout, self.geometry).len();
         while self.page_count() < required {
             self.insert_page(self.page_count());
         }
@@ -291,20 +294,6 @@ impl PagedEditor {
 fn non_empty(text: &str) -> Option<String> {
     let text = text.trim();
     (!text.is_empty()).then(|| text.to_string())
-}
-
-fn page_count_for_text(text: &str, geometry: PageGeometry) -> usize {
-    if text.is_empty() {
-        return 1;
-    }
-    let font_map = pangocairo::FontMap::new();
-    let context = font_map.create_context();
-    let layout = pango::Layout::new(&context);
-    layout.set_text(text);
-    layout.set_width(PageGeometry::mm_to_pixels(geometry.usable_width_mm(), SCREEN_DPI) * pango::SCALE);
-    let (_, logical) = layout.extents();
-    let body_height = PageGeometry::mm_to_pixels(geometry.usable_height_mm(), SCREEN_DPI) * pango::SCALE;
-    ((logical.height().max(1) + body_height - 1) / body_height).max(1) as usize
 }
 
 #[cfg(test)]

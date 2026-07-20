@@ -20,6 +20,7 @@ use prosa_doc::TipTapNode;
 
 use crate::formatting::markup_from_doc;
 use crate::page_geometry::PageGeometry;
+use crate::pagination;
 
 /// Remove tags HTML de forma simplista (o cabeçalho/rodapé do `.prosa` é
 /// HTML vindo da versão Electron; aqui extraímos só o texto, sem formatação).
@@ -35,28 +36,6 @@ fn strip_html(input: &str) -> String {
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Calcula, em unidades Pango, o início (`y0`) de cada página, dividindo as
-/// linhas do layout conforme a altura de conteúdo disponível por página.
-fn page_breaks(layout: &pango::Layout, content_height_pt: f64) -> Vec<i32> {
-    let content_height_pango = (content_height_pt * pango::SCALE as f64) as i32;
-    let mut breaks = vec![0i32];
-    let mut current_top = 0i32;
-    let mut iter = layout.iter();
-    let mut first = true;
-    loop {
-        let (y0, y1) = iter.line_yrange();
-        if !first && (y1 - current_top) > content_height_pango {
-            breaks.push(y0);
-            current_top = y0;
-        }
-        first = false;
-        if !iter.next_line() {
-            break;
-        }
-    }
-    breaks
 }
 
 /// Desenha uma única linha de texto (cabeçalho/rodapé/número de página).
@@ -107,11 +86,9 @@ pub fn export_to_pdf(
         page,
         #[strong]
         markup,
-        move |op, context| {
-            let layout = context.create_pango_layout();
-            layout.set_markup(&markup);
-            layout.set_width((page.usable_width_points() * pango::SCALE as f64) as i32);
-            let breaks = page_breaks(&layout, page.usable_height_points());
+        move |op, _context| {
+            let layout = pagination::document_layout(&markup, *page);
+            let breaks = pagination::page_breaks(&layout, *page);
             op.set_n_pages(breaks.len() as i32);
             *state.borrow_mut() = Some(PrintState { layout, breaks });
         }
@@ -238,12 +215,19 @@ pub(crate) mod tests {
 
     pub(crate) fn export_produces_multi_page_pdf_with_pagination() {
         let window = gtk::Window::new();
+        let doc = long_doc();
+        let geometry = PageGeometry::academic_a4();
+        let expected_pages = pagination::page_breaks(
+            &pagination::document_layout(&markup_from_doc(&doc), geometry),
+            geometry,
+        )
+        .len();
 
         let dir = std::env::temp_dir().join(format!("prosa-print-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("saida.pdf");
 
-        export_to_pdf(&window, &path, &long_doc(), Some("<p>Cabeçalho de teste</p>"), Some("<p>Rodapé de teste</p>"))
+        export_to_pdf(&window, &path, &doc, Some("<p>Cabeçalho de teste</p>"), Some("<p>Rodapé de teste</p>"))
             .expect("exportação deve ter sucesso");
 
         let bytes = std::fs::read(&path).expect("o arquivo PDF deve existir");
@@ -251,7 +235,10 @@ pub(crate) mod tests {
         assert!(bytes.len() > 500, "o PDF gerado não deveria ficar vazio/trivial");
 
         match count_pdf_pages_via_pdfinfo(&path) {
-            Some(pages) => assert!(pages > 1, "um documento longo deve gerar mais de uma página (contou {pages})"),
+            Some(pages) => {
+                assert!(pages > 1, "um documento longo deve gerar mais de uma página (contou {pages})");
+                assert_eq!(pages, expected_pages, "tela e PDF devem usar a mesma decisão de quebra");
+            }
             None => eprintln!("aviso: pdfinfo indisponível, checagem de número de páginas pulada"),
         }
 
@@ -268,7 +255,13 @@ pub(crate) mod tests {
         layout.set_text(&long_text);
 
         // Altura de conteúdo pequena o bastante para caber só algumas linhas por página.
-        let breaks = page_breaks(&layout, 60.0);
+        let mut geometry = PageGeometry::academic_a4();
+        geometry.height_mm = geometry.margin_top_mm
+            + geometry.header_height_mm
+            + geometry.footer_height_mm
+            + geometry.margin_bottom_mm
+            + 60.0 / 72.0 * 25.4;
+        let breaks = pagination::page_breaks(&layout, geometry);
         assert!(breaks.len() > 1, "40 linhas não devem caber todas numa página de 60pt de altura");
         assert_eq!(breaks[0], 0, "a primeira página sempre começa em y=0");
     }
