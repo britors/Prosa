@@ -116,9 +116,11 @@
              do NSIS antigo). As duas linhas de Publish abaixo pulam a tela de
              licença que o dialog set inclui por padrão. -->
         <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER'/>
-        <UIRef Id='WixUI_InstallDir'/>
-        <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='InstallDirDlg' Order='2'>1</Publish>
-        <Publish Dialog='InstallDirDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='2'>1</Publish>
+        <UI>
+            <UIRef Id='WixUI_InstallDir'/>
+            <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='InstallDirDlg' Order='2'>1</Publish>
+            <Publish Dialog='InstallDirDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='2'>1</Publish>
+        </UI>
 
     </Product>
 
