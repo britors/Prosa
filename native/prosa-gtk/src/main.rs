@@ -70,6 +70,7 @@ struct DocumentState {
     /// usados (como texto puro) na exportação para PDF.
     header: Option<String>,
     footer: Option<String>,
+    paged_editor: paged_editor::PagedEditor,
     /// Formato do `path` atual (se houver). Some salva silenciosamente nesse
     /// formato de novo; sem `path` ainda, o botão Salvar pergunta o formato
     /// (ver `save_format::show_format_picker`), igual à versão Electron.
@@ -143,7 +144,7 @@ fn now_iso() -> String {
         .unwrap_or_default()
 }
 
-fn new_document_state() -> DocumentState {
+fn new_document_state(paged_editor: paged_editor::PagedEditor) -> DocumentState {
     DocumentState {
         path: None,
         metadata: DocumentMetadata {
@@ -154,6 +155,7 @@ fn new_document_state() -> DocumentState {
         },
         header: None,
         footer: None,
+        paged_editor,
         format: SaveFormat::Prosa,
     }
 }
@@ -328,7 +330,9 @@ fn open_document_at_path(
             loading_document.set(false);
             title_widget.set_subtitle(&metadata.title);
             let format = SaveFormat::from_extension(&extension).unwrap_or(SaveFormat::Prosa);
-            *state.borrow_mut() = DocumentState { path: Some(path.clone()), metadata, header, footer, format };
+            let paged_editor = state.borrow().paged_editor.clone();
+            paged_editor.set_header_footer(header.as_deref(), footer.as_deref());
+            *state.borrow_mut() = DocumentState { path: Some(path.clone()), metadata, header, footer, paged_editor, format };
             backlinks.refresh(Some(&path));
         }
         Err(message) => {
@@ -357,6 +361,8 @@ fn apply_new_document(
 
     loading_document.set(true);
     load_doc_into_buffer(buffer, &content);
+    let paged_editor = state.borrow().paged_editor.clone();
+    paged_editor.set_header_footer(None, None);
     loading_document.set(false);
 
     title_widget.set_subtitle(&title);
@@ -365,6 +371,7 @@ fn apply_new_document(
         metadata: DocumentMetadata { title, author: whoami_fallback(), created_at: now_iso(), modified_at: now_iso() },
         header: None,
         footer: None,
+        paged_editor,
         format,
     };
     backlinks.refresh(None);
@@ -393,6 +400,7 @@ fn restore_version(
 
     loading_document.set(true);
     load_doc_into_buffer(buffer, &restored.content);
+    state.borrow().paged_editor.set_header_footer(restored.header.as_deref(), restored.footer.as_deref());
     loading_document.set(false);
 
     title_widget.set_subtitle(&restored.metadata.title);
@@ -445,6 +453,8 @@ fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "box.prosa-page, textview.prosa-page-editor, textview.prosa-page-editor text { background-color: #ffffff; color: #1a1a1a; }\n\
+         entry.prosa-header-footer, entry.prosa-header-footer text { background-color: #ffffff; color: #555555; box-shadow: none; }\n\
+         entry.prosa-header-footer:focus { color: #1a1a1a; }\n\
          scrolledwindow.prosa-desk { background-color: #2e2e2e; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
@@ -473,12 +483,28 @@ fn build_window(app: &adw::Application) {
     let status_label = gtk::Label::builder().xalign(0.0).margin_start(12).margin_end(12).margin_top(4).margin_bottom(4).build();
     status_label.add_css_class("dim-label");
 
-    let state = Rc::new(RefCell::new(new_document_state()));
+    let state = Rc::new(RefCell::new(new_document_state(paged_editor.clone())));
     // `load_doc_into_buffer` insere o documento inteiro de uma vez — sem essa
     // guarda, qualquer "[[...]]" literal (texto de fontes que não usam a
     // convenção de wikilink) viraria link sozinho só de abrir o arquivo. A
     // detecção deve valer só pra quem está digitando, não pra carga em massa.
     let loading_document = Rc::new(Cell::new(false));
+    paged_editor.connect_header_footer_changed(glib::clone!(
+        #[strong]
+        state,
+        #[strong]
+        loading_document,
+        #[strong]
+        paged_editor,
+        move || {
+            if loading_document.get() {
+                return;
+            }
+            let mut current = state.borrow_mut();
+            current.header = paged_editor.header();
+            current.footer = paged_editor.footer();
+        }
+    ));
 
     let title_widget = adw::WindowTitle::new("Prosa", "Sem título");
 
@@ -1928,6 +1954,7 @@ mod tests {
         crate::paged_editor::tests::pages_can_be_inserted_ordered_and_removed();
         crate::paged_editor::tests::overflow_and_underflow_repaginate_without_losing_text();
         crate::paged_editor::tests::pages_share_tags_selection_cursor_and_undo_history();
+        crate::paged_editor::tests::header_and_footer_repeat_and_page_numbers_update();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();
