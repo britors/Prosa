@@ -42,6 +42,52 @@ pub const HEADING_TAG_NAMES: [&str; 3] = ["prosa-heading-1", "prosa-heading-2", 
 /// `heading`.
 const ALIGN_VALUES: [&str; 3] = ["center", "right", "justify"];
 const ALIGN_TAG_NAMES: [&str; 3] = ["prosa-align-center", "prosa-align-right", "prosa-align-justify"];
+const INDENT_TAG_PREFIX: &str = "prosa-indent:";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ParagraphIndent {
+    pub left_px: i32,
+    pub first_line_px: i32,
+    pub right_px: i32,
+}
+
+pub fn paragraph_indent_at_line(buffer: &TextBuffer, line: i32) -> ParagraphIndent {
+    let Some(start) = buffer.iter_at_line(line) else { return ParagraphIndent::default() };
+    start.tags().iter().find_map(|tag| {
+        let name = tag.name()?;
+        let values = name.strip_prefix(INDENT_TAG_PREFIX)?.split(':').collect::<Vec<_>>();
+        if values.len() != 3 { return None; }
+        Some(ParagraphIndent {
+            left_px: values[0].parse().ok()?,
+            first_line_px: values[1].parse().ok()?,
+            right_px: values[2].parse().ok()?,
+        })
+    }).unwrap_or_default()
+}
+
+pub fn set_paragraph_indent(buffer: &TextBuffer, line: i32, indent: ParagraphIndent) {
+    let (start, end) = line_range(buffer, line);
+    for tag in start.tags() {
+        if tag.name().is_some_and(|name| name.starts_with(INDENT_TAG_PREFIX)) {
+            buffer.remove_tag(&tag, &start, &end);
+        }
+    }
+    if indent == ParagraphIndent::default() || start == end {
+        return;
+    }
+    let name = format!("{INDENT_TAG_PREFIX}{}:{}:{}", indent.left_px, indent.first_line_px, indent.right_px);
+    let tag = buffer.tag_table().lookup(&name).unwrap_or_else(|| {
+        let tag = TextTag::builder()
+            .name(&name)
+            .left_margin(indent.left_px)
+            .indent(indent.first_line_px)
+            .right_margin(indent.right_px)
+            .build();
+        buffer.tag_table().add(&tag);
+        tag
+    });
+    buffer.apply_tag(&tag, &start, &end);
+}
 
 /// Escapa texto para uso dentro de Pango markup (`set_markup`).
 fn escape_markup(text: &str) -> String {
@@ -676,6 +722,15 @@ pub(crate) mod tests {
 
         let rebuilt = doc_from_buffer(&buffer);
         assert_eq!(rebuilt, original);
+    }
+
+    pub(crate) fn paragraph_indent_applies_only_to_selected_line() {
+        let buffer = TextBuffer::new(None);
+        buffer.set_text("primeiro parágrafo\nsegundo parágrafo");
+        let indent = ParagraphIndent { left_px: 24, first_line_px: 12, right_px: 18 };
+        set_paragraph_indent(&buffer, 1, indent);
+        assert_eq!(paragraph_indent_at_line(&buffer, 0), ParagraphIndent::default());
+        assert_eq!(paragraph_indent_at_line(&buffer, 1), indent);
     }
 
     pub(crate) fn set_line_alignment_toggles_between_values_and_back_to_left() {

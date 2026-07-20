@@ -2004,6 +2004,7 @@ mod tests {
         crate::formatting::tests::heading_levels_above_three_are_clamped_down();
         crate::formatting::tests::set_heading_level_toggles_between_paragraph_and_heading();
         crate::formatting::tests::alignment_round_trips_and_is_orthogonal_to_heading();
+        crate::formatting::tests::paragraph_indent_applies_only_to_selected_line();
         crate::formatting::tests::set_line_alignment_toggles_between_values_and_back_to_left();
         crate::formatting::tests::color_and_highlight_round_trip();
         crate::outline::tests::numbers_headings_hierarchically_and_resets_on_level_up();

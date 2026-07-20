@@ -226,6 +226,10 @@ impl PagedEditor {
         self.pages.borrow().len()
     }
 
+    pub fn buffer(&self) -> gtk::TextBuffer {
+        self.buffer.clone()
+    }
+
     pub fn geometry(&self) -> PageGeometry {
         self.geometry.get()
     }

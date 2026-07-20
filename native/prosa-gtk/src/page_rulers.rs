@@ -7,6 +7,7 @@ use gtk::prelude::*;
 
 use crate::page_geometry::{PageGeometry, SCREEN_DPI};
 use crate::paged_editor::PagedEditor;
+use crate::formatting::{self, ParagraphIndent};
 
 const RULER_THICKNESS: i32 = 28;
 
@@ -34,7 +35,9 @@ impl PageRulers {
             let style_manager = style_manager.clone();
             let editor = editor.clone();
             move |_area, cr, width, height| {
-                draw_horizontal(cr, width, height, editor.geometry(), hadjustment.value(), style_manager.is_dark())
+                let buffer = editor.buffer();
+                let indent = formatting::paragraph_indent_at_line(&buffer, formatting::current_line(&buffer));
+                draw_horizontal(cr, width, height, editor.geometry(), indent, hadjustment.value(), style_manager.is_dark())
             }
         });
         vertical.set_draw_func({
@@ -81,6 +84,11 @@ impl PageRulers {
                 vertical.queue_draw();
             }
         ));
+        editor.buffer().connect_cursor_position_notify(glib::clone!(
+            #[weak]
+            horizontal,
+            move |_| horizontal.queue_draw()
+        ));
 
         install_horizontal_drag(&horizontal, editor, &hadjustment);
         install_vertical_drag(&vertical, editor, &vadjustment);
@@ -107,12 +115,17 @@ enum MarginHandle {
     Right,
     Top,
     Bottom,
+    IndentLeft,
+    IndentFirstLine,
+    IndentRight,
 }
 
 #[derive(Clone, Copy)]
 struct MarginDrag {
     handle: MarginHandle,
     original: PageGeometry,
+    indent: ParagraphIndent,
+    line: i32,
 }
 
 fn install_horizontal_drag(area: &gtk::DrawingArea, editor: &PagedEditor, adjustment: &gtk::Adjustment) {
@@ -123,32 +136,46 @@ fn install_horizontal_drag(area: &gtk::DrawingArea, editor: &PagedEditor, adjust
         let editor = editor.clone();
         let adjustment = adjustment.clone();
         let state = state.clone();
-        move |gesture, x, _| {
+        move |gesture, x, y| {
             let geometry = editor.geometry();
             let width = gesture.widget().map(|widget| widget.width()).unwrap_or_default();
             let left = page_left(width, geometry.width_px(), adjustment.value());
             let left_handle = left + PageGeometry::mm_to_pixels(geometry.margin_left_mm, SCREEN_DPI) as f64;
             let right_handle = left + geometry.width_px() as f64
                 - PageGeometry::mm_to_pixels(geometry.margin_right_mm, SCREEN_DPI) as f64;
-            let handle = nearest_handle(x, [(left_handle, MarginHandle::Left), (right_handle, MarginHandle::Right)]);
-            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry });
+            let buffer = editor.buffer();
+            let line = formatting::current_line(&buffer);
+            let indent = formatting::paragraph_indent_at_line(&buffer, line);
+            let indent_left = left_handle + indent.left_px as f64;
+            let indent_first = indent_left + indent.first_line_px as f64;
+            let indent_right = right_handle - indent.right_px as f64;
+            let handle = if y < 9.0 {
+                nearest_handle(x, [(indent_first, MarginHandle::IndentFirstLine), (indent_right, MarginHandle::IndentRight)])
+            } else if y < 19.0 {
+                nearest_handle(x, [(indent_left, MarginHandle::IndentLeft), (indent_right, MarginHandle::IndentRight)])
+            } else {
+                nearest_handle(x, [(left_handle, MarginHandle::Left), (right_handle, MarginHandle::Right)])
+            };
+            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry, indent, line });
         }
     });
     drag.connect_drag_update({
         let editor = editor.clone();
         let state = state.clone();
-        move |_, offset_x, _| {
+        move |gesture, offset_x, _| {
             if let Some(drag) = *state.borrow() {
-                editor.preview_geometry(adjust_geometry(drag, pixels_to_mm(offset_x)));
+                update_horizontal_drag(&editor, drag, offset_x, false);
+                if let Some(widget) = gesture.widget() { widget.queue_draw(); }
             }
         }
     });
     drag.connect_drag_end({
         let editor = editor.clone();
         let state = state.clone();
-        move |_, offset_x, _| {
+        move |gesture, offset_x, _| {
             if let Some(drag) = state.borrow_mut().take() {
-                editor.commit_geometry(adjust_geometry(drag, pixels_to_mm(offset_x)));
+                update_horizontal_drag(&editor, drag, offset_x, true);
+                if let Some(widget) = gesture.widget() { widget.queue_draw(); }
             }
         }
     });
@@ -170,7 +197,7 @@ fn install_vertical_drag(area: &gtk::DrawingArea, editor: &PagedEditor, adjustme
             let bottom_handle = top + geometry.height_px() as f64
                 - PageGeometry::mm_to_pixels(geometry.margin_bottom_mm, SCREEN_DPI) as f64;
             let handle = nearest_handle(y, [(top_handle, MarginHandle::Top), (bottom_handle, MarginHandle::Bottom)]);
-            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry });
+            *state.borrow_mut() = handle.map(|handle| MarginDrag { handle, original: geometry, indent: ParagraphIndent::default(), line: 0 });
         }
     });
     drag.connect_drag_update({
@@ -202,6 +229,31 @@ fn nearest_handle<const N: usize>(position: f64, handles: [(f64, MarginHandle); 
 
 fn pixels_to_mm(pixels: f64) -> f64 {
     pixels / SCREEN_DPI * 25.4
+}
+
+fn update_horizontal_drag(editor: &PagedEditor, drag: MarginDrag, offset_x: f64, commit: bool) {
+    match drag.handle {
+        MarginHandle::IndentLeft | MarginHandle::IndentFirstLine | MarginHandle::IndentRight => {
+            let geometry = editor.geometry();
+            let max_width = PageGeometry::mm_to_pixels(geometry.usable_width_mm(), SCREEN_DPI).max(1);
+            let mut indent = drag.indent;
+            match drag.handle {
+                MarginHandle::IndentLeft => indent.left_px = (indent.left_px as f64 + offset_x).round() as i32,
+                MarginHandle::IndentFirstLine => indent.first_line_px = (indent.first_line_px as f64 + offset_x).round() as i32,
+                MarginHandle::IndentRight => indent.right_px = (indent.right_px as f64 - offset_x).round() as i32,
+                _ => {}
+            }
+            indent.left_px = indent.left_px.clamp(0, max_width - indent.right_px - 20);
+            indent.right_px = indent.right_px.clamp(0, max_width - indent.left_px - 20);
+            indent.first_line_px = indent.first_line_px.clamp(-indent.left_px, max_width - indent.left_px - indent.right_px - 20);
+            formatting::set_paragraph_indent(&editor.buffer(), drag.line, indent);
+            if commit { editor.repaginate_now(); }
+        }
+        _ => {
+            let geometry = adjust_geometry(drag, pixels_to_mm(offset_x));
+            if commit { editor.commit_geometry(geometry); } else { editor.preview_geometry(geometry); }
+        }
+    }
 }
 
 fn adjust_geometry(drag: MarginDrag, delta_mm: f64) -> PageGeometry {
@@ -242,6 +294,7 @@ fn adjust_geometry(drag: MarginDrag, delta_mm: f64) -> PageGeometry {
                     - MIN_BODY_HEIGHT_MM,
             );
         }
+        MarginHandle::IndentLeft | MarginHandle::IndentFirstLine | MarginHandle::IndentRight => {}
     }
     geometry
 }
@@ -256,7 +309,7 @@ fn page_top(geometry: PageGeometry, active_page: usize, scroll_y: f64) -> f64 {
     gap / 2.0 + active_page as f64 * (page_height + gap) - scroll_y
 }
 
-fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageGeometry, scroll_x: f64, dark: bool) {
+fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageGeometry, indent: ParagraphIndent, scroll_x: f64, dark: bool) {
     let palette = RulerPalette::for_theme(dark);
     let page_width = geometry.width_px();
     let left = page_left(width, page_width, scroll_x);
@@ -269,6 +322,18 @@ fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageG
     fill_color(cr, left + page_width as f64 - margin_right, 0.0, margin_right, height as f64, palette.margin);
 
     draw_horizontal_ticks(cr, left, geometry.width_mm, height, palette.ink);
+    draw_indent_markers(cr, left, geometry, indent, palette.ink);
+}
+
+fn draw_indent_markers(cr: &cairo::Context, page_left: f64, geometry: PageGeometry, indent: ParagraphIndent, ink: (f64, f64, f64)) {
+    let margin_left = PageGeometry::mm_to_pixels(geometry.margin_left_mm, SCREEN_DPI) as f64;
+    let margin_right = PageGeometry::mm_to_pixels(geometry.margin_right_mm, SCREEN_DPI) as f64;
+    cr.set_source_rgb(ink.0, ink.1, ink.2);
+    for x in [page_left + margin_left + indent.left_px as f64 + indent.first_line_px as f64, page_left + geometry.width_px() as f64 - margin_right - indent.right_px as f64] {
+        cr.move_to(x, 1.0); cr.line_to(x - 5.0, 8.0); cr.line_to(x + 5.0, 8.0); cr.close_path(); cr.fill().ok();
+    }
+    let x = page_left + margin_left + indent.left_px as f64;
+    cr.move_to(x, 17.0); cr.line_to(x - 5.0, 10.0); cr.line_to(x + 5.0, 10.0); cr.close_path(); cr.fill().ok();
 }
 
 fn draw_vertical(
@@ -365,11 +430,11 @@ mod tests {
     #[test]
     fn dragged_margin_preserves_minimum_body_size() {
         let original = PageGeometry::academic_a4();
-        let left = adjust_geometry(MarginDrag { handle: MarginHandle::Left, original }, 500.0);
+        let left = adjust_geometry(MarginDrag { handle: MarginHandle::Left, original, indent: ParagraphIndent::default(), line: 0 }, 500.0);
         assert!((left.usable_width_mm() - 50.0).abs() < 1e-9);
         assert_eq!(left.margin_right_mm, original.margin_right_mm);
 
-        let top = adjust_geometry(MarginDrag { handle: MarginHandle::Top, original }, 500.0);
+        let top = adjust_geometry(MarginDrag { handle: MarginHandle::Top, original, indent: ParagraphIndent::default(), line: 0 }, 500.0);
         assert!((top.usable_height_mm() - 80.0).abs() < 1e-9);
         assert_eq!(top.margin_bottom_mm, original.margin_bottom_mm);
     }
@@ -377,8 +442,8 @@ mod tests {
     #[test]
     fn dragged_margin_never_becomes_smaller_than_five_millimeters() {
         let original = PageGeometry::academic_a4();
-        let right = adjust_geometry(MarginDrag { handle: MarginHandle::Right, original }, 500.0);
-        let bottom = adjust_geometry(MarginDrag { handle: MarginHandle::Bottom, original }, 500.0);
+        let right = adjust_geometry(MarginDrag { handle: MarginHandle::Right, original, indent: ParagraphIndent::default(), line: 0 }, 500.0);
+        let bottom = adjust_geometry(MarginDrag { handle: MarginHandle::Bottom, original, indent: ParagraphIndent::default(), line: 0 }, 500.0);
         assert_eq!(right.margin_right_mm, 5.0);
         assert_eq!(bottom.margin_bottom_mm, 5.0);
     }
