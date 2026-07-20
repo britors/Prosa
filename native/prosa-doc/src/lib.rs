@@ -17,6 +17,7 @@ pub mod odt;
 pub mod rtf;
 pub mod sync_watcher;
 pub mod templates;
+pub mod update_check;
 pub mod version_history;
 pub mod wikilink;
 pub mod workspace;

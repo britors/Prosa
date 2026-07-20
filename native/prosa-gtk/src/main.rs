@@ -27,6 +27,7 @@ mod save_format;
 mod spellcheck;
 mod sync_ui;
 mod template_dialog;
+mod updater_ui;
 mod version_history_ui;
 mod wikilink;
 
@@ -582,6 +583,8 @@ fn build_window(app: &adw::Application) {
     history_button.set_tooltip_text(Some("Histórico de versões"));
     let sync_button = gtk::Button::from_icon_name("folder-remote-symbolic");
     sync_button.set_tooltip_text(Some("Sincronização"));
+    let updates_button = gtk::Button::from_icon_name("software-update-available-symbolic");
+    updates_button.set_tooltip_text(Some("Verificar atualizações"));
     let header_footer_button = gtk::Button::with_label("C/R");
     header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
     let ruler_menu = gio::Menu::new();
@@ -677,6 +680,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
     nav_group.append(&sync_button);
+    nav_group.append(&updates_button);
     nav_group.append(&header_footer_button);
     nav_group.append(&ruler_menu_button);
     nav_group.append(&ai_menu_button);
@@ -1196,6 +1200,12 @@ fn build_window(app: &adw::Application) {
             ));
             sync_ui::open_sync_settings_dialog(&window, &sync_root, on_change);
         }
+    ));
+
+    updates_button.connect_clicked(glib::clone!(
+        #[weak]
+        toast_overlay,
+        move |_| updater_ui::check_for_updates(&toast_overlay, true)
     ));
 
     outline_list.connect_row_activated(glib::clone!(
@@ -1945,6 +1955,14 @@ fn build_window(app: &adw::Application) {
     );
 
     window.present();
+
+    // Checagem automática de atualização: só em build release, ou se
+    // forçada via env var em desenvolvimento — mesmo gate condicional que a
+    // versão Electron usava (`electron-updater`) antes de checar sozinha.
+    if !cfg!(debug_assertions) || std::env::var_os("PROSA_ENABLE_UPDATER").is_some() {
+        updater_ui::check_for_updates(&toast_overlay, false);
+    }
+
     // Entradas de cabeçalho aparecem antes do corpo na árvore da página e,
     // sem foco explícito, o GTK coloca o cursor nelas ao abrir a janela.
     // A edição principal deve sempre começar no documento.
