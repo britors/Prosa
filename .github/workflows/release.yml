@@ -2,8 +2,9 @@
 # Copyright (C) 2026 Rodrigo Brito
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Compila o binário nativo (Rust + GTK4), gera os pacotes .deb e .rpm e
-# publica um Release no GitHub quando uma tag "v*" é enviada.
+# Compila o binário nativo (Rust + GTK4), gera os pacotes .deb/.rpm (Linux)
+# e um ZIP portátil (Windows), e publica um Release no GitHub quando uma tag
+# "v*" é enviada.
 
 name: Release
 
@@ -61,9 +62,107 @@ jobs:
             native/target/generate-rpm/*.rpm
             native/target/debian/*.deb
 
+  windows:
+    name: Build Windows (.zip portátil)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v5
+
+      # Rust vem do próprio MSYS2 (não do rustup), pra casar a ABI (UCRT)
+      # com a das libs C (GTK4, libadwaita, enchant) instaladas do mesmo
+      # jeito abaixo — é o ambiente recomendado pelo MSYS2/gtk-rs pra apps
+      # Rust+GTK no Windows.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+            mingw-w64-ucrt-x86_64-enchant
+            mingw-w64-ucrt-x86_64-toolchain
+            zip
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      - name: Compilar (release)
+        run: cargo build --release --workspace
+
+      - name: Montar pacote portátil
+        run: |
+          set -euo pipefail
+
+          dist=dist
+          rm -rf "$dist"
+          mkdir -p "$dist/bin"
+          cp target/release/prosa.exe "$dist/bin/"
+
+          # Coleta recursiva das DLLs do MSYS2 (ucrt64) usadas pelo binário,
+          # ignorando DLLs de sistema do Windows (já presentes no SO, não
+          # redistribuíveis por nós).
+          declare -A seen
+          queue=("$dist/bin/prosa.exe")
+          while [ "${#queue[@]}" -gt 0 ]; then
+            current="${queue[0]}"
+            queue=("${queue[@]:1}")
+            deps=$(ldd "$current" | grep -i '/ucrt64/bin/' | awk '{print $3}')
+            for dep in $deps; do
+              base=$(basename "$dep")
+              if [ -z "${seen[$base]:-}" ]; then
+                seen[$base]=1
+                cp -u "$dep" "$dist/bin/"
+                queue+=("$dist/bin/$base")
+              fi
+            done
+          done
+
+          # Recursos que o GTK/GLib precisa em runtime além das DLLs.
+          # Mantém bin/, share/ e lib/ como irmãos: é assim que o GLib no
+          # Windows descobre o prefixo de instalação a partir do caminho da
+          # própria DLL (mesma estrutura do prefixo ucrt64/ do MSYS2).
+          mkdir -p "$dist/share/glib-2.0/schemas"
+          cp /ucrt64/share/glib-2.0/schemas/gschemas.compiled "$dist/share/glib-2.0/schemas/"
+
+          mkdir -p "$dist/share/icons"
+          cp -r /ucrt64/share/icons/Adwaita "$dist/share/icons/"
+          cp -r /ucrt64/share/icons/hicolor "$dist/share/icons/"
+          # Mescla os ícones do próprio app no hicolor do bundle.
+          cp -r prosa-gtk/data/icons/hicolor/* "$dist/share/icons/hicolor/"
+
+          mkdir -p "$dist/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+          cp /ucrt64/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.dll "$dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/"
+          cp /ucrt64/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache "$dist/lib/gdk-pixbuf-2.0/2.10.0/"
+
+      - name: Validar dependências ausentes
+        run: |
+          set -euo pipefail
+          missing=$(ldd dist/bin/prosa.exe | grep -i "not found" || true)
+          if [ -n "$missing" ]; then
+            echo "DLLs necessárias não encontradas no pacote:"
+            echo "$missing"
+            exit 1
+          fi
+          echo "Nenhuma DLL ausente."
+
+      - name: Gerar ZIP portátil
+        run: (cd dist && zip -r ../prosa-windows-x86_64.zip .)
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: native/prosa-windows-x86_64.zip
+
   publish:
     name: Publish Release
-    needs: [linux]
+    needs: [linux, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download All Artifacts
@@ -81,6 +180,7 @@ jobs:
           files: |
             all-artifacts/**/*.deb
             all-artifacts/**/*.rpm
+            all-artifacts/**/*.zip
           draft: false
           prerelease: false
           generate_release_notes: true
