@@ -13,8 +13,16 @@ thiserror = "1"
 quick-xml = "0.41"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 percent-encoding = "2"
 regex = "1"
 similar = "2"
 notify-debouncer-full = "0.3"
+
+# Backend de keyring varia por SO: Secret Service (D-Bus/libsecret) no
+# Linux, Windows Credential Manager no Windows — nenhum dos dois compila
+# no SO errado, então cada um vai numa tabela de dependência por target.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
