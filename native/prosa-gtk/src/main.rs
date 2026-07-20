@@ -575,9 +575,9 @@ fn build_window(app: &adw::Application) {
     let backlinks_toggle_button = gtk::ToggleButton::builder().icon_name("insert-link-symbolic").tooltip_text("Backlinks").build();
     let graph_button = gtk::Button::from_icon_name("network-workgroup-symbolic");
     graph_button.set_tooltip_text(Some("Grafo de conexões"));
-    // Sem ícone simbólico de "livro/bibliografia" no tema Adwaita — rótulo
-    // de texto, mesmo padrão de "H"/"Aa"/"IA" já usado no resto da barra.
-    let bibliography_button = gtk::Button::with_label("Bib");
+    // Filho (ícone + rótulo) definido mais abaixo, junto com o resto dos
+    // itens do menu de toolbar.
+    let bibliography_button = gtk::Button::new();
     bibliography_button.set_tooltip_text(Some("Bibliografia"));
     let history_button = gtk::Button::from_icon_name("document-open-recent-symbolic");
     history_button.set_tooltip_text(Some("Histórico de versões"));
@@ -645,14 +645,12 @@ fn build_window(app: &adw::Application) {
 
     // Grupos "linked" (mesmo padrão HIG do GNOME de agrupar botões
     // relacionados numa pílula só) em vez de uma fileira flat de itens
-    // soltos: arquivo, formatação de texto e navegação/IA ficam visualmente
-    // separados uns dos outros.
-    let file_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    file_group.add_css_class("linked");
-    file_group.append(&new_button);
-    file_group.append(&open_button);
-    file_group.append(&save_button);
-
+    // soltos: formatação de texto, alinhamento e navegação/IA ficam
+    // visualmente separados uns dos outros. Novo/Abrir/Salvar e boa parte
+    // de "navegação" (tópicos, backlinks, grafo, bibliografia,
+    // atualizações, sincronização) foram pro menu de toolbar
+    // (`toolbar_menu_button`, montado mais abaixo) a pedido do usuário, em
+    // vez de ficarem soltos na barra.
     let format_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     format_group.add_css_class("linked");
     format_group.append(&bold_button);
@@ -674,13 +672,7 @@ fn build_window(app: &adw::Application) {
 
     let nav_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     nav_group.add_css_class("linked");
-    nav_group.append(&outline_toggle_button);
-    nav_group.append(&backlinks_toggle_button);
-    nav_group.append(&graph_button);
-    nav_group.append(&bibliography_button);
     nav_group.append(&history_button);
-    nav_group.append(&sync_button);
-    nav_group.append(&updates_button);
     nav_group.append(&header_footer_button);
     nav_group.append(&ruler_menu_button);
     nav_group.append(&ai_menu_button);
@@ -690,21 +682,71 @@ fn build_window(app: &adw::Application) {
     font_group.append(&font_family_button);
     font_group.append(&font_size_dropdown);
 
+    // Menu de toolbar: agrupa Novo/Abrir/Salvar e a maior parte do que
+    // antes era `nav_group` (tópicos, backlinks, grafo, bibliografia,
+    // atualizações, sincronização) num popover só, a pedido do usuário —
+    // ordem pedida explicitamente. Reaproveita os mesmos widgets (e seus
+    // handlers `connect_clicked`/`connect_toggled`, já plenamente
+    // funcionando) só trocando a aparência (ícone + rótulo lado a lado,
+    // "flat") e o pai na árvore de widgets — nenhum comportamento muda.
+    for (button, icon_name, label) in [
+        (new_button.upcast_ref::<gtk::Widget>(), Some("document-new-symbolic"), "Novo documento"),
+        (open_button.upcast_ref::<gtk::Widget>(), Some("document-open-symbolic"), "Abrir"),
+        (save_button.upcast_ref::<gtk::Widget>(), Some("media-floppy-symbolic"), "Salvar"),
+        (outline_toggle_button.upcast_ref::<gtk::Widget>(), Some("view-list-symbolic"), "Painel de tópicos"),
+        (backlinks_toggle_button.upcast_ref::<gtk::Widget>(), Some("insert-link-symbolic"), "Backlinks"),
+        (graph_button.upcast_ref::<gtk::Widget>(), Some("network-workgroup-symbolic"), "Grafo de conexões"),
+        // "x-office-address-book-symbolic" (livro/caderno aberto, usado
+        // pelo GNOME Contacts) — o tema Adwaita não tem um ícone de
+        // "biblioteca/bibliografia" dedicado, mas esse é o que mais se
+        // aproxima visualmente disponível no tema padrão.
+        (bibliography_button.upcast_ref::<gtk::Widget>(), Some("x-office-address-book-symbolic"), "Bibliografia"),
+        (updates_button.upcast_ref::<gtk::Widget>(), Some("software-update-available-symbolic"), "Verificar atualizações"),
+        (sync_button.upcast_ref::<gtk::Widget>(), Some("folder-remote-symbolic"), "Sincronização"),
+    ] {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        if let Some(icon_name) = icon_name {
+            row.append(&gtk::Image::from_icon_name(icon_name));
+        }
+        row.append(&gtk::Label::builder().label(label).xalign(0.0).build());
+        if let Some(button) = button.downcast_ref::<gtk::Button>() {
+            button.set_child(Some(&row));
+        } else if let Some(button) = button.downcast_ref::<gtk::ToggleButton>() {
+            button.set_child(Some(&row));
+        }
+        button.add_css_class("flat");
+    }
+
+    let toolbar_menu_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    toolbar_menu_box.append(&new_button);
+    toolbar_menu_box.append(&open_button);
+    toolbar_menu_box.append(&save_button);
+    toolbar_menu_box.append(&outline_toggle_button);
+    toolbar_menu_box.append(&backlinks_toggle_button);
+    toolbar_menu_box.append(&graph_button);
+    toolbar_menu_box.append(&bibliography_button);
+    toolbar_menu_box.append(&updates_button);
+    toolbar_menu_box.append(&sync_button);
+
+    let toolbar_menu_popover = gtk::Popover::builder().child(&toolbar_menu_box).build();
+    let toolbar_menu_button =
+        gtk::MenuButton::builder().icon_name("open-menu-symbolic").tooltip_text("Menu").popover(&toolbar_menu_popover).build();
+
     let header_bar = adw::HeaderBar::builder().title_widget(&title_widget).build();
-    header_bar.pack_start(&file_group);
-    header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&format_group);
     header_bar.pack_start(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_start(&align_group);
     // Confirmado empiricamente (não documentado nos headers do GTK): pra
     // `pack_end`, cada chamada nova entra mais perto do título do que as
     // anteriores — a *última* chamada acaba encostada nele, a *primeira*
-    // fica na borda direita da janela. `nav_group` (tópicos/backlinks/
-    // grafo/bibliografia/histórico/IA) foi movido do lado esquerdo (antes
-    // do título) pro direito a pedido do usuário; `font_group` (fonte/
-    // tamanho), pedido logo em seguida na mesma sessão, entra ainda mais
-    // perto do título do que `nav_group`.
+    // fica na borda direita da janela. `toolbar_menu_button` foi pedido
+    // "à direita, antes de imprimir" — logo, entra como a segunda
+    // chamada, imediatamente depois de `export_pdf_button` (que fica na
+    // borda). `nav_group` (histórico/cabeçalho-rodapé/régua/IA) e
+    // `font_group` (fonte/tamanho) continuam mais perto do título.
     header_bar.pack_end(&export_pdf_button);
+    header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
+    header_bar.pack_end(&toolbar_menu_button);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&nav_group);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
