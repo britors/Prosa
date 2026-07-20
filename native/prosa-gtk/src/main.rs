@@ -1956,6 +1956,9 @@ mod tests {
         crate::paged_editor::tests::overflow_and_underflow_repaginate_without_losing_text();
         crate::paged_editor::tests::pages_share_tags_selection_cursor_and_undo_history();
         crate::paged_editor::tests::header_and_footer_repeat_and_page_numbers_update();
+        crate::paged_editor::tests::one_long_paragraph_crosses_pages();
+        crate::paged_editor::tests::editing_near_a_break_reflows_both_directions();
+        crate::paged_editor::tests::repeated_large_document_layout_converges();
         crate::print::tests::page_breaks_split_when_content_overflows();
         crate::print::tests::export_produces_multi_page_pdf_with_pagination();
         crate::find_replace::tests::search_finds_all_occurrences_with_accented_text();

@@ -361,4 +361,50 @@ pub(crate) mod tests {
         assert_eq!(editor.page(0).unwrap().page_number.text(), "1 / 2");
         assert_eq!(editor.page(1).unwrap().page_number.text(), "2 / 2");
     }
+
+    pub(crate) fn one_long_paragraph_crosses_pages() {
+        let editor = PagedEditor::new(PageGeometry::academic_a4());
+        let buffer = editor.page(0).unwrap().buffer();
+        let paragraph = "Uma frase longa o bastante para quebrar automaticamente na largura da folha. ".repeat(1000);
+        buffer.set_text(&paragraph);
+        editor.repaginate_now();
+        assert!(editor.page_count() > 1, "um parágrafo sem quebras manuais deve atravessar folhas");
+        assert_eq!(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true), paragraph);
+    }
+
+    pub(crate) fn editing_near_a_break_reflows_both_directions() {
+        let editor = PagedEditor::new(PageGeometry::academic_a4());
+        let buffer = editor.page(0).unwrap().buffer();
+        let content = "linha para medir a quebra\n".repeat(1000);
+        buffer.set_text(&content);
+        editor.repaginate_now();
+        let full_pages = editor.page_count();
+        assert!(full_pages > 1);
+
+        let mut end = buffer.end_iter();
+        let mut start = end.clone();
+        start.backward_chars(5000);
+        buffer.delete(&mut start, &mut end);
+        editor.repaginate_now();
+        assert!(editor.page_count() <= full_pages);
+        buffer.insert_at_cursor(&content[content.len() - 5000..]);
+        editor.repaginate_now();
+        assert_eq!(editor.page_count(), full_pages);
+        assert_eq!(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true), content);
+    }
+
+    pub(crate) fn repeated_large_document_layout_converges() {
+        let editor = PagedEditor::new(PageGeometry::academic_a4());
+        let buffer = editor.page(0).unwrap().buffer();
+        let content = "conteúdo de estresse com muitas páginas\n".repeat(1000);
+        buffer.set_text(&content);
+        editor.repaginate_now();
+        let expected_pages = editor.page_count();
+        assert!(expected_pages > 10);
+        for _ in 0..10 {
+            editor.repaginate_now();
+            assert_eq!(editor.page_count(), expected_pages);
+        }
+        assert_eq!(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true), content);
+    }
 }
