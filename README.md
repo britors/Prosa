@@ -91,11 +91,18 @@ editor atual.
 - Dicionários de corretor ortográfico (`myspell-pt_BR`/`myspell-en_US` ou
   equivalentes da distro)
 
-Em openSUSE/Fedora, por exemplo:
+Em openSUSE:
 
 ```sh
 sudo zypper install gtk4-devel libadwaita-devel enchant-devel \
   myspell-pt_BR myspell-en_US
+```
+
+Em Fedora (44 ou mais recente):
+
+```sh
+sudo dnf install gtk4-devel libadwaita-devel pango-devel cairo-devel \
+  enchant2-devel hunspell-pt-BR hunspell-en-US
 ```
 
 ### Passos
