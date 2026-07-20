@@ -14,11 +14,23 @@ const RULER_THICKNESS: i32 = 28;
 #[derive(Clone)]
 pub struct PageRulers {
     grid: gtk::Grid,
+    horizontal: gtk::DrawingArea,
+    vertical: gtk::DrawingArea,
+    corner: gtk::Button,
+    unit: Rc<Cell<RulerUnit>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RulerUnit { Centimeters, Millimeters, Inches, Points }
+
+impl RulerUnit {
+    pub fn from_id(id: &str) -> Self { match id { "mm" => Self::Millimeters, "in" => Self::Inches, "pt" => Self::Points, _ => Self::Centimeters } }
 }
 
 impl PageRulers {
     pub fn new(editor: &PagedEditor) -> Self {
         let style_manager = adw::StyleManager::default();
+        let unit = Rc::new(Cell::new(RulerUnit::Centimeters));
         let horizontal = gtk::DrawingArea::builder().height_request(RULER_THICKNESS).hexpand(true).build();
         horizontal.add_css_class("prosa-ruler");
         let vertical = gtk::DrawingArea::builder().width_request(RULER_THICKNESS).vexpand(true).build();
@@ -46,19 +58,21 @@ impl PageRulers {
             let hadjustment = hadjustment.clone();
             let style_manager = style_manager.clone();
             let editor = editor.clone();
+            let unit = unit.clone();
             move |_area, cr, width, height| {
                 let buffer = editor.buffer();
                 let indent = formatting::paragraph_indent_at_line(&buffer, formatting::current_line(&buffer));
                 let tabs = formatting::paragraph_tabs_at_line(&buffer, formatting::current_line(&buffer));
-                draw_horizontal(cr, width, height, editor.geometry(), indent, &tabs, hadjustment.value(), style_manager.is_dark())
+                draw_horizontal(cr, width, height, editor.geometry(), indent, &tabs, hadjustment.value(), style_manager.is_dark(), unit.get())
             }
         });
         vertical.set_draw_func({
             let vadjustment = vadjustment.clone();
             let editor = editor.clone();
             let style_manager = style_manager.clone();
+            let unit = unit.clone();
             move |_area, cr, width, height| {
-                draw_vertical(cr, width, height, editor.geometry(), editor.active_page(), vadjustment.value(), style_manager.is_dark())
+                draw_vertical(cr, width, height, editor.geometry(), editor.active_page(), vadjustment.value(), style_manager.is_dark(), unit.get())
             }
         });
         style_manager.connect_dark_notify(glib::clone!(
@@ -115,11 +129,23 @@ impl PageRulers {
         grid.set_hexpand(true);
         grid.set_vexpand(true);
 
-        Self { grid }
+        Self { grid, horizontal, vertical, corner, unit }
     }
 
     pub fn widget(&self) -> gtk::Grid {
         self.grid.clone()
+    }
+
+    pub fn set_rulers_visible(&self, visible: bool) {
+        self.horizontal.set_visible(visible);
+        self.vertical.set_visible(visible);
+        self.corner.set_visible(visible);
+    }
+
+    pub fn set_unit(&self, unit: RulerUnit) {
+        self.unit.set(unit);
+        self.horizontal.queue_draw();
+        self.vertical.queue_draw();
     }
 }
 
@@ -369,7 +395,7 @@ fn page_top(geometry: PageGeometry, active_page: usize, scroll_y: f64) -> f64 {
     gap / 2.0 + active_page as f64 * (page_height + gap) - scroll_y
 }
 
-fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageGeometry, indent: ParagraphIndent, tabs: &[TabStop], scroll_x: f64, dark: bool) {
+fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageGeometry, indent: ParagraphIndent, tabs: &[TabStop], scroll_x: f64, dark: bool, unit: RulerUnit) {
     let palette = RulerPalette::for_theme(dark);
     let page_width = geometry.width_px();
     let left = page_left(width, page_width, scroll_x);
@@ -381,7 +407,7 @@ fn draw_horizontal(cr: &cairo::Context, width: i32, height: i32, geometry: PageG
     fill_color(cr, left, 0.0, margin_left, height as f64, palette.margin);
     fill_color(cr, left + page_width as f64 - margin_right, 0.0, margin_right, height as f64, palette.margin);
 
-    draw_horizontal_ticks(cr, left, geometry.width_mm, height, palette.ink);
+    draw_horizontal_ticks(cr, left, geometry.width_mm, height, palette.ink, unit);
     draw_indent_markers(cr, left, geometry, indent, palette.ink);
     draw_tab_stops(cr, left + margin_left, tabs, palette.ink);
 }
@@ -421,6 +447,7 @@ fn draw_vertical(
     active_page: usize,
     scroll_y: f64,
     dark: bool,
+    unit: RulerUnit,
 ) {
     let palette = RulerPalette::for_theme(dark);
     let page_height = geometry.height_px() as f64;
@@ -431,7 +458,7 @@ fn draw_vertical(
     let margin_bottom = PageGeometry::mm_to_pixels(geometry.margin_bottom_mm, SCREEN_DPI) as f64;
     fill_color(cr, 0.0, top, width as f64, margin_top, palette.margin);
     fill_color(cr, 0.0, top + page_height - margin_bottom, width as f64, margin_bottom, palette.margin);
-    draw_vertical_ticks(cr, top, geometry.height_mm, width, palette.ink);
+    draw_vertical_ticks(cr, top, geometry.height_mm, width, palette.ink, unit);
 }
 
 #[derive(Clone, Copy)]
@@ -458,35 +485,52 @@ fn fill_color(cr: &cairo::Context, x: f64, y: f64, width: f64, height: f64, colo
     cr.fill().ok();
 }
 
-fn draw_horizontal_ticks(cr: &cairo::Context, origin: f64, length_mm: f64, height: i32, ink: (f64, f64, f64)) {
+fn unit_scale(unit: RulerUnit) -> (f64, f64, i32) {
+    match unit {
+        RulerUnit::Millimeters => (1.0, 1.0, 10),
+        RulerUnit::Centimeters => (10.0, 0.1, 10),
+        RulerUnit::Inches => (25.4, 0.125, 8),
+        RulerUnit::Points => (25.4 / 72.0, 6.0, 6),
+    }
+}
+
+fn draw_horizontal_ticks(cr: &cairo::Context, origin: f64, length_mm: f64, height: i32, ink: (f64, f64, f64), unit: RulerUnit) {
     cr.set_source_rgb(ink.0, ink.1, ink.2);
     cr.set_line_width(1.0);
-    for millimeter in 0..=length_mm.round() as i32 {
-        let x = origin + PageGeometry::mm_to_pixels(millimeter as f64, SCREEN_DPI) as f64 + 0.5;
-        let tick = if millimeter % 10 == 0 { 10.0 } else if millimeter % 5 == 0 { 7.0 } else { 4.0 };
+    let (mm_per_unit, step, major_every) = unit_scale(unit);
+    let count = (length_mm / (mm_per_unit * step)).floor() as i32;
+    for index in 0..=count {
+        let x = origin + PageGeometry::mm_to_pixels(index as f64 * step * mm_per_unit, SCREEN_DPI) as f64 + 0.5;
+        let tick = if index % major_every == 0 { 10.0 } else if index % (major_every / 2).max(1) == 0 { 7.0 } else { 4.0 };
         cr.move_to(x, height as f64);
         cr.line_to(x, height as f64 - tick);
     }
     cr.stroke().ok();
-    draw_horizontal_labels(cr, origin, length_mm, height);
+    draw_horizontal_labels(cr, origin, length_mm, height, unit);
 }
 
-fn draw_horizontal_labels(cr: &cairo::Context, origin: f64, length_mm: f64, height: i32) {
+fn draw_horizontal_labels(cr: &cairo::Context, origin: f64, length_mm: f64, height: i32, unit: RulerUnit) {
     cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
     cr.set_font_size(8.0);
-    for centimeter in 0..=length_mm.round() as i32 / 10 {
-        let x = origin + PageGeometry::mm_to_pixels((centimeter * 10) as f64, SCREEN_DPI) as f64;
+    let (mm_per_unit, step, major_every) = unit_scale(unit);
+    let major_step = step * major_every as f64;
+    for major in 0..=(length_mm / (mm_per_unit * major_step)).floor() as i32 {
+        let value = major as f64 * major_step;
+        let x = origin + PageGeometry::mm_to_pixels(value * mm_per_unit, SCREEN_DPI) as f64;
         cr.move_to(x + 2.0, height as f64 - 12.0);
-        cr.show_text(&centimeter.to_string()).ok();
+        let label = if value.fract() == 0.0 { format!("{value:.0}") } else { format!("{value:.1}") };
+        cr.show_text(&label).ok();
     }
 }
 
-fn draw_vertical_ticks(cr: &cairo::Context, origin: f64, length_mm: f64, width: i32, ink: (f64, f64, f64)) {
+fn draw_vertical_ticks(cr: &cairo::Context, origin: f64, length_mm: f64, width: i32, ink: (f64, f64, f64), unit: RulerUnit) {
     cr.set_source_rgb(ink.0, ink.1, ink.2);
     cr.set_line_width(1.0);
-    for millimeter in 0..=length_mm.round() as i32 {
-        let y = origin + PageGeometry::mm_to_pixels(millimeter as f64, SCREEN_DPI) as f64 + 0.5;
-        let tick = if millimeter % 10 == 0 { 10.0 } else if millimeter % 5 == 0 { 7.0 } else { 4.0 };
+    let (mm_per_unit, step, major_every) = unit_scale(unit);
+    let count = (length_mm / (mm_per_unit * step)).floor() as i32;
+    for index in 0..=count {
+        let y = origin + PageGeometry::mm_to_pixels(index as f64 * step * mm_per_unit, SCREEN_DPI) as f64 + 0.5;
+        let tick = if index % major_every == 0 { 10.0 } else if index % (major_every / 2).max(1) == 0 { 7.0 } else { 4.0 };
         cr.move_to(width as f64, y);
         cr.line_to(width as f64 - tick, y);
     }
@@ -506,6 +550,18 @@ mod tests {
         assert_eq!(page_left(1000, 794, 0.0), 103.0);
         assert_eq!(page_left(600, 794, 0.0), 0.0);
         assert_eq!(page_left(600, 794, 40.0), -40.0);
+    }
+
+    #[test]
+    fn ruler_units_keep_expected_physical_major_intervals() {
+        let major_mm = |unit| {
+            let (mm_per_unit, step, major_every) = unit_scale(unit);
+            mm_per_unit * step * major_every as f64
+        };
+        assert!((major_mm(RulerUnit::Centimeters) - 10.0).abs() < 1e-9);
+        assert!((major_mm(RulerUnit::Millimeters) - 10.0).abs() < 1e-9);
+        assert!((major_mm(RulerUnit::Inches) - 25.4).abs() < 1e-9);
+        assert!((major_mm(RulerUnit::Points) - 12.7).abs() < 1e-9);
     }
 
     #[test]

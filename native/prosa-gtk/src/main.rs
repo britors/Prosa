@@ -19,6 +19,7 @@ mod header_footer_ui;
 mod outline;
 mod page_geometry;
 mod page_rulers;
+mod ruler_preferences;
 mod paged_editor;
 mod pagination;
 mod print;
@@ -475,6 +476,9 @@ fn build_window(app: &adw::Application) {
     let page_geometry = page_geometry::PageGeometry::academic_a4();
     let paged_editor = paged_editor::PagedEditor::new(page_geometry);
     let page_rulers = page_rulers::PageRulers::new(&paged_editor);
+    let ruler_preferences = Rc::new(Cell::new(ruler_preferences::load()));
+    page_rulers.set_rulers_visible(ruler_preferences.get().visible);
+    page_rulers.set_unit(page_rulers::RulerUnit::from_id(ruler_preferences.get().unit));
     let text_view = paged_editor.page(0).expect("PagedEditor sempre contém uma folha").text_view();
     let buffer = text_view.buffer();
     setup_mark_tags(&buffer);
@@ -580,6 +584,16 @@ fn build_window(app: &adw::Application) {
     sync_button.set_tooltip_text(Some("Sincronização"));
     let header_footer_button = gtk::Button::with_label("C/R");
     header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
+    let ruler_menu = gio::Menu::new();
+    ruler_menu.append(Some("Exibir réguas"), Some("win.show-rulers"));
+    let units_menu = gio::Menu::new();
+    for (label, id) in [("Centímetros", "cm"), ("Milímetros", "mm"), ("Polegadas", "in"), ("Pontos", "pt")] {
+        let item = gio::MenuItem::new(Some(label), Some("win.ruler-unit"));
+        item.set_attribute_value("target", Some(&id.to_variant()));
+        units_menu.append_item(&item);
+    }
+    ruler_menu.append_submenu(Some("Unidade"), &units_menu);
+    let ruler_menu_button = gtk::MenuButton::builder().label("Régua").tooltip_text("Opções das réguas").menu_model(&ruler_menu).build();
 
     // Família e tamanho de fonte: dois seletores independentes, igual ao
     // Electron (`fontSelect`/`sizeSelect` em `toolbar.ts`), mas a lista de
@@ -664,6 +678,7 @@ fn build_window(app: &adw::Application) {
     nav_group.append(&history_button);
     nav_group.append(&sync_button);
     nav_group.append(&header_footer_button);
+    nav_group.append(&ruler_menu_button);
     nav_group.append(&ai_menu_button);
 
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -822,6 +837,48 @@ fn build_window(app: &adw::Application) {
         .maximized(true)
         .content(&toast_overlay)
         .build();
+
+    let show_rulers_action = gio::SimpleAction::new_stateful("show-rulers", None, &ruler_preferences.get().visible.to_variant());
+    show_rulers_action.connect_activate(glib::clone!(
+        #[strong]
+        page_rulers,
+        #[strong]
+        ruler_preferences,
+        move |action, _| {
+            let visible = !action.state().and_then(|state| state.get::<bool>()).unwrap_or(true);
+            action.set_state(&visible.to_variant());
+            page_rulers.set_rulers_visible(visible);
+            let mut preferences = ruler_preferences.get();
+            preferences.visible = visible;
+            ruler_preferences.set(preferences);
+            ruler_preferences::save(preferences);
+        }
+    ));
+    window.add_action(&show_rulers_action);
+    app.set_accels_for_action("win.show-rulers", &["<Control><Shift>r"]);
+
+    let ruler_unit_action = gio::SimpleAction::new_stateful(
+        "ruler-unit",
+        Some(&String::static_variant_type()),
+        &ruler_preferences.get().unit.to_variant(),
+    );
+    ruler_unit_action.connect_activate(glib::clone!(
+        #[strong]
+        page_rulers,
+        #[strong]
+        ruler_preferences,
+        move |action, parameter| {
+            let Some(unit) = parameter.and_then(|value| value.get::<String>()) else { return };
+            let unit = match unit.as_str() { "mm" => "mm", "in" => "in", "pt" => "pt", _ => "cm" };
+            action.set_state(&unit.to_variant());
+            page_rulers.set_unit(page_rulers::RulerUnit::from_id(unit));
+            let mut preferences = ruler_preferences.get();
+            preferences.unit = unit;
+            ruler_preferences.set(preferences);
+            ruler_preferences::save(preferences);
+        }
+    ));
+    window.add_action(&ruler_unit_action);
 
     bold_button.connect_clicked(glib::clone!(
         #[weak]
