@@ -575,9 +575,9 @@ fn build_window(app: &adw::Application) {
     let backlinks_toggle_button = gtk::ToggleButton::builder().icon_name("insert-link-symbolic").tooltip_text("Backlinks").build();
     let graph_button = gtk::Button::from_icon_name("network-workgroup-symbolic");
     graph_button.set_tooltip_text(Some("Grafo de conexões"));
-    // Sem ícone simbólico de "livro/bibliografia" no tema Adwaita — rótulo
-    // de texto, mesmo padrão de "H"/"Aa"/"IA" já usado no resto da barra.
-    let bibliography_button = gtk::Button::with_label("Bib");
+    // Filho (ícone + rótulo) definido mais abaixo, junto com o resto dos
+    // itens do menu de toolbar.
+    let bibliography_button = gtk::Button::new();
     bibliography_button.set_tooltip_text(Some("Bibliografia"));
     let history_button = gtk::Button::from_icon_name("document-open-recent-symbolic");
     history_button.set_tooltip_text(Some("Histórico de versões"));
@@ -696,7 +696,11 @@ fn build_window(app: &adw::Application) {
         (outline_toggle_button.upcast_ref::<gtk::Widget>(), Some("view-list-symbolic"), "Painel de tópicos"),
         (backlinks_toggle_button.upcast_ref::<gtk::Widget>(), Some("insert-link-symbolic"), "Backlinks"),
         (graph_button.upcast_ref::<gtk::Widget>(), Some("network-workgroup-symbolic"), "Grafo de conexões"),
-        (bibliography_button.upcast_ref::<gtk::Widget>(), None, "Bibliografia"),
+        // "x-office-address-book-symbolic" (livro/caderno aberto, usado
+        // pelo GNOME Contacts) — o tema Adwaita não tem um ícone de
+        // "biblioteca/bibliografia" dedicado, mas esse é o que mais se
+        // aproxima visualmente disponível no tema padrão.
+        (bibliography_button.upcast_ref::<gtk::Widget>(), Some("x-office-address-book-symbolic"), "Bibliografia"),
         (updates_button.upcast_ref::<gtk::Widget>(), Some("software-update-available-symbolic"), "Verificar atualizações"),
         (sync_button.upcast_ref::<gtk::Widget>(), Some("folder-remote-symbolic"), "Sincronização"),
     ] {
