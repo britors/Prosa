@@ -14,7 +14,6 @@ mod find_replace;
 mod font_style;
 mod formatting;
 mod graph_view;
-mod live_pagination;
 mod outline;
 mod print;
 mod save_format;
@@ -36,10 +35,38 @@ use prosa_doc::{sync_watcher, version_history, DocumentMetadata, ProsaFile};
 use find_replace::{FindReplace, SearchOptions};
 use save_format::SaveFormat;
 use formatting::{current_line, doc_from_buffer, load_doc_into_buffer, set_heading_level, set_line_alignment, setup_align_tags, setup_heading_tags, setup_mark_tags, toggle_mark};
-use live_pagination::{count_words_and_sentences, LivePagination};
 use spellcheck::{LiveSpellcheck, SpellChecker};
 
 const APP_ID: &str = "br.com.rodrigobrito.Prosa.Native";
+
+// Aparência temporária do editor contínuo. A paginação simulada foi removida
+// antes da entrada de `PageGeometry` e `PagedEditor` (epic #167).
+const CONTINUOUS_EDITOR_WIDTH_PX: i32 = 794;
+const CONTINUOUS_EDITOR_MARGIN_TOP_PX: i32 = 94;
+const CONTINUOUS_EDITOR_MARGIN_BOTTOM_PX: i32 = 94;
+const CONTINUOUS_EDITOR_MARGIN_LEFT_PX: i32 = 76;
+const CONTINUOUS_EDITOR_MARGIN_RIGHT_PX: i32 = 76;
+const CONTINUOUS_EDITOR_GAP_PX: i32 = 16;
+
+/// Conta palavras (separadas por espaço em branco) e frases (fim de frase
+/// `.`/`!`/`?`, tratando pontuação repetida como um único fim).
+fn count_words_and_sentences(text: &str) -> (usize, usize) {
+    let words = text.split_whitespace().count();
+    let mut sentences = 0usize;
+    let mut in_sentence_end = false;
+    for character in text.chars() {
+        match character {
+            '.' | '!' | '?' if !in_sentence_end => {
+                sentences += 1;
+                in_sentence_end = true;
+            }
+            '.' | '!' | '?' => {}
+            character if character.is_whitespace() => {}
+            _ => in_sentence_end = false,
+        }
+    }
+    (words, sentences)
+}
 
 /// Estado do documento atualmente aberto na janela.
 struct DocumentState {
@@ -229,17 +256,16 @@ fn refresh_outline(buffer: &gtk::TextBuffer, outline_list: &gtk::ListBox, outlin
     }
 }
 
-/// Atualiza a barra de status com contagem de palavras, frases e páginas.
-fn update_status_bar(buffer: &gtk::TextBuffer, pagination: &Rc<LivePagination>, label: &gtk::Label) {
+/// Atualiza a barra de status do editor contínuo. A contagem de páginas só
+/// voltará quando houver folhas reais gerenciadas pelo `PagedEditor`.
+fn update_status_bar(buffer: &gtk::TextBuffer, label: &gtk::Label) {
     let (start, end) = buffer.bounds();
     let text = buffer.text(&start, &end, false);
     let (words, sentences) = count_words_and_sentences(&text);
-    let pages = pagination.page_count();
     label.set_text(&format!(
-        "{words} palavra{} · {sentences} frase{} · {pages} página{}",
+        "{words} palavra{} · {sentences} frase{}",
         if words == 1 { "" } else { "s" },
         if sentences == 1 { "" } else { "s" },
-        if pages == 1 { "" } else { "s" },
     ));
 }
 
@@ -275,26 +301,6 @@ fn word_at_iter(buffer: &gtk::TextBuffer, iter: &gtk::TextIter) -> Option<(Strin
         return None;
     }
     Some((word, start.offset(), end.offset()))
-}
-
-/// Recria os indicadores de quebra de página no overlay, um por ponto de
-/// quebra do último recálculo (ver `LivePagination`). Cada indicador é um
-/// widget comum, sem nenhuma relação com o buffer de texto — só a cor da
-/// "mesa" aparecendo por cima da folha, sem texto.
-fn sync_break_lines(overlay: &gtk::Overlay, break_line_widgets: &Rc<RefCell<Vec<(gtk::Widget, i32)>>>, breaks: &[i32]) {
-    let mut widgets = break_line_widgets.borrow_mut();
-    for (widget, _) in widgets.drain(..) {
-        overlay.remove_overlay(&widget);
-    }
-    for y in breaks {
-        let line = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        line.add_css_class("prosa-page-break-line");
-        line.set_can_target(false);
-        overlay.add_overlay(&line);
-        widgets.push((line.upcast::<gtk::Widget>(), *y));
-    }
-    drop(widgets);
-    overlay.queue_allocate();
 }
 
 /// Abre um documento (`.prosa`/`.docx`/`.odt`/`.rtf`) num caminho já
@@ -439,14 +445,13 @@ fn read_foreign_document(path: &std::path::Path, extension: &str) -> Result<pros
     }
 }
 
-/// A "folha" (`GtkTextView`) é sempre branca (papel), com largura fixa de
-/// A4, centralizada sobre um fundo escuro (a "mesa" ao redor) — janela e
-/// botões continuam seguindo o tema claro/escuro do sistema à parte disso.
+/// Aparência transitória do editor contínuo enquanto o `PagedEditor` ainda
+/// não foi introduzido. Não há folhas, quebras nem widgets sobre o texto.
 fn install_page_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "textview.prosa-page, textview.prosa-page text { background-color: #ffffff; color: #1a1a1a; }\n\
-         scrolledwindow.prosa-desk, box.prosa-page-break-line { background-color: #2e2e2e; }",
+         scrolledwindow.prosa-desk { background-color: #2e2e2e; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -458,18 +463,15 @@ fn build_window(app: &adw::Application) {
 
     let text_view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::Word)
-        .top_margin(live_pagination::MARGIN_TOP_PX)
-        .bottom_margin(live_pagination::MARGIN_BOTTOM_PX)
-        .left_margin(live_pagination::MARGIN_LEFT_PX)
-        .right_margin(live_pagination::MARGIN_RIGHT_PX)
-        .width_request(live_pagination::PAGE_WIDTH_PX)
+        .top_margin(CONTINUOUS_EDITOR_MARGIN_TOP_PX)
+        .bottom_margin(CONTINUOUS_EDITOR_MARGIN_BOTTOM_PX)
+        .left_margin(CONTINUOUS_EDITOR_MARGIN_LEFT_PX)
+        .right_margin(CONTINUOUS_EDITOR_MARGIN_RIGHT_PX)
+        .width_request(CONTINUOUS_EDITOR_WIDTH_PX)
         .hexpand(false)
         .halign(gtk::Align::Center)
-        // Mesmo respiro (cor da mesa) que separa duas páginas, mas pela
-        // metade, entre o topo da área rolável e a primeira página, e entre
-        // a última página e a barra de status.
-        .margin_top(live_pagination::PAGE_GAP_PX / 2)
-        .margin_bottom(live_pagination::PAGE_GAP_PX / 2)
+        .margin_top(CONTINUOUS_EDITOR_GAP_PX)
+        .margin_bottom(CONTINUOUS_EDITOR_GAP_PX)
         .build();
     text_view.add_css_class("prosa-page");
     let buffer = text_view.buffer();
@@ -484,43 +486,6 @@ fn build_window(app: &adw::Application) {
         .vexpand(true)
         .build();
     scrolled.add_css_class("prosa-desk");
-
-    // As linhas de quebra de página flutuam por cima do texto (GtkOverlay),
-    // sem inserir nada no buffer — ver o histórico em live_pagination.rs.
-    let overlay = gtk::Overlay::new();
-    overlay.set_child(Some(&scrolled));
-
-    let break_line_widgets: Rc<RefCell<Vec<(gtk::Widget, i32)>>> = Rc::new(RefCell::new(Vec::new()));
-
-    overlay.connect_get_child_position(glib::clone!(
-        #[weak]
-        text_view,
-        #[strong]
-        break_line_widgets,
-        #[upgrade_or]
-        None,
-        move |overlay, widget| {
-            let buffer_y = break_line_widgets.borrow().iter().find(|(w, _)| w == widget).map(|(_, y)| *y)?;
-            let (_, window_y) = text_view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, buffer_y);
-            #[allow(deprecated)]
-            let (_, oy) = text_view.translate_coordinates(overlay, 0.0, window_y as f64)?;
-            // Só a largura da própria folha (não a tela toda) — do
-            // contrário o indicador cobre a barra de rolagem, que fica
-            // fora dessa faixa.
-            let x = ((overlay.width() - live_pagination::PAGE_WIDTH_PX) / 2).max(0);
-            Some(gdk::Rectangle::new(x, oy.round() as i32, live_pagination::PAGE_WIDTH_PX, live_pagination::PAGE_GAP_PX))
-        }
-    ));
-
-    // A rolagem não realoca o overlay sozinha (ele não muda de tamanho), só
-    // reposiciona os filhos quando algo pede uma realocação explicitamente.
-    scrolled.vadjustment().connect_value_changed(glib::clone!(
-        #[weak]
-        overlay,
-        move |_| overlay.queue_allocate()
-    ));
-
-    let pagination = Rc::new(LivePagination::default());
 
     let spellchecker = Rc::new(SpellChecker::new());
     let live_spellcheck = Rc::new(LiveSpellcheck::new(spellchecker.clone()));
@@ -807,13 +772,10 @@ fn build_window(app: &adw::Application) {
 
     let toast_overlay = adw::ToastOverlay::new();
 
-    // `AdwToolbarView::add_bottom_bar` combinado com um filho de largura fixa
-    // (a folha A4 centralizada) entra num loop de remedição do GTK (altura
-    // exigida cresce sem parar — travou o processo). Um `GtkBox` vertical
-    // simples como conteúdo evita esse caminho de negociação de tamanho.
+    // Mantém a barra de status fora da área rolável do editor.
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content_box.set_hexpand(true);
-    content_box.append(&overlay);
+    content_box.append(&scrolled);
     content_box.append(&status_label);
 
     let main_split = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -1151,10 +1113,6 @@ fn build_window(app: &adw::Application) {
             #[weak]
             buffer,
             #[weak]
-            text_view,
-            #[strong]
-            pagination,
-            #[weak]
             outline_list,
             #[strong]
             outline_lines,
@@ -1163,22 +1121,10 @@ fn build_window(app: &adw::Application) {
             move |_, _| {
                 set_heading_level(&buffer, current_line(&buffer), level);
                 // Aplicar/remover a tag de título não dispara `changed` (só
-                // insere/remove conteúdo dispara isso) — precisa atualizar
-                // o esboço e a paginação (o tamanho da fonte mudou) na mão.
+                // inserir/remover conteúdo faz isso), então o esboço precisa
+                // ser atualizado explicitamente.
                 refresh_outline(&buffer, &outline_list, &outline_lines);
-                pagination.schedule_recompute(
-                    &text_view,
-                    &buffer,
-                    glib::clone!(
-                        #[weak]
-                        buffer,
-                        #[strong]
-                        pagination,
-                        #[weak]
-                        status_label,
-                        move || update_status_bar(&buffer, &pagination, &status_label)
-                    ),
-                );
+                update_status_bar(&buffer, &status_label);
             }
         ));
         window.add_action(&action);
@@ -1504,15 +1450,13 @@ fn build_window(app: &adw::Application) {
     ));
     text_view.add_controller(right_click);
 
-    update_status_bar(&buffer, &pagination, &status_label);
+    update_status_bar(&buffer, &status_label);
     refresh_outline(&buffer, &outline_list, &outline_lines);
     buffer.connect_changed(glib::clone!(
         #[weak]
         text_view,
         #[weak]
         buffer,
-        #[strong]
-        pagination,
         #[weak]
         status_label,
         #[strong]
@@ -1532,29 +1476,9 @@ fn build_window(app: &adw::Application) {
             // automático do GtkTextView não é confiável dentro do
             // GtkOverlay/margens customizadas da folha).
             text_view.scroll_mark_onscreen(&buffer.get_insert());
-            update_status_bar(&buffer, &pagination, &status_label);
+            update_status_bar(&buffer, &status_label);
             refresh_outline(&buffer, &outline_list, &outline_lines);
             live_spellcheck.schedule_recompute(&buffer);
-            pagination.schedule_recompute(
-                &text_view,
-                &buffer,
-                glib::clone!(
-                    #[weak]
-                    buffer,
-                    #[strong]
-                    pagination,
-                    #[weak]
-                    status_label,
-                    #[weak]
-                    overlay,
-                    #[strong]
-                    break_line_widgets,
-                    move || {
-                        update_status_bar(&buffer, &pagination, &status_label);
-                        sync_break_lines(&overlay, &break_line_widgets, &pagination.break_points_buffer_y());
-                    }
-                ),
-            );
         }
     ));
 
@@ -1987,6 +1911,13 @@ fn main() -> glib::ExitCode {
 /// um no seu módulo.
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn counts_words_and_sentences() {
+        assert_eq!(super::count_words_and_sentences("Olá mundo. Tudo bem? Sim!"), (5, 3));
+        assert_eq!(super::count_words_and_sentences("Pensando... talvez."), (2, 2));
+        assert_eq!(super::count_words_and_sentences(""), (0, 0));
+    }
+
     #[test]
     fn all_gtk_dependent_tests() {
         let _ = gtk::init();

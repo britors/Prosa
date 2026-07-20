@@ -8,8 +8,7 @@
 //!
 //! 1. Sublinhado das palavras erradas: `GtkTextTag` com
 //!    `Underline::Error` (o sublinhado ondulado padrão de corretores),
-//!    recalculado com debounce a cada mudança no buffer — reaproveita o
-//!    mesmo padrão de `live_pagination.rs`.
+//!    recalculado com debounce a cada mudança no buffer.
 //! 2. Sugestões + "adicionar ao dicionário" no menu de contexto: como
 //!    `GtkTextView` não expõe um sinal "populate-popup" dinâmico (a API do
 //!    GTK4 é só `extra-menu`, um `GMenuModel` estático), a palavra sob o
