@@ -3,7 +3,7 @@ resolver = "2"
 members = ["prosa-doc", "prosa-gtk"]
 
 [workspace.package]
-version = "6.0.0"
+version = "6.0.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["Rodrigo Brito <rodrigo@w3ti.com.br>"]
