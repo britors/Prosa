@@ -109,7 +109,7 @@ jobs:
           # redistribuíveis por nós).
           declare -A seen
           queue=("$dist/bin/prosa.exe")
-          while [ "${#queue[@]}" -gt 0 ]; then
+          while [ "${#queue[@]}" -gt 0 ]; do
             current="${queue[0]}"
             queue=("${queue[@]:1}")
             deps=$(ldd "$current" | grep -i '/ucrt64/bin/' | awk '{print $3}')
