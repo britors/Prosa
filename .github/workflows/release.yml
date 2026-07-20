@@ -208,7 +208,19 @@ jobs:
           # -b vincula o token "SourceDir" que o heat.exe usa (por padrão,
           # sem -var) nos caminhos harvestados em dist-harvest.wxs — sem
           # isso o light.exe não acha as DLLs.
-          cargo wix -p prosa-gtk --no-build --nocapture -L -b -L dist
+          #
+          # -sice:ICE38/-sice:ICE64 suprimem duas validações do WiX que
+          # partem do princípio de instalação por máquina (Program Files):
+          # ICE38 exige KeyPath de registro (não de arquivo) pra
+          # componentes no perfil do usuário; ICE64 exige que todo
+          # diretório no perfil do usuário conste na tabela RemoveFile.
+          # Trade-off aceito conscientemente pela instalação per-user (sem
+          # UAC) — o heat.exe harvesta ~1600 arquivos como componentes de
+          # arquivo simples, sem viabilidade de gerar KeyPath de registro
+          # por item; na prática, o efeito colateral é o desinstalador
+          # poder deixar diretórios vazios (não os arquivos em si, que são
+          # removidos normalmente).
+          cargo wix -p prosa-gtk --no-build --nocapture -L -b -L dist -L -sice:ICE38 -L -sice:ICE64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem target\wix\*.msi
 
