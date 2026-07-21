@@ -5,9 +5,6 @@
 # distro (diferente de scripts/install.sh, que instala via apt/dnf/zypper
 # com privilégio de root).
 #
-# TODO: ajustar pra bater com o padrão exato do projeto de referência
-# (link a confirmar) assim que disponível.
-#
 # Como o Prosa ainda não publica um tarball portátil pro Linux (só
 # .deb/.rpm, gerados por .github/workflows/release.yml), a saída sem-sudo é
 # extrair o pacote sem instalá-lo de fato no sistema:
