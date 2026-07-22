@@ -257,3 +257,29 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Dispara o build "de verdade" no openSUSE Build Service
+  # (home:rodrigosbrito:atelier/prosa), que tem seu próprio _service
+  # (tar_scm com match-tag: v*) buscando a mesma tag direto do GitHub —
+  # este job só avisa o OBS pra rebuscar e rebuildar, via
+  # https://openbuildservice.org/help/manuals/obs-user-guide/cha-obs-authorization-token
+  # Token de trigger escopado só pra "runservice" no pacote prosa (osc
+  # token --create home:rodrigosbrito:atelier prosa runservice), guardado
+  # como secret OBS_TOKEN_PROSA. Depende só de `publish` (a release do
+  # GitHub já está no ar antes de avisar o OBS) e é best-effort: falha
+  # aqui não desfaz a release.
+  trigger-obs:
+    name: Disparar build no OBS
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar rebuild no OBS (prosa)
+        env:
+          OBS_TOKEN: ${{ secrets.OBS_TOKEN_PROSA }}
+        run: |
+          if [ -z "$OBS_TOKEN" ]; then
+            echo "OBS_TOKEN_PROSA não configurado, pulando." >&2
+            exit 0
+          fi
+          curl -fsS -H "Authorization: Token $OBS_TOKEN" \
+            -X POST "https://api.opensuse.org/trigger/runservice?project=home:rodrigosbrito:atelier&package=prosa"
