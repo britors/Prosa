@@ -585,6 +585,8 @@ fn build_window(app: &adw::Application) {
     sync_button.set_tooltip_text(Some("Sincronização"));
     let updates_button = gtk::Button::from_icon_name("software-update-available-symbolic");
     updates_button.set_tooltip_text(Some("Verificar atualizações"));
+    let about_button = gtk::Button::from_icon_name("help-about-symbolic");
+    about_button.set_tooltip_text(Some("Sobre o Prosa"));
     let header_footer_button = gtk::Button::with_label("C/R");
     header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
     let ruler_menu = gio::Menu::new();
@@ -645,10 +647,9 @@ fn build_window(app: &adw::Application) {
 
     // Grupos "linked" (mesmo padrão HIG do GNOME de agrupar botões
     // relacionados numa pílula só) em vez de uma fileira flat de itens
-    // soltos: formatação de texto, alinhamento e navegação/IA ficam
-    // visualmente separados uns dos outros. Novo/Abrir/Salvar e boa parte
-    // de "navegação" (tópicos, backlinks, grafo, bibliografia,
-    // atualizações, sincronização) foram pro menu de toolbar
+    // soltos: formatação de texto e alinhamento ficam visualmente separados
+    // um do outro. Novo/Abrir/Salvar e os itens de navegação e ferramentas
+    // foram pro menu de toolbar
     // (`toolbar_menu_button`, montado mais abaixo) a pedido do usuário, em
     // vez de ficarem soltos na barra.
     let format_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -670,21 +671,13 @@ fn build_window(app: &adw::Application) {
     align_group.append(&align_right_button);
     align_group.append(&align_justify_button);
 
-    let nav_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    nav_group.add_css_class("linked");
-    nav_group.append(&history_button);
-    nav_group.append(&header_footer_button);
-    nav_group.append(&ruler_menu_button);
-    nav_group.append(&ai_menu_button);
-
     let font_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     font_group.add_css_class("linked");
     font_group.append(&font_family_button);
     font_group.append(&font_size_dropdown);
 
-    // Menu de toolbar: agrupa Novo/Abrir/Salvar e a maior parte do que
-    // antes era `nav_group` (tópicos, backlinks, grafo, bibliografia,
-    // atualizações, sincronização) num popover só, a pedido do usuário —
+    // Menu de toolbar: agrupa Novo/Abrir/Salvar, navegação e ferramentas
+    // (incluindo os submenus de régua e IA) num popover só —
     // ordem pedida explicitamente. Reaproveita os mesmos widgets (e seus
     // handlers `connect_clicked`/`connect_toggled`, já plenamente
     // funcionando) só trocando a aparência (ícone + rótulo lado a lado,
@@ -701,8 +694,13 @@ fn build_window(app: &adw::Application) {
         // "biblioteca/bibliografia" dedicado, mas esse é o que mais se
         // aproxima visualmente disponível no tema padrão.
         (bibliography_button.upcast_ref::<gtk::Widget>(), Some("x-office-address-book-symbolic"), "Bibliografia"),
+        (history_button.upcast_ref::<gtk::Widget>(), Some("document-open-recent-symbolic"), "Histórico de versões"),
+        (header_footer_button.upcast_ref::<gtk::Widget>(), None, "Cabeçalho e rodapé"),
+        (ruler_menu_button.upcast_ref::<gtk::Widget>(), None, "Régua"),
+        (ai_menu_button.upcast_ref::<gtk::Widget>(), None, "IA"),
         (updates_button.upcast_ref::<gtk::Widget>(), Some("software-update-available-symbolic"), "Verificar atualizações"),
         (sync_button.upcast_ref::<gtk::Widget>(), Some("folder-remote-symbolic"), "Sincronização"),
+        (about_button.upcast_ref::<gtk::Widget>(), Some("help-about-symbolic"), "Sobre"),
     ] {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         if let Some(icon_name) = icon_name {
@@ -712,6 +710,8 @@ fn build_window(app: &adw::Application) {
         if let Some(button) = button.downcast_ref::<gtk::Button>() {
             button.set_child(Some(&row));
         } else if let Some(button) = button.downcast_ref::<gtk::ToggleButton>() {
+            button.set_child(Some(&row));
+        } else if let Some(button) = button.downcast_ref::<gtk::MenuButton>() {
             button.set_child(Some(&row));
         }
         button.add_css_class("flat");
@@ -725,8 +725,13 @@ fn build_window(app: &adw::Application) {
     toolbar_menu_box.append(&backlinks_toggle_button);
     toolbar_menu_box.append(&graph_button);
     toolbar_menu_box.append(&bibliography_button);
+    toolbar_menu_box.append(&history_button);
+    toolbar_menu_box.append(&header_footer_button);
+    toolbar_menu_box.append(&ruler_menu_button);
+    toolbar_menu_box.append(&ai_menu_button);
     toolbar_menu_box.append(&updates_button);
     toolbar_menu_box.append(&sync_button);
+    toolbar_menu_box.append(&about_button);
 
     let toolbar_menu_popover = gtk::Popover::builder().child(&toolbar_menu_box).build();
     let toolbar_menu_button =
@@ -742,13 +747,10 @@ fn build_window(app: &adw::Application) {
     // fica na borda direita da janela. `toolbar_menu_button` foi pedido
     // "à direita, antes de imprimir" — logo, entra como a segunda
     // chamada, imediatamente depois de `export_pdf_button` (que fica na
-    // borda). `nav_group` (histórico/cabeçalho-rodapé/régua/IA) e
-    // `font_group` (fonte/tamanho) continuam mais perto do título.
+    // borda). `font_group` (fonte/tamanho) continua mais perto do título.
     header_bar.pack_end(&export_pdf_button);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&toolbar_menu_button);
-    header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
-    header_bar.pack_end(&nav_group);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&font_group);
 
@@ -883,6 +885,38 @@ fn build_window(app: &adw::Application) {
         .maximized(true)
         .content(&toast_overlay)
         .build();
+
+    about_button.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        move |_| {
+            let content = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .spacing(8)
+                .halign(gtk::Align::Center)
+                .margin_top(12)
+                .margin_bottom(12)
+                .margin_start(24)
+                .margin_end(24)
+                .build();
+
+            let icon_bytes = glib::Bytes::from_static(include_bytes!("../data/icons/hicolor/128x128/apps/br.com.rodrigobrito.Prosa.Native.png"));
+            let icon_texture = gdk::Texture::from_bytes(&icon_bytes).expect("ícone do Prosa válido");
+            let icon = gtk::Image::from_paintable(Some(&icon_texture));
+            icon.set_pixel_size(96);
+            content.append(&icon);
+
+            content.append(&gtk::Label::builder().label("Prosa").css_classes(["title-1"]).build());
+            content.append(&gtk::Label::new(Some(concat!("Versão ", env!("CARGO_PKG_VERSION")))));
+            content.append(&gtk::Label::new(Some("Criado por Rodrigo Brito")));
+            content.append(&gtk::Label::new(Some("Licença GNU GPL 3.0 ou posterior")));
+
+            let dialog = adw::AlertDialog::builder().heading("Sobre").extra_child(&content).build();
+            dialog.add_response("close", "Fechar");
+            dialog.set_close_response("close");
+            dialog.present(Some(&window));
+        }
+    ));
 
     let show_rulers_action = gio::SimpleAction::new_stateful("show-rulers", None, &ruler_preferences.get().visible.to_variant());
     show_rulers_action.connect_activate(glib::clone!(
