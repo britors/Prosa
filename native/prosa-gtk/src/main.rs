@@ -587,7 +587,7 @@ fn build_window(app: &adw::Application) {
     updates_button.set_tooltip_text(Some("Verificar atualizações"));
     let about_button = gtk::Button::from_icon_name("help-about-symbolic");
     about_button.set_tooltip_text(Some("Sobre o Prosa"));
-    let header_footer_button = gtk::Button::with_label("C/R");
+    let header_footer_button = gtk::Button::from_icon_name("document-properties-symbolic");
     header_footer_button.set_tooltip_text(Some("Cabeçalho e rodapé"));
     let ruler_menu = gio::Menu::new();
     ruler_menu.append(Some("Exibir réguas"), Some("win.show-rulers"));
@@ -677,7 +677,7 @@ fn build_window(app: &adw::Application) {
     font_group.append(&font_size_dropdown);
 
     // Menu de toolbar: agrupa Novo/Abrir/Salvar, navegação e ferramentas
-    // (incluindo os submenus de régua e IA) num popover só —
+    // num popover só —
     // ordem pedida explicitamente. Reaproveita os mesmos widgets (e seus
     // handlers `connect_clicked`/`connect_toggled`, já plenamente
     // funcionando) só trocando a aparência (ícone + rótulo lado a lado,
@@ -695,9 +695,11 @@ fn build_window(app: &adw::Application) {
         // aproxima visualmente disponível no tema padrão.
         (bibliography_button.upcast_ref::<gtk::Widget>(), Some("x-office-address-book-symbolic"), "Bibliografia"),
         (history_button.upcast_ref::<gtk::Widget>(), Some("document-open-recent-symbolic"), "Histórico de versões"),
-        (header_footer_button.upcast_ref::<gtk::Widget>(), None, "Cabeçalho e rodapé"),
-        (ruler_menu_button.upcast_ref::<gtk::Widget>(), None, "Régua"),
-        (ai_menu_button.upcast_ref::<gtk::Widget>(), None, "IA"),
+        (
+            header_footer_button.upcast_ref::<gtk::Widget>(),
+            Some("document-properties-symbolic"),
+            "Cabeçalho e rodapé",
+        ),
         (updates_button.upcast_ref::<gtk::Widget>(), Some("software-update-available-symbolic"), "Verificar atualizações"),
         (sync_button.upcast_ref::<gtk::Widget>(), Some("folder-remote-symbolic"), "Sincronização"),
         (about_button.upcast_ref::<gtk::Widget>(), Some("help-about-symbolic"), "Sobre"),
@@ -727,8 +729,6 @@ fn build_window(app: &adw::Application) {
     toolbar_menu_box.append(&bibliography_button);
     toolbar_menu_box.append(&history_button);
     toolbar_menu_box.append(&header_footer_button);
-    toolbar_menu_box.append(&ruler_menu_button);
-    toolbar_menu_box.append(&ai_menu_button);
     toolbar_menu_box.append(&updates_button);
     toolbar_menu_box.append(&sync_button);
     toolbar_menu_box.append(&about_button);
@@ -747,10 +747,13 @@ fn build_window(app: &adw::Application) {
     // fica na borda direita da janela. `toolbar_menu_button` foi pedido
     // "à direita, antes de imprimir" — logo, entra como a segunda
     // chamada, imediatamente depois de `export_pdf_button` (que fica na
-    // borda). `font_group` (fonte/tamanho) continua mais perto do título.
+    // borda). IA e Régua são botões próprios fora desse menu, e
+    // `font_group` (fonte/tamanho) continua mais perto do título.
     header_bar.pack_end(&export_pdf_button);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&toolbar_menu_button);
+    header_bar.pack_end(&ai_menu_button);
+    header_bar.pack_end(&ruler_menu_button);
     header_bar.pack_end(&gtk::Separator::new(gtk::Orientation::Vertical));
     header_bar.pack_end(&font_group);
 
