@@ -885,7 +885,6 @@ fn build_window(app: &adw::Application) {
         .title("Prosa")
         .default_width(900)
         .default_height(700)
-        .maximized(true)
         .content(&toast_overlay)
         .build();
 
@@ -896,14 +895,13 @@ fn build_window(app: &adw::Application) {
             let dialog = adw::AboutDialog::builder()
                 .application_name("Prosa")
                 .application_icon(APP_ID)
+                .developer_name("Lyra Linux")
                 .version(env!("CARGO_PKG_VERSION"))
-                .comments("Editor de texto nativo para Linux e GNOME.")
-                .developers(["Rodrigo Brito <rodrigo@w3ti.com.br>"])
                 .website(env!("CARGO_PKG_HOMEPAGE"))
                 .issue_url("https://github.com/britors/Prosa/issues")
-                .copyright("© 2026 Rodrigo Brito")
                 .license_type(gtk::License::Gpl30)
                 .build();
+            dialog.set_developers(&["Rodrigo Brito"]);
             dialog.present(Some(&window));
         }
     ));
