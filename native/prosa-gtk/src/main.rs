@@ -899,6 +899,8 @@ fn build_window(app: &adw::Application) {
                 .version(env!("CARGO_PKG_VERSION"))
                 .comments("Editor de texto nativo para Linux e GNOME.")
                 .developers(["Rodrigo Brito <rodrigo@w3ti.com.br>"])
+                .website(env!("CARGO_PKG_HOMEPAGE"))
+                .issue_url("https://github.com/britors/Prosa/issues")
                 .copyright("© 2026 Rodrigo Brito")
                 .license_type(gtk::License::Gpl30)
                 .build();
