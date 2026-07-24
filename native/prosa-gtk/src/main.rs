@@ -893,30 +893,15 @@ fn build_window(app: &adw::Application) {
         #[weak]
         window,
         move |_| {
-            let content = gtk::Box::builder()
-                .orientation(gtk::Orientation::Vertical)
-                .spacing(8)
-                .halign(gtk::Align::Center)
-                .margin_top(12)
-                .margin_bottom(12)
-                .margin_start(24)
-                .margin_end(24)
+            let dialog = adw::AboutDialog::builder()
+                .application_name("Prosa")
+                .application_icon(APP_ID)
+                .version(env!("CARGO_PKG_VERSION"))
+                .comments("Editor de texto nativo para Linux e GNOME.")
+                .developers(["Rodrigo Brito <rodrigo@w3ti.com.br>"])
+                .copyright("© 2026 Rodrigo Brito")
+                .license_type(gtk::License::Gpl30)
                 .build();
-
-            let icon_bytes = glib::Bytes::from_static(include_bytes!("../data/icons/hicolor/128x128/apps/br.com.rodrigobrito.Prosa.Native.png"));
-            let icon_texture = gdk::Texture::from_bytes(&icon_bytes).expect("ícone do Prosa válido");
-            let icon = gtk::Image::from_paintable(Some(&icon_texture));
-            icon.set_pixel_size(96);
-            content.append(&icon);
-
-            content.append(&gtk::Label::builder().label("Prosa").css_classes(["title-1"]).build());
-            content.append(&gtk::Label::new(Some(concat!("Versão ", env!("CARGO_PKG_VERSION")))));
-            content.append(&gtk::Label::new(Some("Criado por Rodrigo Brito")));
-            content.append(&gtk::Label::new(Some("Licença GNU GPL 3.0 ou posterior")));
-
-            let dialog = adw::AlertDialog::builder().heading("Sobre").extra_child(&content).build();
-            dialog.add_response("close", "Fechar");
-            dialog.set_close_response("close");
             dialog.present(Some(&window));
         }
     ));
@@ -2146,6 +2131,10 @@ fn apply_theme_fallback() {
 
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
+    app.connect_startup(|_| {
+        let icons = gtk::IconTheme::for_display(&gdk::Display::default().expect("display GTK disponível"));
+        icons.add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/data/icons"));
+    });
     app.connect_activate(|app| {
         apply_theme_fallback();
         build_window(app);
